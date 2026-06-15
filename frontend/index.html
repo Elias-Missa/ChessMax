@@ -1,0 +1,1021 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ChessMax — Trainer + Volatility</title>
+    <link rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M9 26h14v3H9zm1.5-3 1-3h9l1 3zM12 18c-2-3 1-6 3-7l-1-3 3-1v3c3 1 6 3 6 8v2H12z' fill='%2339ff14'/></svg>" />
+    <!-- Vol chessground bundle first; puzzles chessground theme (brown board, cburnett pieces) wins for both boards. -->
+    <link rel="stylesheet" href="/static/vendor/lichess/chessground.css" />
+    <link rel="stylesheet" href="/vendor/chessground/assets/chessground.base.css" />
+    <link rel="stylesheet" href="/vendor/chessground/assets/chessground.brown.css" />
+    <link rel="stylesheet" href="/vendor/chessground/assets/chessground.cburnett.css" />
+    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/vol/styles.css" />
+    <link rel="stylesheet" href="/static/shell.css" />
+  </head>
+  <body>
+    <div id="bootError" class="boot-error hidden" role="alert"></div>
+
+    <!-- ── Auth gate: covers the app until a session is established ───────── -->
+    <div id="auth-overlay" class="auth-overlay">
+      <div class="auth-card">
+        <h1 class="auth-title">ChessMax</h1>
+        <p class="auth-sub" id="auth-subtitle">Sign in to your account</p>
+        <form id="auth-form" class="auth-form" novalidate>
+          <input id="auth-email" type="email" placeholder="Email" autocomplete="username" required />
+          <input id="auth-password" type="password" placeholder="Password" autocomplete="current-password" required />
+          <input id="auth-confirm" type="password" placeholder="Confirm password" autocomplete="new-password" class="hidden" />
+          <p id="auth-error" class="auth-error hidden" role="alert"></p>
+          <button id="auth-submit" type="submit" class="auth-submit">Log in</button>
+        </form>
+        <p class="auth-toggle">
+          <span id="auth-toggle-text">No account?</span>
+          <button id="auth-toggle-btn" type="button" class="auth-link">Create one</button>
+        </p>
+      </div>
+    </div>
+
+    <!-- ── ChessMax shell: one flat tab bar across both apps ──────────────── -->
+    <header class="shell-header">
+      <h1 class="shell-title">ChessMax</h1>
+      <nav class="shell-tabs" role="tablist" aria-label="ChessMax sections">
+        <span class="shell-tab-group-label">Train</span>
+        <button class="shell-tab active" type="button" role="tab" data-app="puzzles" data-tab="train" aria-selected="true">Puzzles</button>
+        <button class="shell-tab" type="button" role="tab" data-app="puzzles" data-tab="evalhold" aria-selected="false">Eval Hold</button>
+        <button class="shell-tab" type="button" role="tab" data-app="puzzles" data-tab="defense" aria-selected="false">Defense Gym</button>
+        <button class="shell-tab" type="button" role="tab" data-app="puzzles" data-tab="forced" aria-selected="false">Forced Lines</button>
+        <button class="shell-tab" type="button" role="tab" data-app="puzzles" data-tab="guess" aria-selected="false">Guess</button>
+        <button class="shell-tab" type="button" role="tab" data-app="puzzles" data-tab="mistakes" aria-selected="false">Your Mistakes</button>
+        <button class="shell-tab" type="button" role="tab" data-app="puzzles" data-tab="playout" aria-selected="false">Play Out</button>
+        <button class="shell-tab" type="button" role="tab" data-app="puzzles" data-tab="stats" aria-selected="false">Stats</button>
+        <span class="shell-tab-group-label divided">Analyze</span>
+        <button class="shell-tab" type="button" role="tab" data-app="vol" data-tab="game" aria-selected="false">Game Analyzer</button>
+        <button class="shell-tab" type="button" role="tab" data-app="vol" data-tab="editor" aria-selected="false">Position Editor</button>
+        <button class="shell-tab" type="button" role="tab" data-app="vol" data-tab="library" aria-selected="false">Library</button>
+        <button class="shell-tab" type="button" role="tab" data-app="vol" data-tab="about" aria-selected="false">Why</button>
+      </nav>
+      <div class="shell-user hidden" id="shell-user-wrap">
+        <span class="shell-user-email" id="shell-user"></span>
+        <button class="shell-logout" id="logout-btn" type="button">Log out</button>
+      </div>
+    </header>
+
+    <!-- ════════════════════════════ PUZZLES APP ═══════════════════════════ -->
+    <div id="puzzles-root">
+      <header class="topbar">
+        <div>
+          <p id="topbar-tagline">Decide if there is a tactic — or just make a solid move.</p>
+        </div>
+        <fieldset id="openings" class="openings">
+          <legend>Openings</legend>
+          <label><input type="checkbox" value="london" /> London</label>
+          <label><input type="checkbox" value="caro-kann" /> Caro-Kann</label>
+        </fieldset>
+      </header>
+
+      <main class="layout">
+        <section class="board-panel">
+          <div id="board" class="board"></div>
+        </section>
+
+        <section class="side-panel">
+          <section id="view-train" class="view">
+            <div class="card">
+              <div class="meta-row">
+                <span>Rating</span>
+                <strong id="rating">1500</strong>
+              </div>
+              <div class="meta-row">
+                <span>Side to move</span>
+                <strong id="side-to-move">-</strong>
+              </div>
+            </div>
+
+            <div class="card">
+              <p id="status">Loading first puzzle…</p>
+              <div id="feedback" class="feedback hidden"></div>
+              <div id="playout-start" class="playout-start hidden">
+                <label for="maia-rating">Opponent rating</label>
+                <select id="maia-rating">
+                  <option value="1100">Maia 1100</option>
+                  <option value="1300">Maia 1300</option>
+                  <option value="1500">Maia 1500</option>
+                  <option value="1700">Maia 1700</option>
+                  <option value="1900">Maia 1900</option>
+                </select>
+                <button id="playout-button" type="button">Play it out</button>
+              </div>
+              <button id="next-button" type="button" disabled>Next Puzzle</button>
+            </div>
+          </section>
+
+          <!-- ── Eval Hold ─────────────────────────────────────────────── -->
+          <section id="view-evalhold" class="view hidden">
+            <div class="card mode-header-card">
+              <div class="mode-title-row">
+                <h3>Eval Hold</h3>
+                <span class="streak-badge" id="evalhold-streak-badge" title="Current survival streak">streak 0</span>
+              </div>
+              <p class="mode-desc">Play N consecutive moves without ever dropping more than the ceiling. One slip ends the run.</p>
+            </div>
+
+            <div class="card" id="evalhold-setup">
+              <div class="field-row">
+                <label for="evalhold-moves">Moves to survive</label>
+                <select id="evalhold-moves">
+                  <option value="3">3</option>
+                  <option value="5" selected>5</option>
+                  <option value="8">8</option>
+                  <option value="12">12</option>
+                </select>
+              </div>
+              <div class="field-row">
+                <label for="evalhold-threshold">Drop ceiling</label>
+                <select id="evalhold-threshold">
+                  <option value="50">50 cp — strict</option>
+                  <option value="100" selected>100 cp — default</option>
+                  <option value="150">150 cp — relaxed</option>
+                </select>
+              </div>
+              <div class="field-row">
+                <label for="evalhold-opponent">Opponent</label>
+                <select id="evalhold-opponent">
+                  <option value="1100">Maia 1100</option>
+                  <option value="1300">Maia 1300</option>
+                  <option value="1500" selected>Maia 1500</option>
+                  <option value="1700">Maia 1700</option>
+                  <option value="1900">Maia 1900</option>
+                </select>
+              </div>
+              <button id="evalhold-start" type="button" class="btn-primary">Start run</button>
+            </div>
+
+            <div class="card hidden" id="evalhold-live">
+              <div class="hold-progress">
+                <div class="hold-progress-track"><div class="hold-progress-fill" id="evalhold-progress"></div></div>
+                <span class="hold-progress-label" id="evalhold-counter">0 / 5</span>
+              </div>
+              <div class="meta-row"><span>Baseline eval</span><strong id="evalhold-baseline">—</strong></div>
+              <div class="meta-row"><span>Last move</span><strong id="evalhold-last-delta">—</strong></div>
+              <p id="evalhold-status" class="mode-status">Your move.</p>
+              <button id="evalhold-giveup" type="button" class="btn-ghost">Give up</button>
+            </div>
+
+            <div id="evalhold-feedback" class="feedback hidden"></div>
+
+            <div class="card">
+              <div class="stats-grid">
+                <div><span class="label">Runs</span><strong id="evalhold-total">0</strong></div>
+                <div><span class="label">Passed</span><strong id="evalhold-passed">0</strong></div>
+                <div><span class="label">Streak</span><strong id="evalhold-streak">0</strong></div>
+                <div><span class="label">Best streak</span><strong id="evalhold-best-streak">0</strong></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ── Defense Gym ───────────────────────────────────────────── -->
+          <section id="view-defense" class="view hidden">
+            <div class="card mode-header-card">
+              <div class="mode-title-row">
+                <h3>Defense Gym</h3>
+                <span class="streak-badge" id="defense-streak-badge" title="Current survival streak">streak 0</span>
+              </div>
+              <p class="mode-desc">You start worse (about −1 to −2). The goal flips from winning to surviving: don't let the eval collapse.</p>
+            </div>
+
+            <div class="card" id="defense-setup">
+              <div class="field-row">
+                <label for="defense-moves">Moves to hold</label>
+                <select id="defense-moves">
+                  <option value="4">4</option>
+                  <option value="6" selected>6</option>
+                  <option value="8">8</option>
+                  <option value="12">12</option>
+                </select>
+              </div>
+              <div class="field-row">
+                <label for="defense-threshold">Collapse floor</label>
+                <select id="defense-threshold">
+                  <option value="75">75 cp — strict</option>
+                  <option value="100" selected>100 cp — default</option>
+                  <option value="150">150 cp — relaxed</option>
+                </select>
+              </div>
+              <div class="field-row">
+                <label for="defense-opponent">Opponent</label>
+                <select id="defense-opponent">
+                  <option value="1100">Maia 1100</option>
+                  <option value="1300">Maia 1300</option>
+                  <option value="1500" selected>Maia 1500</option>
+                  <option value="1700">Maia 1700</option>
+                  <option value="1900">Maia 1900</option>
+                </select>
+              </div>
+              <button id="defense-start" type="button" class="btn-primary">Find a bad position</button>
+            </div>
+
+            <div class="card hidden" id="defense-live">
+              <div class="hold-progress">
+                <div class="hold-progress-track"><div class="hold-progress-fill" id="defense-progress"></div></div>
+                <span class="hold-progress-label" id="defense-counter">0 / 6</span>
+              </div>
+              <div class="meta-row"><span>Starting eval</span><strong id="defense-baseline">—</strong></div>
+              <div class="meta-row"><span>Current eval</span><strong id="defense-current">—</strong></div>
+              <p id="defense-status" class="mode-status">Hold the line.</p>
+              <button id="defense-giveup" type="button" class="btn-ghost">Resign</button>
+            </div>
+
+            <div id="defense-feedback" class="feedback hidden"></div>
+
+            <div class="card">
+              <div class="stats-grid">
+                <div><span class="label">Runs</span><strong id="defense-total">0</strong></div>
+                <div><span class="label">Held</span><strong id="defense-passed">0</strong></div>
+                <div><span class="label">Streak</span><strong id="defense-streak">0</strong></div>
+                <div><span class="label">Best streak</span><strong id="defense-best-streak">0</strong></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ── Forced Lines ──────────────────────────────────────────── -->
+          <section id="view-forced" class="view hidden">
+            <div class="card mode-header-card">
+              <div class="mode-title-row">
+                <h3>Forced Lines</h3>
+                <span class="streak-badge" id="forced-streak-badge" title="Current streak">streak 0</span>
+              </div>
+              <p class="mode-desc">Calculate first, move second. Enter the entire line — your moves <em>and</em> the opponent's best replies — then submit it for validation.</p>
+            </div>
+
+            <div class="card">
+              <div class="meta-row"><span>Line length</span><strong id="forced-ply-count">—</strong></div>
+              <div class="meta-row"><span>Entered</span><strong id="forced-entered">0</strong></div>
+              <ol id="forced-line" class="move-list forced-line-list"></ol>
+              <div class="btn-row">
+                <button id="forced-undo" type="button" class="btn-ghost" disabled>Undo</button>
+                <button id="forced-reset" type="button" class="btn-ghost" disabled>Reset</button>
+              </div>
+              <button id="forced-submit" type="button" class="btn-primary" disabled>Submit line</button>
+              <button id="forced-next" type="button" class="btn-secondary">New puzzle</button>
+            </div>
+
+            <div id="forced-feedback" class="feedback hidden"></div>
+
+            <div class="card">
+              <div class="stats-grid">
+                <div><span class="label">Attempts</span><strong id="forced-total">0</strong></div>
+                <div><span class="label">Solved</span><strong id="forced-passed">0</strong></div>
+                <div><span class="label">Streak</span><strong id="forced-streak">0</strong></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ── Eval + Sharpness Guess ────────────────────────────────── -->
+          <section id="view-guess" class="view hidden">
+            <div class="card mode-header-card">
+              <div class="mode-title-row">
+                <h3>Eval &amp; Sharpness Guess</h3>
+              </div>
+              <p class="mode-desc">No bars, no hints. Read the position, then guess the engine eval and the volatility score.</p>
+            </div>
+
+            <div class="card" id="guess-inputs">
+              <div class="guess-slider-block">
+                <div class="guess-slider-head">
+                  <label for="guess-eval">Eval (White POV)</label>
+                  <strong id="guess-eval-value" class="guess-value">0.00</strong>
+                </div>
+                <input type="range" id="guess-eval" min="-800" max="800" step="10" value="0" />
+                <div class="guess-scale"><span>−8</span><span>0</span><span>+8</span></div>
+              </div>
+              <div class="guess-slider-block">
+                <div class="guess-slider-head">
+                  <label for="guess-sharp">Sharpness</label>
+                  <strong id="guess-sharp-value" class="guess-value">50</strong>
+                </div>
+                <input type="range" id="guess-sharp" min="0" max="100" step="1" value="50" />
+                <div class="guess-scale"><span>calm</span><span>50</span><span>knife-edge</span></div>
+              </div>
+              <button id="guess-submit" type="button" class="btn-primary">Lock in guess</button>
+              <button id="guess-next" type="button" class="btn-secondary">Skip position</button>
+            </div>
+
+            <div id="guess-reveal" class="card hidden"></div>
+
+            <div class="card">
+              <h3 class="card-title">Calibration over time</h3>
+              <div class="guess-chart-block">
+                <span class="label">Eval — guess vs actual</span>
+                <canvas id="guess-eval-chart" height="150"></canvas>
+              </div>
+              <div class="guess-chart-block">
+                <span class="label">Sharpness — guess vs actual</span>
+                <canvas id="guess-sharp-chart" height="150"></canvas>
+              </div>
+            </div>
+          </section>
+
+          <!-- ── Your Mistakes ─────────────────────────────────────────── -->
+          <section id="view-mistakes" class="view hidden">
+            <div class="card mode-header-card">
+              <div class="mode-title-row">
+                <h3>Your Mistakes</h3>
+                <span class="streak-badge" id="mistakes-bucket-badge" title="Puzzle type">—</span>
+              </div>
+              <p class="mode-desc">Puzzles mined from your own Chess.com games — the wins you missed and the moves you blundered. Solve it, then see what you actually played, side by side with the right move.</p>
+            </div>
+
+            <div class="card" id="mistakes-generate">
+              <div class="field-row">
+                <label for="mistakes-username">Chess.com username</label>
+                <input type="text" id="mistakes-username" placeholder="username" spellcheck="false" autocomplete="off" />
+              </div>
+              <button id="mistakes-generate-btn" type="button" class="btn-primary">Generate from my games</button>
+              <p class="mode-status" id="mistakes-gen-status">Scans your last 90 days of games. This can take a few minutes.</p>
+            </div>
+
+            <div class="card">
+              <p id="mistakes-prompt" class="mode-status">Generate puzzles from your games to begin.</p>
+              <div id="mistakes-feedback" class="feedback hidden"></div>
+              <button id="mistakes-next" type="button" disabled>Next mistake</button>
+            </div>
+          </section>
+
+          <section id="view-playout" class="view hidden">
+            <div class="card">
+              <div class="meta-row">
+                <span>Opponent</span>
+                <strong id="playout-engine">-</strong>
+              </div>
+              <div class="meta-row">
+                <span>Status</span>
+                <strong id="playout-status">Start from a finished puzzle.</strong>
+              </div>
+              <div class="meta-row">
+                <span>Move</span>
+                <strong id="playout-move-counter">0 / 0</strong>
+              </div>
+              <div class="playout-nav">
+                <button id="playout-prev-button" type="button">◀ Prev</button>
+                <button id="playout-next-button" type="button">Next ▶</button>
+              </div>
+            </div>
+            <div class="card">
+              <button id="playout-end-button" type="button" disabled>End game</button>
+              <button id="playout-takeback-button" type="button" disabled>Take back</button>
+              <button id="playout-back-button" type="button">Back to Train</button>
+            </div>
+            <div class="card">
+              <h3>Move list</h3>
+              <ol id="playout-moves" class="move-list"></ol>
+            </div>
+          </section>
+
+          <section id="view-stats" class="view hidden">
+            <div class="card">
+              <div class="stats-grid">
+                <div>
+                  <span class="label">Overall accuracy</span>
+                  <strong id="stats-overall">-</strong>
+                </div>
+                <div>
+                  <span class="label">Quiet accuracy</span>
+                  <strong id="stats-quiet">-</strong>
+                </div>
+                <div>
+                  <span class="label">Tactical accuracy</span>
+                  <strong id="stats-tactical">-</strong>
+                </div>
+                <div>
+                  <span class="label">Playout record</span>
+                  <strong id="stats-playouts">-</strong>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <h3>Rating history</h3>
+              <canvas id="stats-chart" width="340" height="160"></canvas>
+            </div>
+            <div class="card">
+              <h3>By theme</h3>
+              <ul id="stats-themes" class="stats-list"></ul>
+            </div>
+            <div class="card">
+              <h3>By opening</h3>
+              <ul id="stats-openings" class="stats-list"></ul>
+            </div>
+            <div class="card">
+              <h3>Recent playouts</h3>
+              <ul id="stats-playout-games" class="stats-list"></ul>
+            </div>
+          </section>
+
+          <p class="hint">Right-click and drag to draw arrows. Right-click a square to mark a circle.</p>
+        </section>
+      </main>
+    </div><!-- /#puzzles-root -->
+
+    <!-- ═══════════════════════════ VOLATILITY APP ═════════════════════════ -->
+    <div id="vol-root" class="hidden">
+    <main class="app">
+
+    <!-- ── Board + side panel row ────────────────────────────────────────── -->
+    <div class="board-row">
+
+      <!-- Engine lines (left side panel, game tab only) -->
+      <aside class="game-left-panel hidden" data-for="game">
+        <div class="micro-label">Engine lines</div>
+        <ol id="topLinesListGame" class="top-lines-list"></ol>
+      </aside>
+
+      <div class="board-wrap">
+
+        <!-- Black player row -->
+        <div class="player-strip">
+          <span class="piece-dot dark"></span>
+          <span class="player-label">Black</span>
+        </div>
+
+        <div class="board-stage">
+
+          <div class="sidebar-bar" title="Engine evaluation — positive = White advantage">
+            <div class="bar-tag">Eval</div>
+            <div id="evalBar" class="eval-bar">
+              <div class="eval-dark-fill"></div>
+              <div class="eval-midline"></div>
+            </div>
+            <div id="evalLabel" class="bar-readout">—</div>
+          </div>
+
+          <div class="board-frame">
+            <div id="volBoard"></div>
+            <svg id="arrowLayer" class="arrow-layer" aria-hidden="true"></svg>
+          </div>
+
+          <div class="sidebar-bar" title="Volatility — how punishing the wrong move is">
+            <div class="bar-tag">Vol</div>
+            <button id="volBar" type="button" class="vol-bar" data-color="low" data-decided="false"
+              aria-label="Volatility bar — click for explanation" title="Click for explanation">
+              <div class="vol-fill"></div>
+              <div class="vol-split-line"></div>
+              <div class="vol-info-dot" aria-hidden="true">i</div>
+            </button>
+            <div id="volLabel" class="bar-readout">—</div>
+          </div>
+
+        </div>
+
+        <!-- White player row -->
+        <div class="player-strip">
+          <span class="piece-dot light"></span>
+          <span class="player-label">White</span>
+        </div>
+      </div>
+
+      <!-- ── Editor side panel ───────────────────────────────────────────── -->
+      <aside class="side-panel" data-for="editor">
+        <div class="panel-title">Position</div>
+
+        <div class="btn-grid">
+          <button id="btnStart" class="btn">Starting pos</button>
+          <button id="btnFlip" class="btn">Flip board</button>
+          <button id="btnClear" class="btn">Clear</button>
+        </div>
+
+        <button id="btnAnalyzeFen" class="btn btn-primary btn-block">Analyze</button>
+
+        <div class="panel-divider"></div>
+
+        <div class="fen-block">
+          <span class="micro-label">FEN</span>
+          <div class="fen-input-row">
+            <input id="fenInput" type="text" class="fen-input" spellcheck="false"
+              value="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" aria-label="FEN string" />
+            <button id="copyFen" class="icon-btn" title="Copy FEN to clipboard">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"
+                stroke-linejoin="round">
+                <rect x="5.5" y="5.5" width="9" height="9" rx="1.5" />
+                <path d="M3.5 10.5H2.5a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v1" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="turn-toggle" role="radiogroup" aria-label="Side to move">
+          <span class="micro-label">To move</span>
+          <div class="seg">
+            <button id="turnWhite" type="button" class="seg-btn active" role="radio" aria-checked="true"
+              data-turn="w">White</button>
+            <button id="turnBlack" type="button" class="seg-btn" role="radio" aria-checked="false"
+              data-turn="b">Black</button>
+          </div>
+        </div>
+
+        <label class="toggle">
+          <input id="deepToggle" type="checkbox" />
+          <span class="toggle-track"><span class="toggle-knob"></span></span>
+          <span class="toggle-label">Deep analysis</span>
+        </label>
+
+        <label class="toggle">
+          <input id="arrowToggle" type="checkbox" checked />
+          <span class="toggle-track"><span class="toggle-knob"></span></span>
+          <span class="toggle-label">Show arrow</span>
+        </label>
+
+        <label class="toggle">
+          <input id="autoAnalyze" type="checkbox" checked />
+          <span class="toggle-track"><span class="toggle-knob"></span></span>
+          <span class="toggle-label">Auto-analyze on edit</span>
+        </label>
+
+        <label class="toggle">
+          <!-- Shared state with #soundsToggle via JS -->
+          <input id="soundsToggleEditor" type="checkbox" checked />
+          <span class="toggle-track"><span class="toggle-knob"></span></span>
+          <span class="toggle-label">Sound effects</span>
+        </label>
+
+        <div class="panel-divider"></div>
+
+        <section id="volExplain" class="vol-explain" aria-live="polite" aria-label="Volatility explanation">
+          <div class="micro-label vol-explain-head">
+            <span>Why this volatility?</span>
+            <span id="volExplainBadges" class="vol-explain-badges"></span>
+          </div>
+          <p id="volExplainSummary" class="vol-explain-summary">
+            Analyze a position to see why its volatility is what it is.
+          </p>
+          <div id="volExplainStack" class="vol-explain-stack" hidden>
+            <div class="vol-explain-stack-bar" id="volExplainStackBar"></div>
+            <ul class="vol-explain-stack-legend" id="volExplainStackLegend"></ul>
+          </div>
+          <p id="volExplainHint" class="vol-explain-hint" hidden></p>
+        </section>
+
+        <div class="panel-divider"></div>
+
+        <div class="top-lines">
+          <div class="micro-label">Engine lines</div>
+          <ol id="topLinesList" class="top-lines-list"></ol>
+        </div>
+
+        <div class="panel-status">
+          <span id="editorStatus" class="status"></span>
+        </div>
+      </aside>
+
+      <!-- ── Game right panel (Chess.com-inspired) ───────────────────── -->
+      <aside class="game-right-panel hidden" data-for="game">
+
+        <!-- 0. Collapsible PGN drawer -->
+        <div class="pgn-drawer" id="pgnDrawer">
+          <button class="pgn-drawer-toggle" id="pgnDrawerToggle" type="button">
+            <span class="pgn-drawer-summary" id="pgnDrawerSummary">Load a PGN to begin</span>
+            <span class="pgn-drawer-chevron">▾</span>
+          </button>
+          <div class="pgn-drawer-body" id="pgnDrawerBody">
+            <label class="file-pick btn-block">
+              <input id="pgnFile" type="file" accept=".pgn,text/plain" />
+              <span>Open file</span>
+            </label>
+            <textarea id="pgnInput" class="pgn-input" rows="4" spellcheck="false"
+              placeholder="Paste a PGN here, or use Open file above…"></textarea>
+            <div class="btn-grid btn-grid-2">
+              <button id="btnLoadPgn" class="btn">Load PGN</button>
+              <button id="btnAnalyzePgn" class="btn btn-primary">Analyze</button>
+            </div>
+            <button id="btnStopPgn" class="btn btn-stop btn-block" disabled>Stop</button>
+            <div class="pgn-drawer-toggles">
+              <label class="toggle">
+                <input id="deepToggleGame" type="checkbox" />
+                <span class="toggle-track"><span class="toggle-knob"></span></span>
+                <span class="toggle-label">Deep analysis</span>
+              </label>
+              <label class="toggle">
+                <input id="arrowToggleGame" type="checkbox" checked />
+                <span class="toggle-track"><span class="toggle-knob"></span></span>
+                <span class="toggle-label">Show arrow</span>
+              </label>
+              <label class="toggle">
+                <input id="soundsToggle" type="checkbox" checked />
+                <span class="toggle-track"><span class="toggle-knob"></span></span>
+                <span class="toggle-label">Sound effects</span>
+              </label>
+              <button id="btnFlipGame" class="btn btn-block">Flip board</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 1. Stats bar -->
+        <div id="gameStats" class="game-stats-bar hidden">
+          <div class="stat-card" data-side="white">
+            <div class="stat-label">White acc</div>
+            <div class="stat-value" id="statWhiteAcc">—</div>
+          </div>
+          <div class="stat-card" data-side="black">
+            <div class="stat-label">Black acc</div>
+            <div class="stat-value" id="statBlackAcc">—</div>
+          </div>
+          <div class="stat-card" data-side="vol">
+            <div class="stat-label">Avg V</div>
+            <div class="stat-value" id="statAvgVol">—</div>
+          </div>
+        </div>
+
+        <!-- 2. Move explainer card (Chess.com style) -->
+        <section id="volExplainGame" class="move-explainer-card" aria-live="polite" aria-label="Volatility explanation">
+          <div class="move-explainer-head">
+            <span id="volExplainBadgesGame" class="vol-explain-badges"></span>
+            <span id="volExplainSummaryGame" class="move-explainer-summary">
+              Load and analyze a game to see why each move's volatility is what it is.
+            </span>
+          </div>
+          <div id="volExplainStackGame" class="vol-explain-stack" hidden>
+            <div class="vol-explain-stack-bar" id="volExplainStackBarGame"></div>
+            <ul class="vol-explain-stack-legend" id="volExplainStackLegendGame"></ul>
+          </div>
+          <p id="volExplainHintGame" class="vol-explain-hint" hidden></p>
+        </section>
+
+        <!-- 3. Move list -->
+        <div id="moveListWrap" class="move-list-wrap hidden">
+          <div id="moveList"></div>
+        </div>
+
+        <!-- 4. Vol chart + heat band -->
+        <div id="chartWrap" class="chart-wrap hidden">
+          <canvas id="chart"></canvas>
+          <div id="heatBand" class="heat-band hidden"></div>
+        </div>
+
+        <!-- Classification counts (collapsed) -->
+        <div class="stat-card stat-card-wide hidden" data-side="classes" id="gameClassCard">
+          <div class="stat-label">Classifications</div>
+          <div class="stat-note" id="statClassWhite">White: —</div>
+          <div class="stat-note" id="statClassBlack">Black: —</div>
+        </div>
+
+        <div class="panel-status">
+          <span id="gameStatus" class="status"></span>
+          <span id="plyStatus" class="status dim"></span>
+        </div>
+      </aside>
+
+    </div><!-- /.board-row -->
+
+    <!-- ── Library panel (saved local analyses) ──────────────────────────── -->
+    <section class="library-panel hidden" data-for="library">
+      <div class="library-drop" id="libraryDrop">
+        <div>
+          <h2>Saved Games Library</h2>
+          <p>Drop PGNs or ZIPs here, or choose files. Games are analyzed locally and stored in this browser.</p>
+        </div>
+        <label class="file-pick">
+          <input id="libraryFileInput" type="file" accept=".pgn,.zip,text/plain,application/zip" multiple />
+          <span>Import files</span>
+        </label>
+      </div>
+
+      <div class="library-paste">
+        <div class="library-paste-header">
+          <h3>Paste PGN</h3>
+          <p>Paste one or more games below. Headers like <code>[White]</code>, <code>[WhiteElo]</code>,
+            <code>[BlackElo]</code> are extracted automatically.
+          </p>
+        </div>
+        <textarea id="libraryPgnInput" class="library-pgn-input" rows="8" spellcheck="false"
+          placeholder="[Event &quot;Live Chess&quot;]&#10;[White &quot;Player1&quot;]&#10;[Black &quot;Player2&quot;]&#10;[WhiteElo &quot;1400&quot;]&#10;[BlackElo &quot;1350&quot;]&#10;[Result &quot;1-0&quot;]&#10;&#10;1. e4 e5 2. Nf3 Nc6 ..."></textarea>
+        <button id="btnLibraryPaste" class="btn btn-primary btn-block">Import pasted PGN</button>
+      </div>
+
+      <div id="libraryProgress" class="library-progress hidden"></div>
+
+      <div class="library-filters">
+        <label>
+          <span class="micro-label">From</span>
+          <input id="libraryDateFrom" type="date" />
+        </label>
+        <label>
+          <span class="micro-label">To</span>
+          <input id="libraryDateTo" type="date" />
+        </label>
+        <label>
+          <span class="micro-label">Opponent</span>
+          <input id="libraryOpponent" type="search" placeholder="Name" />
+        </label>
+        <label>
+          <span class="micro-label">Min avg V</span>
+          <input id="libraryMinV" type="number" min="0" max="100" step="1" placeholder="0" />
+        </label>
+        <label>
+          <span class="micro-label">Max avg V</span>
+          <input id="libraryMaxV" type="number" min="0" max="100" step="1" placeholder="100" />
+        </label>
+        <label>
+          <span class="micro-label">Class</span>
+          <select id="libraryClassKey">
+            <option value="">Any</option>
+            <option value="brilliant">Brilliant</option>
+            <option value="great">Great</option>
+            <option value="inaccuracy">Inaccuracy</option>
+            <option value="mistake">Mistake</option>
+            <option value="blunder">Blunder</option>
+            <option value="practical">Practical</option>
+            <option value="simplification">Simplification</option>
+          </select>
+        </label>
+        <label>
+          <span class="micro-label">Min count</span>
+          <input id="libraryClassMin" type="number" min="1" step="1" placeholder="1" />
+        </label>
+      </div>
+
+      <div class="library-table-wrap">
+        <table class="library-table">
+          <thead>
+            <tr>
+              <th>Date analyzed</th>
+              <th>White</th>
+              <th>Elo</th>
+              <th>Black</th>
+              <th>Elo</th>
+              <th>Result</th>
+              <th>Plies</th>
+              <th>Avg V</th>
+              <th>White acc</th>
+              <th>Black acc</th>
+              <th>Blunders</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="libraryTableBody">
+            <tr>
+              <td colspan="12" class="library-empty">No saved games yet.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── About panel (Why tab only) ────────────────────────────────────── -->
+    <section class="about-panel hidden" data-for="about">
+      <div class="about-prose">
+        <h2>Eval tells you who's winning. Volatility tells you how hard it is to play.</h2>
+        <p>Stockfish's eval ranks positions by best play. It can't see that one of two equally "equal" positions is a
+          bone-dry handshake while the other is a single-move minefield. The volatility bar measures that difference:
+          how punishing it is to choose the <em>wrong</em> move.</p>
+        <p>Below are two positions. Both evaluate to 0.00 — a dead draw. Watch what the volatility bar says.</p>
+      </div>
+
+      <!-- Section 1 — Same eval (0.00), different V -->
+      <h3 class="demo-pair-title">Same eval, different volatility — draws</h3>
+      <div class="demo-row">
+        <article class="demo-card" data-demo="dry">
+          <h3>Dry draw — opposite-coloured bishops</h3>
+          <div class="demo-stage">
+            <div class="sidebar-bar mini">
+              <div class="bar-tag">Eval</div>
+              <div class="eval-bar mini" id="demoEvalA">
+                <div class="eval-dark-fill"></div>
+                <div class="eval-midline"></div>
+              </div>
+              <div class="bar-readout" id="demoEvalLabelA">—</div>
+            </div>
+            <div class="demo-board" id="demoBoardA"></div>
+            <div class="sidebar-bar mini">
+              <div class="bar-tag">Vol</div>
+              <div class="vol-bar mini" id="demoVolA" data-color="low" data-decided="false">
+                <div class="vol-fill"></div>
+              </div>
+              <div class="bar-readout" id="demoVolLabelA">—</div>
+            </div>
+          </div>
+          <p class="demo-caption">Opposite-coloured bishops, symmetric pawns. Nearly every reasonable move holds — the
+            drawing margin is enormous. Low volatility means forgiving.</p>
+        </article>
+
+        <article class="demo-card" data-demo="sharp">
+          <h3>Sharp draw — the stalemate swindle</h3>
+          <div class="demo-stage">
+            <div class="sidebar-bar mini">
+              <div class="bar-tag">Eval</div>
+              <div class="eval-bar mini" id="demoEvalB">
+                <div class="eval-dark-fill"></div>
+                <div class="eval-midline"></div>
+              </div>
+              <div class="bar-readout" id="demoEvalLabelB">—</div>
+            </div>
+            <div class="demo-board" id="demoBoardB"></div>
+            <div class="sidebar-bar mini">
+              <div class="bar-tag">Vol</div>
+              <div class="vol-bar mini" id="demoVolB" data-color="high" data-decided="false">
+                <div class="vol-fill"></div>
+              </div>
+              <div class="bar-readout" id="demoVolLabelB">—</div>
+            </div>
+          </div>
+          <p class="demo-caption">White is down a queen, two bishops, a knight and a rook, and Black threatens
+            <em>…Qxg2#</em> next move. The one and only move that holds is <em>Qxg7+!!</em> — after <em>Kxg7</em>, White
+            is stalemated. Every other move loses on the spot. Same 0.00 eval — but every choice matters.
+          </p>
+        </article>
+      </div>
+
+      <!-- Section 2 — Same eval (+3.00), different V -->
+      <h3 class="demo-pair-title">Same eval, different volatility — winning</h3>
+      <div class="demo-row">
+        <article class="demo-card" data-demo="winLow">
+          <h3>Low V · +3.00 — technical conversion</h3>
+          <div class="demo-stage">
+            <div class="sidebar-bar mini">
+              <div class="bar-tag">Eval</div>
+              <div class="eval-bar mini" id="demoEvalC">
+                <div class="eval-dark-fill"></div>
+                <div class="eval-midline"></div>
+              </div>
+              <div class="bar-readout" id="demoEvalLabelC">—</div>
+            </div>
+            <div class="demo-board" id="demoBoardC"></div>
+            <div class="sidebar-bar mini">
+              <div class="bar-tag">Vol</div>
+              <div class="vol-bar mini" id="demoVolC" data-color="low" data-decided="false">
+                <div class="vol-fill"></div>
+              </div>
+              <div class="bar-readout" id="demoVolLabelC">—</div>
+            </div>
+          </div>
+          <p class="demo-caption">King + two connected passers vs bare king. White is clearly winning, and almost any
+            reasonable move keeps the advantage. Low V — the conversion is straightforward.</p>
+        </article>
+
+        <article class="demo-card" data-demo="winHigh">
+          <h3>High V · +3.00 — only-move tactic</h3>
+          <div class="demo-stage">
+            <div class="sidebar-bar mini">
+              <div class="bar-tag">Eval</div>
+              <div class="eval-bar mini" id="demoEvalD">
+                <div class="eval-dark-fill"></div>
+                <div class="eval-midline"></div>
+              </div>
+              <div class="bar-readout" id="demoEvalLabelD">—</div>
+            </div>
+            <div class="demo-board" id="demoBoardD"></div>
+            <div class="sidebar-bar mini">
+              <div class="bar-tag">Vol</div>
+              <div class="vol-bar mini" id="demoVolD" data-color="high" data-decided="false">
+                <div class="vol-fill"></div>
+              </div>
+              <div class="bar-readout" id="demoVolLabelD">—</div>
+            </div>
+          </div>
+          <p class="demo-caption">Same +3.00, but here there's only one move that keeps the advantage. Every alternative
+            gives it all back. The eval can't tell you that — V can.</p>
+        </article>
+      </div>
+
+      <!-- Section 3 — Same eval (−3.00), different V -->
+      <h3 class="demo-pair-title">Same eval, different volatility — losing</h3>
+      <div class="demo-row">
+        <article class="demo-card" data-demo="loseLow">
+          <h3>Low V · −3.00 — resigned, decided</h3>
+          <div class="demo-stage">
+            <div class="sidebar-bar mini">
+              <div class="bar-tag">Eval</div>
+              <div class="eval-bar mini" id="demoEvalE">
+                <div class="eval-dark-fill"></div>
+                <div class="eval-midline"></div>
+              </div>
+              <div class="bar-readout" id="demoEvalLabelE">—</div>
+            </div>
+            <div class="demo-board" id="demoBoardE"></div>
+            <div class="sidebar-bar mini">
+              <div class="bar-tag">Vol</div>
+              <div class="vol-bar mini" id="demoVolE" data-color="low" data-decided="true">
+                <div class="vol-fill"></div>
+              </div>
+              <div class="bar-readout" id="demoVolLabelE">—</div>
+            </div>
+          </div>
+          <p class="demo-caption">White is down two pawns with no counterplay. The position is decided — nothing White
+            does changes the outcome. Low V reflects that there's no landmine to step on, just a slow loss.</p>
+        </article>
+
+        <article class="demo-card" data-demo="loseHigh">
+          <h3>High V · −3.00 — swindle setup</h3>
+          <div class="demo-stage">
+            <div class="sidebar-bar mini">
+              <div class="bar-tag">Eval</div>
+              <div class="eval-bar mini" id="demoEvalF">
+                <div class="eval-dark-fill"></div>
+                <div class="eval-midline"></div>
+              </div>
+              <div class="bar-readout" id="demoEvalLabelF">—</div>
+            </div>
+            <div class="demo-board" id="demoBoardF"></div>
+            <div class="sidebar-bar mini">
+              <div class="bar-tag">Vol</div>
+              <div class="vol-bar mini" id="demoVolF" data-color="high" data-decided="false">
+                <div class="vol-fill"></div>
+              </div>
+              <div class="bar-readout" id="demoVolLabelF">—</div>
+            </div>
+          </div>
+          <p class="demo-caption">White is losing, but the position is a minefield for Black. One wrong move and the
+            tables turn. High V means Black must play precisely to convert — there's still a swindle in the air.</p>
+        </article>
+      </div>
+
+      <!-- Section 4 — Same position, two clocks -->
+      <h3 class="demo-pair-title">Same position, two clocks</h3>
+      <div class="demo-row demo-row-single">
+        <article class="demo-card demo-card-wide" data-demo="clocks">
+          <div class="demo-stage-wide">
+            <div class="demo-board demo-board-large" id="demoBoardG"></div>
+            <div class="demo-clocks-pair">
+              <div class="demo-clock-card">
+                <span class="demo-clock-tag">Classical · 90+30</span>
+                <p class="demo-caption">V = 70 is <em>information</em>. You have 90 minutes to calculate — the position
+                  is rich, but you'll find the right move if you look. High V just means the decision matters.</p>
+              </div>
+              <div class="demo-clock-card">
+                <span class="demo-clock-tag">Blitz · 3+0</span>
+                <p class="demo-caption">V = 70 is a <em>death sentence</em>. Three minutes on the clock, and one slip
+                  throws the game. The same position, the same V number — but the human cost is entirely different.</p>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <!-- Section 5 — Famous-game scrubber -->
+      <h3 class="demo-pair-title">Famous game: Kasparov–Topalov, Wijk aan Zee 1999</h3>
+      <div class="demo-row demo-row-single">
+        <article class="demo-card demo-card-wide" data-demo="famous">
+          <div class="demo-stage-famous">
+            <div class="famous-board-wrap">
+              <div class="demo-board demo-board-large" id="famousBoard"></div>
+            </div>
+            <div class="famous-meta">
+              <div class="famous-meta-row">
+                <span class="famous-meta-label">Move</span>
+                <span class="famous-meta-value" id="famousSanLabel">—</span>
+              </div>
+              <div class="famous-meta-row">
+                <span class="famous-meta-label">Eval</span>
+                <span class="famous-meta-value" id="famousEvalLabel">—</span>
+              </div>
+              <div class="famous-meta-row">
+                <span class="famous-meta-label">V</span>
+                <span class="famous-meta-value" id="famousVolLabel" data-color="low">—</span>
+              </div>
+              <div class="famous-controls">
+                <input type="range" id="famousSlider" class="famous-range" min="0" max="0" value="0" />
+              </div>
+              <div class="famous-chart-wrap">
+                <canvas id="famousChart"></canvas>
+              </div>
+              <div class="famous-status" id="famousStatus"></div>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <!-- What V is not -->
+      <section class="about-not">
+        <h3>What V is <em>not</em></h3>
+        <ul>
+          <li><strong>V is not difficulty.</strong> A knife-edge position is V-high, but a strong player who has seen
+            the pattern finds the move in seconds. V measures the cost of guessing wrong, not the cognitive load of
+            guessing right.</li>
+          <li><strong>V is not a blunder predictor.</strong> It tells you what a blunder would cost, not how likely
+            either side is to make one.</li>
+          <li><strong>V is not a style score.</strong> "Sharp" and "quiet" describe openings; V answers — how punishing
+            is the wrong move right now?</li>
+        </ul>
+      </section>
+
+      <p class="about-takeaway">Green bar: the position plays itself. Red bar: you're walking on eggshells.</p>
+    </section>
+
+    </main>
+    </div><!-- /#vol-root -->
+
+    <!-- Vol app (classic scripts, run before modules) -->
+    <script src="/static/auth.js"></script>
+    <script src="/static/vendor/lichess/chessground.iife.js"></script>
+    <script src="/static/vendor/lichess/chessboard-adapter.js"></script>
+    <script src="/static/vendor/js/chess.js"></script>
+    <script src="/static/vendor/js/chart.umd.min.js"></script>
+    <script src="/static/vendor/js/idb.js"></script>
+    <script src="/static/vendor/js/jszip.min.js"></script>
+    <script src="/static/vol/audio.js"></script>
+    <script src="/static/vol/library.js"></script>
+    <script src="/static/vol/app.js"></script>
+    <!-- Puzzles app, then the shell tab controller (modules run in order, after classic scripts) -->
+    <script type="module" src="/static/app.js?v=3"></script>
+    <script type="module" src="/static/shell.js"></script>
+  </body>
+</html>

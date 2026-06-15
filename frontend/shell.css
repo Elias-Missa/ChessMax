@@ -1,0 +1,280 @@
+/* ChessMax shell: page base + top-level tab bar shared by both apps. */
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(1100px 500px at 8% -10%, rgba(74, 144, 255, 0.14), transparent 60%),
+    radial-gradient(900px 420px at 95% 0%, rgba(57, 255, 20, 0.05), transparent 55%),
+    linear-gradient(180deg, #14171f 0%, #101218 60%, #0d0f14 100%);
+  color: #e7edf5;
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(138, 180, 248, 0.35);
+}
+
+.shell-header {
+  align-items: center;
+  backdrop-filter: blur(14px);
+  background: rgba(17, 19, 24, 0.82);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 2rem;
+  padding: 0.8rem clamp(1rem, 4vw, 3rem);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.shell-title {
+  background: linear-gradient(120deg, #e7edf5 30%, #8ab4f8 75%, #67e8a2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.shell-tabs {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.shell-tab-group-label {
+  color: #5d6877;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  margin: 0 0.35rem 0 0.1rem;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.shell-tab-group-label.divided {
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  margin-left: 0.85rem;
+  padding-left: 1rem;
+}
+
+.shell-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: #9aa6b2;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 0.48rem 0.8rem;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.shell-tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #e7edf5;
+}
+
+.shell-tab:active {
+  transform: translateY(1px);
+}
+
+.shell-tab:focus-visible {
+  outline: 2px solid rgba(138, 180, 248, 0.7);
+  outline-offset: 1px;
+}
+
+.shell-tab.active {
+  background: linear-gradient(180deg, rgba(138, 180, 248, 0.16), rgba(138, 180, 248, 0.08));
+  border-color: rgba(138, 180, 248, 0.45);
+  box-shadow: 0 0 0 1px rgba(138, 180, 248, 0.08), 0 6px 18px rgba(0, 0, 0, 0.25);
+  color: #ffffff;
+}
+
+@media (max-width: 1100px) {
+  .shell-header {
+    gap: 0.5rem 1rem;
+  }
+
+  .shell-tab {
+    font-size: 0.8rem;
+    padding: 0.42rem 0.6rem;
+  }
+}
+
+/* ── Account chip in the shell header ──────────────────────────────────── */
+.shell-user {
+  align-items: center;
+  display: flex;
+  gap: 0.6rem;
+  margin-left: auto;
+}
+
+.shell-user.hidden {
+  display: none;
+}
+
+.shell-user-email {
+  color: #9aa6b2;
+  font-size: 0.82rem;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-logout {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  color: #9aa6b2;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.4rem 0.7rem;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.shell-logout:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #e7edf5;
+}
+
+/* ── Auth overlay (login / signup) ─────────────────────────────────────── */
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background:
+    radial-gradient(1100px 500px at 8% -10%, rgba(74, 144, 255, 0.16), transparent 60%),
+    radial-gradient(900px 420px at 95% 0%, rgba(57, 255, 20, 0.06), transparent 55%),
+    linear-gradient(180deg, #14171f 0%, #101218 60%, #0d0f14 100%);
+}
+
+.auth-overlay.hidden {
+  display: none;
+}
+
+.auth-card {
+  width: min(380px, 100%);
+  background: rgba(27, 31, 41, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  padding: 2rem 1.75rem;
+}
+
+.auth-title {
+  background: linear-gradient(120deg, #e7edf5 30%, #8ab4f8 75%, #67e8a2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  margin: 0;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.auth-sub {
+  color: #9aa6b2;
+  font-size: 0.9rem;
+  margin: 0.4rem 0 1.4rem;
+  text-align: center;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.auth-form input {
+  background: #2a3142;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  color: #e7edf5;
+  font: inherit;
+  padding: 0.7rem 0.85rem;
+  transition: border-color 0.15s ease;
+}
+
+.auth-form input:focus {
+  border-color: rgba(138, 180, 248, 0.6);
+  outline: none;
+}
+
+.auth-error {
+  color: #f28b82;
+  font-size: 0.82rem;
+  margin: 0.1rem 0 0;
+}
+
+.auth-error.hidden {
+  display: none;
+}
+
+.auth-submit {
+  background: linear-gradient(180deg, #8ab4f8, #5b96f5);
+  border: 0;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(91, 150, 245, 0.25);
+  color: #07111f;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  margin-top: 0.3rem;
+  padding: 0.75rem 1rem;
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
+
+.auth-submit:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.auth-submit:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.auth-submit:disabled {
+  cursor: progress;
+  filter: grayscale(0.5);
+  opacity: 0.6;
+}
+
+.auth-toggle {
+  color: #9aa6b2;
+  font-size: 0.85rem;
+  margin: 1.1rem 0 0;
+  text-align: center;
+}
+
+.auth-link {
+  background: none;
+  border: 0;
+  color: #8ab4f8;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  padding: 0;
+}
+
+.auth-link:hover {
+  text-decoration: underline;
+}

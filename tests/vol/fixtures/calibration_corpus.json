@@ -1,0 +1,122 @@
+[
+  {
+    "id": "startpos",
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "label": 5,
+    "category": "quiet"
+  },
+  {
+    "id": "kp_v_k_simple",
+    "fen": "8/8/8/8/4k3/8/4K3/4P3 w - - 0 1",
+    "label": 5,
+    "category": "quiet"
+  },
+  {
+    "id": "opp_color_bishops_dry",
+    "fen": "8/4k3/4p3/3pP3/3P4/3K1B2/8/4b3 w - - 0 1",
+    "label": 8,
+    "category": "quiet"
+  },
+  {
+    "id": "kr_v_kr_drawn",
+    "fen": "8/8/8/3k4/8/3K4/8/3R3r w - - 0 1",
+    "label": 12,
+    "category": "endgame"
+  },
+  {
+    "id": "italian_middlegame",
+    "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+    "label": 30,
+    "category": "middlegame"
+  },
+  {
+    "id": "queens_gambit_declined",
+    "fen": "rnbqkb1r/ppp1pppp/5n2/3p4/2PP4/8/PP2PPPP/RNBQKBNR w KQkq - 1 3",
+    "label": 18,
+    "category": "middlegame"
+  },
+  {
+    "id": "ruy_lopez_open",
+    "fen": "r1bqkbnr/pppp1ppp/2n5/4p3/B3P3/5N2/PPPP1PPP/RNBQK1R1 b Qkq - 0 4",
+    "label": 25,
+    "category": "middlegame"
+  },
+  {
+    "id": "kings_gambit_sharp",
+    "fen": "rnbqkbnr/pppp1ppp/8/8/4Pp2/8/PPPP2PP/RNBQKBNR w KQkq - 0 3",
+    "label": 55,
+    "category": "sharp"
+  },
+  {
+    "id": "sicilian_najdorf_keres",
+    "fen": "rnbqkb1r/1p3ppp/p2ppn2/8/3NPP2/2N5/PPP3PP/R1BQKB1R w KQkq - 0 7",
+    "label": 60,
+    "category": "sharp"
+  },
+  {
+    "id": "kid_mar_del_plata",
+    "fen": "rnbqr1k1/pp3pbp/3p1np1/2pPp3/2P1P3/2N2N2/PP2BPPP/R1BQ1RK1 w - - 0 9",
+    "label": 65,
+    "category": "sharp"
+  },
+  {
+    "id": "mate_in_one_back_rank",
+    "fen": "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1",
+    "label": 70,
+    "category": "tactical"
+  },
+  {
+    "id": "mate_in_three_smothered",
+    "fen": "5rk1/5ppp/8/8/8/1B6/5PPP/6K1 w - - 0 1",
+    "label": 75,
+    "category": "tactical"
+  },
+  {
+    "id": "only_move_holds",
+    "fen": "6k1/5ppp/8/8/8/6q1/5PPP/6K1 w - - 0 1",
+    "label": 92,
+    "category": "tactical"
+  },
+  {
+    "id": "stalemate_swindle",
+    "fen": "7k/5KQ1/8/8/8/8/8/8 b - - 0 1",
+    "label": 0,
+    "category": "tactical"
+  },
+  {
+    "id": "tal_sacrifice_setup",
+    "fen": "r3kb1r/pp1n1ppp/2p1pn2/q7/2BP4/2N1PN2/PP3PPP/R1BQ1RK1 w kq - 0 9",
+    "label": 70,
+    "category": "sharp"
+  },
+  {
+    "id": "two_knights_endgame",
+    "fen": "8/8/4k3/8/8/2N1KN2/8/8 w - - 0 1",
+    "label": 5,
+    "category": "endgame"
+  },
+  {
+    "id": "lucena_position",
+    "fen": "1K6/1P1k4/8/8/8/8/r7/2R5 w - - 0 1",
+    "label": 30,
+    "category": "endgame"
+  },
+  {
+    "id": "philidor_position",
+    "fen": "6k1/R7/6K1/8/8/8/r7/8 w - - 0 1",
+    "label": 25,
+    "category": "endgame"
+  },
+  {
+    "id": "blackburne_shilling_trap",
+    "fen": "r1bqkbnr/pppp1Bpp/2n5/4p3/4n3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 4",
+    "label": 80,
+    "category": "tactical"
+  },
+  {
+    "id": "fried_liver_attack",
+    "fen": "r1bqkb1r/pppp1Npp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNBQK2R b KQkq - 0 4",
+    "label": 75,
+    "category": "tactical"
+  }
+]
