@@ -102,7 +102,11 @@ def test_username_get_and_put_roundtrip(tmp_path: Path) -> None:
 
 def test_run_null_before_any_generation(tmp_path: Path) -> None:
     client = make_client(tmp_path)
-    assert client.get("/api/mistakes/run").json() == {"run": None}
+    assert client.get("/api/mistakes/run").json() == {
+        "run": None,
+        "total_puzzles": 0,
+        "unsolved_puzzles": 0,
+    }
 
 
 # --------------------------------------------------------------------------- #

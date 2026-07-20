@@ -12,7 +12,7 @@
 (function () {
   "use strict";
 
-  const SOUND_DIR = "/static/vendor/sound/";
+  const SOUND_DIR = "/static/sounds/";
   const FILES = {
     move: "Move",
     capture: "Capture",

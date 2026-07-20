@@ -87,5 +87,5 @@ Engine-dependent tests skip automatically when Stockfish is not installed.
 
 ## Known gaps (inherited from source repos)
 
-- Sound files (`/static/sounds/`, `/static/vendor/sound/`) are referenced but not shipped.
+- Sound files now ship in `frontend/sounds/` (Lichess standard `Move`/`Capture`/`GenericNotify` plus a synthesized `Check` cue, in `.mp3` and `.ogg`). Both the trainer and the vol tab load from `/static/sounds/`.
 - Stockfish / lc0 binaries and Maia weights are user-provided.

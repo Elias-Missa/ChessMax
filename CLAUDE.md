@@ -89,5 +89,5 @@ The four modes beyond Puzzles (Eval Hold, Defense Gym, Forced Lines, Guess) live
 
 ## Known gaps (inherited from source repos)
 
-- Sound files (`/static/sounds/`, `/static/vendor/sound/`) are referenced but not shipped.
+- Sound files ship in `frontend/sounds/` (Lichess standard `Move`/`Capture`/`GenericNotify` plus a synthesized `Check` cue, `.mp3` + `.ogg`); both the trainer (`frontend/app.js`) and the vol tab (`frontend/vol/audio.js`) load from `/static/sounds/`.
 - Stockfish / lc0 binaries and Maia weights are user-provided; nothing in the repo downloads them automatically.

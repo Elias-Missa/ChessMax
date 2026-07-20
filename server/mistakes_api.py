@@ -69,13 +69,22 @@ def _default_generate(
     from chess_vol.engine import Engine
     from chess_vol.volatility import compute_volatility
     from server.engine import StockfishAnalyzer
+    from server.maia import MaiaPolicyEngine
 
-    with StockfishAnalyzer() as analyzer, Engine() as vol_engine:
+    # One Stockfish + one vol engine + one lc0 (Maia) process for the WHOLE run.
+    # Reusing a single lc0 instead of cold-starting one per candidate position
+    # (the old `maia_top_moves` behaviour) is the difference between a run taking
+    # minutes vs. effectively hanging on the weight-file reload each move.
+    with StockfishAnalyzer() as analyzer, Engine() as vol_engine, MaiaPolicyEngine() as maia:
         def volatility_fn(fen: str) -> float | None:
             try:
                 return compute_volatility(_chess.Board(fen), vol_engine).score
             except Exception:  # noqa: BLE001 — volatility is a non-critical tag
                 return None
+
+        # Prefer the persistent engine; fall back to the injected cold-start seam
+        # (e.g. tests) only when the persistent lc0 couldn't be opened.
+        run_maia_topk = maia.top_moves if maia.available else maia_topk_fn
 
         return generate_mistakes(
             connection,
@@ -83,7 +92,7 @@ def _default_generate(
             username=username,
             since=since,
             analysis_fn=analyzer.analyze,
-            maia_topk_fn=maia_topk_fn,
+            maia_topk_fn=run_maia_topk,
             volatility_fn=volatility_fn,
             fetch_json=fetch_json,
             on_event=on_event,
@@ -126,7 +135,18 @@ def build_mistakes_router(app: FastAPI) -> APIRouter:
             "SELECT * FROM mistake_runs WHERE user_id = ? ORDER BY id DESC LIMIT 1",
             (user["id"],),
         ).fetchone()
-        return {"run": dict(row) if row is not None else None}
+        counts = connection.execute(
+            "SELECT "
+            "COUNT(*) AS total, "
+            "SUM(CASE WHEN solved = 0 THEN 1 ELSE 0 END) AS unsolved "
+            "FROM mistake_puzzles WHERE user_id = ?",
+            (user["id"],),
+        ).fetchone()
+        return {
+            "run": dict(row) if row is not None else None,
+            "total_puzzles": int(counts["total"] or 0),
+            "unsolved_puzzles": int(counts["unsolved"] or 0),
+        }
 
     # ------------------------------------------------------------------ #
     # Serve + solve                                                       #

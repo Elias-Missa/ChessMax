@@ -99,9 +99,13 @@
 }
 
 /* ── Reset (scoped) ─────────────────────────────────────────── */
-#vol-root *,
-#vol-root *::before,
-#vol-root *::after {
+/* `:where(#vol-root)` keeps the reset at ZERO specificity so it doesn't beat
+   the class-based layout rules below. (A plain `#vol-root *` selector carries
+   id-level specificity and was silently overriding every `.app`/`.board-stage`
+   padding + margin in this file, collapsing the whole layout.) */
+:where(#vol-root) *,
+:where(#vol-root) *::before,
+:where(#vol-root) *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -142,50 +146,10 @@
   border-radius: var(--r-xs);
 }
 
-.hidden {
+/* Scoped to #vol-root so it can't clobber the trainer's own `.hidden`
+   (which loads earlier in the cascade). */
+#vol-root .hidden {
   display: none !important;
-}
-
-/* ── App header (centered title) ────────────────────────────── */
-.app-header {
-  text-align: center;
-  padding: 14px 16px 6px;
-}
-
-.app-title {
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: 0.20em;
-  text-transform: uppercase;
-  color: var(--fg);
-  text-shadow:
-    0 0 18px var(--green-soft),
-    0 0 2px rgba(138, 180, 248, 0.30);
-  background: linear-gradient(180deg, #ffffff 0%, #c0c0c0 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  display: inline-block;
-}
-
-.app-sub {
-  margin-top: 4px;
-  font-size: 10px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--fg-3);
-}
-
-/* Soft neon underline on header */
-.app-header::after {
-  content: "";
-  display: block;
-  width: 100px;
-  height: 2px;
-  margin: 8px auto 0;
-  background: linear-gradient(90deg, transparent, var(--green), transparent);
-  box-shadow: 0 0 12px var(--green-glow);
-  border-radius: 2px;
 }
 
 /* ── Main layout (single centered column) ───────────────────── */
@@ -193,8 +157,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 6px 20px 24px;
+  gap: 14px;
+  /* Match the trainer's breathing room below the sticky tab bar instead of
+     letting the board/controls jam against the header. */
+  padding: 24px clamp(1rem, 4vw, 3rem) 48px;
   max-width: 1200px;
   margin: 0 auto;
 }
@@ -262,11 +228,11 @@ main.app.app--game-wide {
 }
 
 .panel-title {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.22em;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--fg-3);
+  color: var(--fg-2);
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border);
 }
@@ -463,11 +429,11 @@ main.app.app--game-wide {
 
 /* ── FEN input ──────────────────────────────────────────────── */
 .micro-label {
-  font-size: 9.5px;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
-  font-weight: 800;
-  color: var(--fg-3);
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--fg-2);
   flex-shrink: 0;
   user-select: none;
 }
@@ -707,10 +673,10 @@ main.app.app--game-wide {
 }
 
 .bar-tag {
-  font-size: 9px;
-  font-weight: 800;
+  font-size: 9.5px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.07em;
   color: var(--fg-3);
   user-select: none;
 }
@@ -999,11 +965,11 @@ main.app.app--game-wide {
 }
 
 .stat-label {
-  font-size: 9.5px;
-  font-weight: 800;
-  letter-spacing: 0.22em;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 .stat-value {
@@ -1022,17 +988,14 @@ main.app.app--game-wide {
 
 .stat-card[data-side="vol"] .stat-value[data-color="low"] {
   color: var(--vol-low);
-  text-shadow: 0 0 10px var(--vol-low-glow);
 }
 
 .stat-card[data-side="vol"] .stat-value[data-color="medium"] {
   color: var(--vol-med);
-  text-shadow: 0 0 10px var(--vol-med-glow);
 }
 
 .stat-card[data-side="vol"] .stat-value[data-color="high"] {
   color: var(--vol-high);
-  text-shadow: 0 0 12px var(--vol-high-glow);
 }
 
 /* ── Move explainer card ───────────────────────────────────── */
@@ -1357,10 +1320,11 @@ main.app.app--game-wide {
 }
 
 .library-table th {
-  font-size: 10px;
-  letter-spacing: 0.12em;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--fg-3);
+  color: var(--fg-2);
   background: var(--surface-1);
 }
 
@@ -1742,11 +1706,11 @@ body[data-tab="game"] .cb-spare-row {
 }
 
 .demo-card h3 {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .18em;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .07em;
   text-transform: uppercase;
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 .demo-stage {
@@ -1841,11 +1805,11 @@ body[data-tab="game"] .cb-spare-row {
 }
 
 .demo-clock-tag {
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 10.5px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .14em;
-  color: var(--fg-3);
+  letter-spacing: .07em;
+  color: var(--fg-2);
 }
 
 /* ── Famous-game scrubber (Section 5) ──────────────────────── */
@@ -1874,10 +1838,10 @@ body[data-tab="game"] .cb-spare-row {
 }
 
 .famous-meta-label {
-  font-size: 9.5px;
-  font-weight: 800;
+  font-size: 10px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .16em;
+  letter-spacing: .07em;
   color: var(--fg-3);
   width: 38px;
   flex-shrink: 0;
@@ -1892,17 +1856,14 @@ body[data-tab="game"] .cb-spare-row {
 
 .famous-meta-value[data-color="low"] {
   color: var(--vol-low);
-  text-shadow: 0 0 8px var(--vol-low-glow);
 }
 
 .famous-meta-value[data-color="medium"] {
   color: var(--vol-med);
-  text-shadow: 0 0 8px var(--vol-med-glow);
 }
 
 .famous-meta-value[data-color="high"] {
   color: var(--vol-high);
-  text-shadow: 0 0 8px var(--vol-high-glow);
 }
 
 .famous-controls {

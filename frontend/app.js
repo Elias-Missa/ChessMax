@@ -1482,10 +1482,17 @@ async function enterMistakesView() {
   }
   try {
     const r = await request("/api/mistakes/run");
-    if (r.run) {
+    const unsolved = r.unsolved_puzzles || 0;
+    const total = r.total_puzzles || 0;
+    if (total > 0) {
+      const solved = total - unsolved;
       setMistakeStatus(
-        `Last sync: ${r.run.puzzles_created} puzzles from ${r.run.games_eligible} games (${r.run.status}).`,
+        unsolved > 0
+          ? `${unsolved} puzzle${unsolved === 1 ? "" : "s"} to solve (${solved}/${total} done). Or generate more from your games.`
+          : `All ${total} puzzles solved — generate more from your games.`,
       );
+    } else if (r.run) {
+      setMistakeStatus("No puzzles yet — generate from your games to get started.");
     }
   } catch (error) {
     /* run lookup is non-fatal */
@@ -1627,7 +1634,17 @@ async function generateMistakes() {
       } else if (event === "progress") {
         setMistakeStatus(`Scanned ${data.games_scanned} games · ${data.puzzles_created} found…`);
       } else if (event === "done") {
-        setMistakeStatus(`Done — ${data.puzzles_created} puzzles from ${data.games_eligible} games.`);
+        const created = data.puzzles_created || 0;
+        const totalUnsolved = data.total_unsolved;
+        const newPart =
+          created > 0
+            ? `Found ${created} new puzzle${created === 1 ? "" : "s"}`
+            : "No new puzzles this time";
+        const totalPart =
+          typeof totalUnsolved === "number" && totalUnsolved > 0
+            ? ` — ${totalUnsolved} waiting to solve.`
+            : ".";
+        setMistakeStatus(`Done. ${newPart} from ${data.games_eligible} games${totalPart}`);
       } else if (event === "error") {
         setMistakeStatus(`Error: ${data.message || "generation failed"}`);
       }

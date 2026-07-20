@@ -34,6 +34,14 @@ _INSERT_COLUMNS = (
 
 
 def _start_run(connection: sqlite3.Connection, user_id: int, username: str, since: datetime) -> int:
+    # Retire any earlier runs left stuck at 'running' (a worker killed mid-run by
+    # a dev reload or hard disconnect never reaches its finaliser). Doing this at
+    # the start of each new run keeps the latest run row trustworthy.
+    connection.execute(
+        "UPDATE mistake_runs SET status = 'interrupted', updated_at = CURRENT_TIMESTAMP "
+        "WHERE user_id = ? AND status = 'running'",
+        (user_id,),
+    )
     cur = connection.execute(
         "INSERT INTO mistake_runs (user_id, chesscom_user, since_date, status) "
         "VALUES (?, ?, ?, 'running')",
@@ -50,6 +58,16 @@ def _update_run(connection: sqlite3.Connection, run_id: int, **fields: Any) -> N
         (*fields.values(), run_id),
     )
     connection.commit()
+
+
+def _count_unsolved(connection: sqlite3.Connection, user_id: int) -> int:
+    """How many unsolved mistake puzzles this user has waiting (across all runs)."""
+
+    row = connection.execute(
+        "SELECT COUNT(*) AS n FROM mistake_puzzles WHERE user_id = ? AND solved = 0",
+        (user_id,),
+    ).fetchone()
+    return int(row["n"] if row is not None else 0)
 
 
 def _insert_puzzle(
@@ -137,18 +155,38 @@ def generate_mistakes(
                 "puzzles_created": created,
             })
 
+    except Exception as exc:  # noqa: BLE001 — mark the run, re-raise for the worker to report
+        # A client disconnect surfaces as a cancellation exception raised from
+        # `emit`; that's a clean stop, not a failure, so record it as such.
+        terminal = "interrupted" if cancelled() else "error"
         _update_run(
-            connection, run_id, status="done",
+            connection, run_id, status=terminal,
+            detail=None if terminal == "interrupted" else repr(exc),
             games_scanned=scanned, games_eligible=eligible, puzzles_created=created,
         )
+        raise
+
+    total_unsolved = _count_unsolved(connection, user_id)
+    _update_run(
+        connection, run_id, status="done",
+        games_scanned=scanned, games_eligible=eligible, puzzles_created=created,
+    )
+    # The run is durably 'done' before we emit; a disconnect during this final
+    # event must not downgrade an already-completed run.
+    try:
         emit("done", {
             "run_id": run_id,
             "games_scanned": scanned,
             "games_eligible": eligible,
             "puzzles_created": created,
+            "total_unsolved": total_unsolved,
         })
-    except Exception as exc:  # noqa: BLE001 — mark the run, re-raise for the worker to report
-        _update_run(connection, run_id, status="error", detail=repr(exc))
-        raise
+    except Exception:  # noqa: BLE001 — status already committed as 'done'
+        pass
 
-    return {"games_scanned": scanned, "games_eligible": eligible, "puzzles_created": created}
+    return {
+        "games_scanned": scanned,
+        "games_eligible": eligible,
+        "puzzles_created": created,
+        "total_unsolved": total_unsolved,
+    }

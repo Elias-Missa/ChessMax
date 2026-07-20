@@ -1,18 +1,51 @@
 # Python
 __pycache__/
 *.pyc
+*.pyo
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 *.egg-info/
+build/
+dist/
 .venv/
 venv/
+env/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
 
 # Node
 node_modules/
+npm-debug.log*
 
 # Runtime data (DB, engines, weights, raw downloads) — all user-provided, never committed
 data/*
 !data/.gitkeep
 
+# Stray DB / engine artifacts outside data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.pb.gz
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+
+# Logs
+*.log
+
 # OS / editor
 .DS_Store
 Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp

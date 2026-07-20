@@ -108,37 +108,20 @@ def maia_move(fen: str, maia_rating: int) -> str | None:
     return _best_move_maia(fen, normalize_maia_rating(maia_rating))
 
 
-def maia_top_moves(fen: str, net: int = 1900, k: int = 3) -> list[str] | None:
-    """Return up to ``k`` moves Maia(``net``) most favours, in policy order.
+def _policy_top_moves(engine: chess.engine.SimpleEngine, fen: str, k: int) -> list[str] | None:
+    """Top-``k`` Maia policy moves from an already-open lc0 ``engine``.
 
-    Runs lc0 with the Maia weights at ``nodes=1`` — a single forward pass, i.e.
-    the raw policy head, which is the human move distribution Maia was trained
-    to reproduce — with ``MultiPV=k``. The result is the top-``k`` moves ranked
-    by policy, as UCI strings.
-
-    This backs the "Your Mistakes" findability gate: a tactic is only a fair
-    puzzle if its solution is among the moves a ~1900 human would actually
-    consider. Returns ``None`` when Maia assets are unavailable or the position
-    is terminal — callers treat ``None`` as "gate not applied" (lenient).
+    Runs a single forward pass (``nodes=1``) at ``MultiPV=k`` — the raw policy
+    head, i.e. the human move distribution Maia reproduces. Returns ``None`` for
+    terminal positions or engine errors.
     """
-
-    normalized = normalize_maia_rating(net)
-    if not _has_maia_assets(normalized):
-        return None
 
     board = chess.Board(fen)
     if board.is_game_over():
         return None
-
-    weight_path = _resolved_weight_path(normalized)
-    if weight_path is None:
-        return None
-    command = [_resolved_lc0_command(), f"--weights={weight_path}"]
-
     want = max(1, min(k, board.legal_moves.count()))
     try:
-        with chess.engine.SimpleEngine.popen_uci(command) as engine:
-            infos = engine.analyse(board, chess.engine.Limit(nodes=1), multipv=want)
+        infos = engine.analyse(board, chess.engine.Limit(nodes=1), multipv=want)
     except (chess.engine.EngineError, OSError, ValueError):
         return None
 
@@ -151,6 +134,83 @@ def maia_top_moves(fen: str, net: int = 1900, k: int = 3) -> list[str] | None:
             if uci not in moves:
                 moves.append(uci)
     return moves or None
+
+
+class MaiaPolicyEngine:
+    """Persistent lc0 process for Maia policy top-k lookups.
+
+    Opens lc0 with the Maia weights **once** and reuses it across many
+    positions, instead of the cold-start-per-call behaviour of
+    :func:`maia_top_moves` (which reloads the weight file on every call — far
+    too slow for scanning whole games in "Your Mistakes"). Use as a context
+    manager::
+
+        with MaiaPolicyEngine() as maia:
+            topk = maia.top_moves(fen)
+
+    ``top_moves`` mirrors :func:`maia_top_moves`'s contract: up to ``k`` UCI
+    moves in policy order, or ``None`` when Maia assets are unavailable or the
+    position is terminal — so callers can use it as a drop-in ``maia_topk_fn``.
+    """
+
+    def __init__(self, net: int = 1900) -> None:
+        self._rating = normalize_maia_rating(net)
+        self._engine: chess.engine.SimpleEngine | None = None
+
+    def __enter__(self) -> "MaiaPolicyEngine":
+        if not _has_maia_assets(self._rating):
+            return self
+        weight_path = _resolved_weight_path(self._rating)
+        if weight_path is None:
+            return self
+        command = [_resolved_lc0_command(), f"--weights={weight_path}"]
+        try:
+            self._engine = chess.engine.SimpleEngine.popen_uci(command)
+        except (chess.engine.EngineError, OSError, ValueError):
+            self._engine = None
+        return self
+
+    def __exit__(self, *_exc: object) -> bool:
+        if self._engine is not None:
+            try:
+                self._engine.quit()
+            except Exception:  # noqa: BLE001 — best-effort teardown
+                pass
+            self._engine = None
+        return False
+
+    @property
+    def available(self) -> bool:
+        return self._engine is not None
+
+    def top_moves(self, fen: str, k: int = 3) -> list[str] | None:
+        if self._engine is None:
+            return None
+        return _policy_top_moves(self._engine, fen, k)
+
+
+def maia_top_moves(fen: str, net: int = 1900, k: int = 3) -> list[str] | None:
+    """Return up to ``k`` moves Maia(``net``) most favours, in policy order.
+
+    Cold-starts a fresh lc0 process per call (loading the weight file each
+    time). This remains the lenient global ``maia_topk_fn`` seam wired in
+    :mod:`server.main`; the long-running "Your Mistakes" generation instead
+    reuses one :class:`MaiaPolicyEngine` for the whole run.
+
+    This backs the "Your Mistakes" findability gate: a tactic is only a fair
+    puzzle if its solution is among the moves a ~1900 human would actually
+    consider. Returns ``None`` when Maia assets are unavailable or the position
+    is terminal — callers treat ``None`` as "gate not applied" (lenient).
+    """
+
+    normalized = normalize_maia_rating(net)
+    if not _has_maia_assets(normalized):
+        return None
+    board = chess.Board(fen)
+    if board.is_game_over():
+        return None
+    with MaiaPolicyEngine(normalized) as engine:
+        return engine.top_moves(fen, k)
 
 
 def best_move(
