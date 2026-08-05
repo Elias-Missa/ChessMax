@@ -63,6 +63,34 @@
   const statAvgVol = $("#statAvgVol");
   const statClassWhite = $("#statClassWhite");
   const statClassBlack = $("#statClassBlack");
+  const reviewPlayerHeader = $("#reviewPlayerHeader");
+  const reviewWhiteName = $("#reviewWhiteName");
+  const reviewBlackName = $("#reviewBlackName");
+  const reviewWhiteElo = $("#reviewWhiteElo");
+  const reviewBlackElo = $("#reviewBlackElo");
+  const reviewWhiteArc = $("#reviewWhiteArc");
+  const reviewBlackArc = $("#reviewBlackArc");
+  const reviewCoach = $("#reviewCoach");
+  const reviewCoachText = $("#reviewCoachText");
+  const reviewMoveCard = $("#reviewMoveCard");
+  const reviewMoveNumber = $("#reviewMoveNumber");
+  const reviewMoveSan = $("#reviewMoveSan");
+  const reviewMoveBadge = $("#reviewMoveBadge");
+  const reviewMoveAccuracy = $("#reviewMoveAccuracy");
+  const reviewMoveEval = $("#reviewMoveEval");
+  const reviewMoveWin = $("#reviewMoveWin");
+  const reviewMoveLoss = $("#reviewMoveLoss");
+  const reviewBestMoveRow = $("#reviewBestMoveRow");
+  const reviewBestMove = $("#reviewBestMove");
+  const reviewNavigation = $("#reviewNavigation");
+  const reviewFirst = $("#reviewFirst");
+  const reviewPrevious = $("#reviewPrevious");
+  const reviewNext = $("#reviewNext");
+  const reviewLast = $("#reviewLast");
+  const reviewMoveCounter = $("#reviewMoveCounter");
+  const reviewWhiteStripName = $("#reviewWhiteStripName");
+  const reviewBlackStripName = $("#reviewBlackStripName");
+  const gameClassCard = $("#gameClassCard");
 
   const libraryDrop = $("#libraryDrop");
   const libraryFileInput = $("#libraryFileInput");
@@ -84,7 +112,17 @@
   const topLinesList = $("#topLinesList");
   const topLinesListGame = $("#topLinesListGame");
   const boardFrameEl = document.querySelector(".board-frame");
+  const reviewBoardOverlay = document.getElementById("reviewBoardOverlay");
+  const ReviewUI = window.ChessReviewUI || null;
   const SVG_NS = "http://www.w3.org/2000/svg";
+
+  // The shell hides #vol-root while a Train tab is active; vol behaviour that
+  // depends on "the analyzer is on screen" must check this, not just
+  // body.dataset.tab (which keeps its last vol value across shell switches).
+  const volRootEl = document.getElementById("vol-root");
+  function volAppVisible() {
+    return !volRootEl || !volRootEl.classList.contains("hidden");
+  }
 
   // Explain panels — one per side panel; renderExplain() writes into the one
   // that belongs to whichever tab is active.
@@ -136,6 +174,9 @@
     }
     if (name === "about") ensureAboutDemos();
     if (name === "library") refreshLibraryTable();
+    // Boot skips auto-analysis while the analyzer is hidden; kick it off when
+    // the editor actually comes on screen instead.
+    if (name === "editor") scheduleAutoAnalyze();
     // The explain panels are tab-scoped: each side panel has its own DOM. When
     // the user switches tabs we re-render the latest result into the now-
     // active panel so it doesn't show stale content.
@@ -617,7 +658,7 @@
   let currentPlyIdx = -1;
 
   function gameTabActive() {
-    return document.body.dataset.tab === "game";
+    return volAppVisible() && document.body.dataset.tab === "game";
   }
 
   function squaresFromPly(prev) {
@@ -637,11 +678,11 @@
   // of a "previous move," so we always clear there.
   function paintLastMoveDecor() {
     if (!board || !board.setLastMove) return;
-    if (!gameTabActive() || !loadedPlies.length || currentPlyIdx <= 0) {
+    if (!gameTabActive() || !loadedPlies.length || currentPlyIdx < 0) {
       clearLastMoveDecor();
       return;
     }
-    const sq = squaresFromPly(loadedPlies[currentPlyIdx - 1]);
+    const sq = squaresFromPly(loadedPlies[currentPlyIdx]);
     if (!sq) { clearLastMoveDecor(); return; }
     board.setLastMove(sq.from, sq.to);
   }
@@ -650,6 +691,7 @@
   // consumed by scheduleAutoAnalyze() and analyzeFen() later in the module.
   let autoTimer = null;
   let inflightFen = null;
+  let lastAnalyzedFen = null;
 
   // Single source of truth for "the board changed; any pending or in-flight
   // analysis is now stale". Cancels the debounce timer, aborts the current
@@ -664,6 +706,7 @@
       try { inflightFen.abort(); } catch (_) { /* ignore */ }
       inflightFen = null;
     }
+    lastAnalyzedFen = null;
     setTopMove(null);
     clearTopLinesLists();
   }
@@ -735,6 +778,19 @@
     e.preventDefault();
     if (next !== currentPlyIdx) jumpToPly(next);
   });
+
+  if (reviewFirst) reviewFirst.addEventListener("click", () => jumpToPly(0));
+  if (reviewPrevious) {
+    reviewPrevious.addEventListener("click", () => jumpToPly(Math.max(0, currentPlyIdx - 1)));
+  }
+  if (reviewNext) {
+    reviewNext.addEventListener("click", () =>
+      jumpToPly(Math.min(loadedPlies.length - 1, currentPlyIdx + 1))
+    );
+  }
+  if (reviewLast) {
+    reviewLast.addEventListener("click", () => jumpToPly(loadedPlies.length - 1));
+  }
 
   // Expand a FEN rank (e.g. "r3k2r" or "4P3") into an 8-char string where
   // empty squares are "." This lets us index the rank by file (a=0…h=7).
@@ -850,12 +906,16 @@
   // `inflightFen` so that `invalidateAnalysis()` can own both.
 
   function scheduleAutoAnalyze() {
+    // Don't burn Stockfish time analyzing a hidden board (e.g. page boot
+    // while the Train tabs or the auth overlay are showing).
+    if (!volAppVisible()) return;
     if (!autoAnalyze || !autoAnalyze.checked) return;
     if (autoTimer) clearTimeout(autoTimer);
     autoTimer = setTimeout(() => {
       autoTimer = null;
       const fen = fenInput.value.trim();
       if (!validateFen(fen)) return;
+      if (fen === lastAnalyzedFen) return; // e.g. re-entering the editor tab
       analyzeFen(fen).catch((err) => {
         editorStatus.textContent = `Error: ${err.message || err}`;
       });
@@ -883,6 +943,7 @@
     setTimeout(() => {
       refreshArrow();
       paintLastMoveDecor();
+      refreshReviewBoardOverlay();
     }, 0);
   });
 
@@ -892,6 +953,7 @@
       setTimeout(() => {
         refreshArrow();
         paintLastMoveDecor();
+        refreshReviewBoardOverlay();
       }, 0);
     });
   }
@@ -927,7 +989,8 @@
 
   function evalCpToFill(cpWhitePov) {
     if (cpWhitePov == null) return 0.5;
-    return Math.min(0.97, Math.max(0.03, 0.5 + 0.5 * Math.tanh(cpWhitePov / 400)));
+    const clamped = Math.max(-10000, Math.min(10000, cpWhitePov));
+    return 1 / (1 + Math.exp(-0.00368208 * clamped));
   }
 
   function formatEval(cp, turn) {
@@ -1199,7 +1262,8 @@
 
   function squareCenter(sq) {
     if (!boardFrameEl || !sq || sq.length < 2) return null;
-    const cgWrap = document.querySelector("#board .cg-wrap");
+    // Must be the vol board's wrap — `#board` is the (hidden) puzzles board.
+    const cgWrap = boardFrameEl.querySelector(".cg-wrap");
     if (!cgWrap) return null;
     const file = sq.charCodeAt(0) - 97; // 'a' → 0 .. 'h' → 7
     const rank = parseInt(sq[1], 10);
@@ -1223,7 +1287,14 @@
     while (arrowLayer.firstChild) arrowLayer.removeChild(arrowLayer.firstChild);
   }
 
-  function drawArrow(uci) {
+  function currentReviewArrowColor() {
+    if (!ReviewUI || currentPlyIdx < 0) return null;
+    const result = plyResults[currentPlyIdx];
+    const kind = result && result.ply && result.ply.review && result.ply.review.classification;
+    return kind ? ReviewUI.arrowColorForClassification(kind) : null;
+  }
+
+  function drawArrow(uci, color) {
     if (!arrowLayer || !uci || uci.length < 4) { clearArrow(); return; }
     const from = uci.slice(0, 2);
     const to = uci.slice(2, 4);
@@ -1279,6 +1350,11 @@
     );
     headPoly.setAttribute("class", "arrow-head");
 
+    if (color) {
+      shaft.setAttribute("style", `fill:${color};stroke:${color}`);
+      headPoly.setAttribute("style", `fill:${color};stroke:${color}`);
+    }
+
     clearArrow();
     arrowLayer.appendChild(shaft);
     arrowLayer.appendChild(headPoly);
@@ -1286,7 +1362,7 @@
 
   function refreshArrow() {
     if (!arrowEnabled() || !lastTopMoveUci) { clearArrow(); return; }
-    drawArrow(lastTopMoveUci);
+    drawArrow(lastTopMoveUci, currentReviewArrowColor());
   }
 
   function setTopMove(uci) {
@@ -1398,6 +1474,7 @@
       const modeStr = data.mode === "deep" ? "deep" : "shallow";
       editorStatus.textContent =
         `${modeStr} · ${data.volatility.analyses} engine call${data.volatility.analyses !== 1 ? "s" : ""}`;
+      lastAnalyzedFen = fen;
     } catch (err) {
       if (err.name === "AbortError") return;
       throw err;
@@ -1410,6 +1487,7 @@
   // ── PGN / Game ───────────────────────────────────────────────────────── //
   let chart = null;
   let pgnController = null;
+  let gameReviewSummary = null;
 
   function resetGame() {
     loadedPlies = [];
@@ -1421,6 +1499,16 @@
     chartWrap.classList.add("hidden");
     moveListWrap.classList.add("hidden");
     if (gameStatsEl) gameStatsEl.classList.add("hidden");
+    if (reviewPlayerHeader) reviewPlayerHeader.classList.add("hidden");
+    if (reviewCoach) reviewCoach.classList.add("hidden");
+    if (reviewMoveCard) reviewMoveCard.classList.add("hidden");
+    if (reviewNavigation) reviewNavigation.classList.add("hidden");
+    if (gameClassCard) gameClassCard.classList.add("hidden");
+    if (reviewWhiteStripName) reviewWhiteStripName.textContent = "White";
+    if (reviewBlackStripName) reviewBlackStripName.textContent = "Black";
+    if (boardFrameEl) delete boardFrameEl.dataset.reviewClass;
+    if (ReviewUI) ReviewUI.clearBoardOverlay(reviewBoardOverlay);
+    gameReviewSummary = null;
     resetGameStats();
     clearTopLinesLists();
     setTopMove(null);
@@ -1443,17 +1531,53 @@
     if (statBlackAcc) statBlackAcc.textContent = "—";
     if (statAvgVol) statAvgVol.textContent = "—";
     if (statAvgVol) statAvgVol.removeAttribute("data-color");
-    if (statClassWhite) statClassWhite.textContent = "White: —";
-    if (statClassBlack) statClassBlack.textContent = "Black: —";
+    setAccuracyDonut(reviewWhiteArc, null);
+    setAccuracyDonut(reviewBlackArc, null);
+    renderClassCountSide(statClassWhite, "white", {});
+    renderClassCountSide(statClassBlack, "black", {});
+  }
+
+  function setAccuracyDonut(circle, accuracy) {
+    if (!circle) return;
+    const circumference = 2 * Math.PI * 16;
+    const pct = typeof accuracy === "number" ? Math.max(0, Math.min(100, accuracy)) : 0;
+    circle.style.strokeDasharray = `${circumference}`;
+    circle.style.strokeDashoffset = `${circumference * (1 - pct / 100)}`;
+  }
+
+  function renderReviewSummary(summary) {
+    if (!summary) return;
+    const accuracy = summary.accuracy || {};
+    const players = summary.players || {};
+    const estimated = summary.estimated_elo || {};
+    if (reviewWhiteName) reviewWhiteName.textContent = players.white || "White";
+    if (reviewBlackName) reviewBlackName.textContent = players.black || "Black";
+    if (reviewWhiteStripName) reviewWhiteStripName.textContent = players.white || "White";
+    if (reviewBlackStripName) reviewBlackStripName.textContent = players.black || "Black";
+    if (reviewWhiteElo) {
+      reviewWhiteElo.textContent = `Estimated performance ${estimated.white || "—"}`;
+    }
+    if (reviewBlackElo) {
+      reviewBlackElo.textContent = `Estimated performance ${estimated.black || "—"}`;
+    }
+    setAccuracyDonut(reviewWhiteArc, accuracy.white);
+    setAccuracyDonut(reviewBlackArc, accuracy.black);
+    if (reviewCoachText) reviewCoachText.textContent = summary.coach || "";
+    if (reviewPlayerHeader) reviewPlayerHeader.classList.remove("hidden");
+    if (reviewCoach) reviewCoach.classList.remove("hidden");
+    if (gameClassCard) gameClassCard.classList.remove("hidden");
   }
 
   const CLASS_LABELS = {
     brilliant: "brilliant",
     great: "great",
     best: "best",
+    excellent: "excellent",
     good: "good",
+    book: "book",
     inaccuracy: "inaccuracy",
     mistake: "mistake",
+    miss: "miss",
     blunder: "blunder",
     routine_miss: "routine miss",
     critical_miss: "critical miss",
@@ -1467,9 +1591,12 @@
     "brilliant",
     "great",
     "best",
+    "excellent",
     "good",
+    "book",
     "inaccuracy",
     "mistake",
+    "miss",
     "blunder",
     "routine_miss",
     "critical_miss",
@@ -1490,6 +1617,19 @@
     return `${label}: ${parts.length ? parts.join(", ") : "—"}`;
   }
 
+  function renderClassCountSide(el, side, counts) {
+    if (!el) return;
+    const labelEl = document.getElementById(
+      side === "white" ? "statClassWhiteLabel" : "statClassBlackLabel",
+    );
+    if (labelEl) labelEl.textContent = side === "white" ? "White" : "Black";
+    if (ReviewUI && typeof ReviewUI.renderClassificationPills === "function") {
+      ReviewUI.renderClassificationPills(el, counts);
+      return;
+    }
+    el.textContent = formatClassCounts(side, counts || {});
+  }
+
   // Recompute over whatever plies have streamed in so far. Cheap (just an
   // array sweep) so we run it on every onPly tick — the panel updates live
   // as analysis progresses instead of waiting for done.
@@ -1497,9 +1637,12 @@
     if (!gameStatsEl) return;
     const stats = window.ChessVolLibrary.computeGameStats(plyResults);
     const fmtPct = (value) => (typeof value === "number" ? `${value.toFixed(1)}%` : "—");
+    const reviewAccuracy = gameReviewSummary && gameReviewSummary.accuracy;
 
-    statWhiteAcc.textContent = fmtPct(stats.whiteAcc);
-    statBlackAcc.textContent = fmtPct(stats.blackAcc);
+    statWhiteAcc.textContent = fmtPct(reviewAccuracy ? reviewAccuracy.white : stats.whiteAcc);
+    statBlackAcc.textContent = fmtPct(reviewAccuracy ? reviewAccuracy.black : stats.blackAcc);
+    setAccuracyDonut(reviewWhiteArc, reviewAccuracy ? reviewAccuracy.white : stats.whiteAcc);
+    setAccuracyDonut(reviewBlackArc, reviewAccuracy ? reviewAccuracy.black : stats.blackAcc);
 
     if (typeof stats.avgV === "number") {
       statAvgVol.textContent = stats.avgV.toFixed(1);
@@ -1508,13 +1651,19 @@
       statAvgVol.textContent = "—";
       statAvgVol.removeAttribute("data-color");
     }
-    if (statClassWhite) {
-      statClassWhite.textContent = formatClassCounts("white", stats.classificationCounts.white);
-    }
-    if (statClassBlack) {
-      statClassBlack.textContent = formatClassCounts("black", stats.classificationCounts.black);
-    }
+    const reviewCounts = gameReviewSummary && gameReviewSummary.classification_counts;
+    renderClassCountSide(
+      statClassWhite,
+      "white",
+      (reviewCounts && reviewCounts.white) || stats.classificationCounts.white,
+    );
+    renderClassCountSide(
+      statClassBlack,
+      "black",
+      (reviewCounts && reviewCounts.black) || stats.classificationCounts.black,
+    );
 
+    if (gameReviewSummary) renderReviewSummary(gameReviewSummary);
     gameStatsEl.classList.remove("hidden");
   }
 
@@ -1608,9 +1757,13 @@
     const primaryGlyphs = {
       brilliant: "!!",
       great: "!",
-      best: "✓",
+      best: "★",
+      excellent: "👍",
+      good: "✓",
+      book: "📖",
       inaccuracy: "?!",
       mistake: "?",
+      miss: "❌",
       blunder: "??",
     };
     const secondaryGlyphs = {
@@ -1621,13 +1774,16 @@
       defusal: "⊘",
       complication: "⚡",
     };
-    const primary = primaryGlyphs[classification.primary];
+    const reviewKind = classification.classification;
+    const primaryKind = reviewKind || classification.primary;
+    const primary = classification.symbol || primaryGlyphs[primaryKind];
     const secondary = secondaryGlyphs[classification.secondary];
     const text = [primary, secondary].filter(Boolean).join(" ");
     if (!text) return null;
     return {
       text,
-      kind: primary ? classification.primary : classification.secondary,
+      kind: primary ? primaryKind : classification.secondary,
+      color: classification.color || null,
     };
   }
 
@@ -1638,12 +1794,28 @@
     if (!glyph) {
       span.textContent = "";
       delete span.dataset.kind;
+      span.style.color = "";
       span.removeAttribute("title");
       return;
     }
-    span.textContent = glyph.text;
+    span.innerHTML = "";
     span.dataset.kind = glyph.kind;
-    span.title = classification.summary || classification.primary;
+    span.style.color = glyph.color || "";
+    span.title = classification.coach || classification.summary || glyph.kind;
+    const badge =
+      ReviewUI && ReviewUI.renderBadgeIcon(glyph.kind, "review-badge-icon review-badge-icon--list");
+    if (badge) {
+      span.appendChild(badge);
+      const secondary = glyph.text.replace(/^[^\s]+\s*/, "").trim();
+      if (secondary && secondary !== glyph.text) {
+        const extra = document.createElement("span");
+        extra.className = "move-class-extra";
+        extra.textContent = secondary;
+        span.appendChild(extra);
+      }
+      return;
+    }
+    span.textContent = glyph.text;
   }
 
   function updateMoveVol(idx, score) {
@@ -1654,6 +1826,87 @@
     span.dataset.color = scoreToColor(score);
   }
 
+  function renderCurrentMoveReview(idx, result, entry) {
+    if (!reviewMoveCard || !result || !result.ply) return;
+    const review = result.ply.review;
+    if (!review) {
+      reviewMoveCard.classList.add("hidden");
+      return;
+    }
+    const moveNumber = Math.floor(idx / 2) + 1;
+    const side = idx % 2 === 0 ? "White" : "Black";
+    reviewMoveNumber.textContent = `${side} · Move ${moveNumber}`;
+    reviewMoveSan.textContent = entry.san || result.ply.san || "—";
+    reviewMoveBadge.innerHTML = "";
+    reviewMoveBadge.dataset.kind = review.classification || "";
+    reviewMoveBadge.style.backgroundColor = review.color || "";
+    const badgeIcon =
+      ReviewUI &&
+      ReviewUI.renderBadgeIcon(review.classification, "review-badge-icon review-badge-icon--card");
+    if (badgeIcon) reviewMoveBadge.appendChild(badgeIcon);
+    const badgeLabel = document.createElement("span");
+    badgeLabel.textContent = `${review.symbol || ""} ${review.classification || ""}`.trim();
+    reviewMoveBadge.appendChild(badgeLabel);
+    reviewMoveAccuracy.textContent =
+      typeof review.accuracy === "number" ? `${review.accuracy.toFixed(1)}%` : "—";
+    const evalCp = review.eval_after_cp_white;
+    reviewMoveEval.textContent =
+      typeof evalCp === "number"
+        ? `${evalCp >= 0 ? "+" : "−"}${(Math.abs(evalCp) / 100).toFixed(2)}`
+        : "—";
+    reviewMoveWin.textContent =
+      typeof review.expected_points_after === "number"
+        ? `${(review.expected_points_after * 100).toFixed(1)}%`
+        : "—";
+    reviewMoveLoss.textContent =
+      typeof review.expected_points_loss === "number"
+        ? `${(review.expected_points_loss * 100).toFixed(1)} pts`
+        : "—";
+    if (review.best_move_san && review.best_move_san !== entry.san) {
+      reviewBestMove.textContent = review.best_move_san;
+      reviewBestMoveRow.classList.remove("hidden");
+    } else {
+      reviewBestMoveRow.classList.add("hidden");
+    }
+    reviewMoveCard.classList.remove("hidden");
+  }
+
+  function updateReviewNavigation(idx) {
+    if (!reviewNavigation) return;
+    const total = loadedPlies.length;
+    reviewMoveCounter.textContent = total ? `${idx + 1} / ${total}` : "— / —";
+    reviewFirst.disabled = idx <= 0;
+    reviewPrevious.disabled = idx <= 0;
+    reviewNext.disabled = idx >= total - 1;
+    reviewLast.disabled = idx >= total - 1;
+    reviewNavigation.classList.toggle("hidden", !total);
+  }
+
+  function refreshReviewBoardOverlay() {
+    if (!ReviewUI || !reviewBoardOverlay) return;
+    if (currentPlyIdx < 0 || currentPlyIdx >= loadedPlies.length) {
+      ReviewUI.clearBoardOverlay(reviewBoardOverlay);
+      return;
+    }
+    const entry = loadedPlies[currentPlyIdx];
+    const result = plyResults[currentPlyIdx];
+    const review = result && result.ply && result.ply.review;
+    const uci = entry && entry.move_uci;
+    const dest = uci && uci.length >= 4 ? uci.slice(2, 4) : null;
+    const orientation =
+      (board && typeof board.orientation === "function" && board.orientation()) || "white";
+    if (review && review.classification && dest) {
+      ReviewUI.renderBoardOverlay(
+        reviewBoardOverlay,
+        review.classification,
+        dest,
+        orientation,
+      );
+    } else {
+      ReviewUI.clearBoardOverlay(reviewBoardOverlay);
+    }
+  }
+
   function jumpToPly(idx) {
     if (idx < 0 || idx >= loadedPlies.length) return;
     const prevIdx = currentPlyIdx;
@@ -1661,12 +1914,11 @@
     const entry = loadedPlies[idx];
 
     suppressSync = true;
-    try { board.position(entry.fen_before.split(/\s+/)[0], true); }
+    try { board.position(entry.fen_after.split(/\s+/)[0], true); }
     finally { suppressSync = false; }
 
-    // Lichess-style last-move highlight: the move that produced this position
-    // is the previous ply's UCI (entry.fen_before == prev ply's fen_after).
-    const prevUci = idx > 0 ? loadedPlies[idx - 1].move_uci : null;
+    // A review move is shown after it was played, with its classification color.
+    const prevUci = entry.move_uci;
     if (board.setLastMove) {
       if (prevUci && prevUci.length >= 4) {
         board.setLastMove(prevUci.slice(0, 2), prevUci.slice(2, 4));
@@ -1675,21 +1927,40 @@
       }
     }
 
-    fenInput.value = entry.fen_before;
+    fenInput.value = entry.fen_after;
     syncTurnToggleFromFen();
 
     const r = plyResults[idx];
     if (r) {
       const turn = entry.fen_before.split(/\s+/)[1] || "w";
-      renderEvalBar(r.ply.volatility.best_eval_cp, turn);
+      const review = r.ply.review;
+      if (review && typeof review.eval_after_cp_white === "number") {
+        renderEvalBar(review.eval_after_cp_white, "w");
+      } else {
+        renderEvalBar(r.ply.volatility.best_eval_cp, turn);
+      }
       renderVolBar(r.ply.volatility, r.ply.classification);
       renderTopLines(r.ply.volatility, turn);
       const tl = r.ply.volatility.top_lines;
       setTopMove(tl && tl[0] ? tl[0].uci : null);
+      if (boardFrameEl) {
+        if (review && review.classification) {
+          boardFrameEl.dataset.reviewClass = review.classification;
+        } else {
+          delete boardFrameEl.dataset.reviewClass;
+        }
+      }
+      if (reviewCoachText && review && review.coach) reviewCoachText.textContent = review.coach;
+      if (reviewCoach && review) reviewCoach.classList.remove("hidden");
+      renderCurrentMoveReview(idx, r, entry);
     } else {
       clearTopLinesLists();
       setTopMove(null);
+      if (boardFrameEl) delete boardFrameEl.dataset.reviewClass;
+      if (reviewMoveCard) reviewMoveCard.classList.add("hidden");
     }
+    refreshReviewBoardOverlay();
+    updateReviewNavigation(idx);
 
     document.querySelectorAll(".move-cell").forEach((c) =>
       c.classList.toggle("active", Number(c.dataset.idx) === idx)
@@ -1727,12 +1998,10 @@
       if (cell) cell.classList.add("active");
     }
 
-    // The board now shows the position reached AFTER loadedPlies[idx-1] was
-    // played (jumpToPly displays fen_before of the current ply). Play the
-    // sound of that transition, but only on forward scrubs — lichess does
-    // not play move sounds when stepping backwards through a game.
-    if (idx > prevIdx && idx > 0) {
-      playMoveSound(loadedPlies[idx - 1].san);
+    // The board shows the position after the selected review move. Play that
+    // move's sound only while scrubbing forward.
+    if (idx > prevIdx) {
+      playMoveSound(loadedPlies[idx].san);
     }
   }
 
@@ -1901,7 +2170,7 @@
     plyResults[plyData.ply - 1] = p;
     plyStatus.textContent = `${p.done} / ${p.total} plies`;
     updateMoveVol(plyData.ply - 1, plyData.volatility.score);
-    updateMoveClassification(plyData.ply - 1, plyData.classification);
+    updateMoveClassification(plyData.ply - 1, plyData.review || plyData.classification);
     appendChartPoint(plyData);
     recomputeGameStats();
     jumpToPly(plyData.ply - 1);
@@ -1911,6 +2180,7 @@
     gameStatus.textContent =
       `Done (${p.mode}) · ${p.plies_analysed} plies · ${p.total_analyses} engine calls`;
     plyStatus.textContent = "";
+    gameReviewSummary = p.game_review || null;
     if (Array.isArray(p.plies)) {
       plyResults = p.plies.map((ply, i) => ({
         done: i + 1,
@@ -1919,7 +2189,7 @@
       }));
       p.plies.forEach((ply, i) => {
         updateMoveVol(i, ply.volatility && ply.volatility.score);
-        updateMoveClassification(i, ply.classification);
+        updateMoveClassification(i, ply.review || ply.classification);
       });
       // Rebuild heat band from full results
       const hb = document.getElementById("heatBand");
@@ -2111,13 +2381,14 @@
       };
     });
     plyResults = reportPliesToResults(game.report);
+    gameReviewSummary = game.report.game_review || null;
     renderMoveList();
     ensureChart();
     chartWrap.classList.remove("hidden");
     for (const entry of plyResults) {
       appendChartPoint(entry.ply);
       updateMoveVol(entry.ply.ply - 1, entry.ply.volatility && entry.ply.volatility.score);
-      updateMoveClassification(entry.ply.ply - 1, entry.ply.classification);
+      updateMoveClassification(entry.ply.ply - 1, entry.ply.review || entry.ply.classification);
     }
     recomputeGameStats();
     gameStatus.textContent = `Opened saved game: ${game.metadata.white} - ${game.metadata.black}`;
@@ -2178,6 +2449,7 @@
       mode: donePayload.mode || (startPayload && startPayload.mode) || "shallow",
       params: startPayload && startPayload.params || {},
       plies: donePayload.plies,
+      game_review: donePayload.game_review || null,
     };
   }
 

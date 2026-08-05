@@ -53,6 +53,7 @@ from chess_vol.config import (
     DEFAULT_RECURSE_K,
 )
 from chess_vol.engine import Engine, EngineNotFoundError
+from chess_vol.game_review import build_game_review_summary
 from chess_vol.volatility import EngineLike, compute_volatility
 
 logger = logging.getLogger("chess_vol.server")
@@ -250,6 +251,7 @@ async def analyze_pgn_endpoint(req: AnalyzePgnRequest, request: Request) -> Even
                         "total_analyses": total_analyses,
                         "mode": mode,
                         "plies": [dict(ply_to_json(ply)) for ply in results],
+                        "game_review": build_game_review_summary(results, req.pgn),
                     },
                 )
             )

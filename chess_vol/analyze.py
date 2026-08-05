@@ -11,6 +11,7 @@ import chess
 import chess.pgn
 
 from chess_vol.classify import Classification, classify_move
+from chess_vol.game_review import MoveReview, attach_move_reviews
 from chess_vol.volatility import (
     EngineLike,
     VolatilityResult,
@@ -45,6 +46,9 @@ class PlyResult:
 
     classification: Classification | None = None
     """Optional move classification attached after neighbouring plies are known."""
+
+    review: MoveReview | None = None
+    """Expected-points game-review verdict attached after all plies are known."""
 
 
 ProgressCallback = Callable[[int, int, PlyResult], None]
@@ -120,4 +124,5 @@ def analyze_pgn(
         next_result = results[idx + 1] if idx + 1 < len(results) else None
         result.classification = classify_move(result, next_result)
 
+    attach_move_reviews(results, pgn)
     return results

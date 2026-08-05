@@ -15,6 +15,7 @@ from chess_vol.analyze import PlyResult
 from chess_vol.classify import Classification, PrimaryLabel, SecondaryTag
 from chess_vol.config import color_for
 from chess_vol.explain import Component, Explanation, explain
+from chess_vol.game_review import MoveReview, ReviewLabel
 from chess_vol.volatility import TopLine, VolatilityResult
 
 
@@ -56,6 +57,21 @@ class ClassificationJson(TypedDict):
     summary: str
 
 
+class MoveReviewJson(TypedDict):
+    classification: ReviewLabel
+    symbol: str
+    color: str
+    expected_points_before: float
+    expected_points_after: float
+    expected_points_loss: float
+    accuracy: float
+    best_move_uci: str | None
+    best_move_san: str | None
+    best_line_san: list[str]
+    eval_after_cp_white: int
+    coach: str
+
+
 class VolatilityJson(TypedDict):
     """JSON shape for a single :class:`VolatilityResult`."""
 
@@ -86,6 +102,7 @@ class PlyJson(TypedDict):
     move_uci: str
     volatility: VolatilityJson
     classification: ClassificationJson | None
+    review: MoveReviewJson | None
 
 
 class ParamsJson(TypedDict, total=False):
@@ -162,6 +179,23 @@ def classification_to_json(classification: Classification) -> ClassificationJson
     )
 
 
+def move_review_to_json(review: MoveReview) -> MoveReviewJson:
+    return MoveReviewJson(
+        classification=review.classification,
+        symbol=review.symbol,
+        color=review.color,
+        expected_points_before=review.expected_points_before,
+        expected_points_after=review.expected_points_after,
+        expected_points_loss=review.expected_points_loss,
+        accuracy=review.accuracy,
+        best_move_uci=review.best_move_uci,
+        best_move_san=review.best_move_san,
+        best_line_san=list(review.best_line_san),
+        eval_after_cp_white=review.eval_after_cp_white,
+        coach=review.coach,
+    )
+
+
 def volatility_to_json(result: VolatilityResult) -> VolatilityJson:
     """Convert a :class:`VolatilityResult` to a JSON-serializable dict."""
     color = color_for(result.score) if result.score is not None else None
@@ -198,6 +232,7 @@ def ply_to_json(ply: PlyResult) -> PlyJson:
             if ply.classification is not None
             else None
         ),
+        review=move_review_to_json(ply.review) if ply.review is not None else None,
     )
 
 
@@ -261,6 +296,7 @@ __all__: list[str] = [
     "FenReportJson",
     "ParamsJson",
     "PlyJson",
+    "MoveReviewJson",
     "TopLineJson",
     "VolatilityJson",
     "build_analyze_report",
@@ -269,6 +305,7 @@ __all__: list[str] = [
     "classification_to_json",
     "explanation_to_json",
     "mode_label",
+    "move_review_to_json",
     "ply_to_json",
     "volatility_to_json",
 ]

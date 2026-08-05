@@ -26,9 +26,12 @@ Manual smoke test plan:
     "brilliant",
     "great",
     "best",
+    "excellent",
     "good",
+    "book",
     "inaccuracy",
     "mistake",
+    "miss",
     "blunder",
     "routine_miss",
     "critical_miss",
@@ -268,7 +271,10 @@ Manual smoke test plan:
       const turn = (ply.fen_before || "").split(/\s+/)[1] || "w";
       const side = turn === "w" ? "white" : "black";
       const classification = ply.classification;
-      if (classification) {
+      const review = ply.review;
+      if (review && review.classification) {
+        addCount(classificationCounts[side], review.classification);
+      } else if (classification) {
         addCount(classificationCounts[side], classification.primary);
         addCount(classificationCounts[side], classification.secondary);
       }
@@ -304,6 +310,11 @@ Manual smoke test plan:
       total: report.plies.length,
       ply,
     }));
+    const derivedStats = computeGameStats(plies);
+    if (report.game_review && report.game_review.accuracy) {
+      derivedStats.whiteAcc = report.game_review.accuracy.white;
+      derivedStats.blackAcc = report.game_review.accuracy.black;
+    }
     return {
       id: uuid(),
       importedAt: Date.now(),
@@ -311,7 +322,7 @@ Manual smoke test plan:
       sourceName,
       metadata: metadataFromPgn(pgn),
       report,
-      derivedStats: computeGameStats(plies),
+      derivedStats,
     };
   }
 

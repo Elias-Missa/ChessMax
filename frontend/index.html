@@ -51,7 +51,7 @@
         <button class="shell-tab" type="button" role="tab" data-app="puzzles" data-tab="playout" aria-selected="false">Play Out</button>
         <button class="shell-tab" type="button" role="tab" data-app="puzzles" data-tab="stats" aria-selected="false">Stats</button>
         <span class="shell-tab-group-label divided">Analyze</span>
-        <button class="shell-tab" type="button" role="tab" data-app="vol" data-tab="game" aria-selected="false">Game Analyzer</button>
+        <button class="shell-tab" type="button" role="tab" data-app="vol" data-tab="game" aria-selected="false">Game Review</button>
         <button class="shell-tab" type="button" role="tab" data-app="vol" data-tab="editor" aria-selected="false">Position Editor</button>
         <button class="shell-tab" type="button" role="tab" data-app="vol" data-tab="library" aria-selected="false">Library</button>
         <button class="shell-tab" type="button" role="tab" data-app="vol" data-tab="about" aria-selected="false">Why</button>
@@ -435,7 +435,7 @@
         <!-- Black player row -->
         <div class="player-strip">
           <span class="piece-dot dark"></span>
-          <span class="player-label">Black</span>
+          <span class="player-label" id="reviewBlackStripName">Black</span>
         </div>
 
         <div class="board-stage">
@@ -452,9 +452,10 @@
           <div class="board-frame">
             <div id="volBoard"></div>
             <svg id="arrowLayer" class="arrow-layer" aria-hidden="true"></svg>
+            <div id="reviewBoardOverlay" class="review-board-overlay hidden" aria-hidden="true"></div>
           </div>
 
-          <div class="sidebar-bar" title="Volatility — how punishing the wrong move is">
+          <div class="sidebar-bar volatility-sidebar" title="Volatility — how punishing the wrong move is">
             <div class="bar-tag">Vol</div>
             <button id="volBar" type="button" class="vol-bar" data-color="low" data-decided="false"
               aria-label="Volatility bar — click for explanation" title="Click for explanation">
@@ -470,7 +471,7 @@
         <!-- White player row -->
         <div class="player-strip">
           <span class="piece-dot light"></span>
-          <span class="player-label">White</span>
+          <span class="player-label" id="reviewWhiteStripName">White</span>
         </div>
       </div>
 
@@ -609,21 +610,74 @@
           </div>
         </div>
 
-        <!-- 1. Stats bar -->
-        <div id="gameStats" class="game-stats-bar hidden">
-          <div class="stat-card" data-side="white">
-            <div class="stat-label">White acc</div>
-            <div class="stat-value" id="statWhiteAcc">—</div>
+        <!-- 1. Chess.com-style review summary -->
+        <section id="reviewPlayerHeader" class="review-player-header hidden" aria-label="Reviewed players">
+          <div>
+            <span class="review-color-dot white"></span>
+            <strong id="reviewWhiteName">White</strong>
+            <small id="reviewWhiteElo">Estimated performance —</small>
           </div>
-          <div class="stat-card" data-side="black">
-            <div class="stat-label">Black acc</div>
-            <div class="stat-value" id="statBlackAcc">—</div>
+          <span class="review-versus">vs</span>
+          <div class="review-player-black">
+            <span class="review-color-dot black"></span>
+            <strong id="reviewBlackName">Black</strong>
+            <small id="reviewBlackElo">Estimated performance —</small>
           </div>
-          <div class="stat-card" data-side="vol">
-            <div class="stat-label">Avg V</div>
+        </section>
+
+        <div id="gameStats" class="game-stats-bar review-stats hidden">
+          <div class="review-donut-card" data-side="white">
+            <svg class="review-donut" viewBox="0 0 42 42" aria-hidden="true">
+              <circle class="review-donut-track" cx="21" cy="21" r="16"></circle>
+              <circle id="reviewWhiteArc" class="review-donut-arc white" cx="21" cy="21" r="16"></circle>
+            </svg>
+            <div><span class="stat-label">White accuracy</span><strong class="stat-value" id="statWhiteAcc">—</strong></div>
+          </div>
+          <div class="review-donut-card" data-side="black">
+            <svg class="review-donut" viewBox="0 0 42 42" aria-hidden="true">
+              <circle class="review-donut-track" cx="21" cy="21" r="16"></circle>
+              <circle id="reviewBlackArc" class="review-donut-arc black" cx="21" cy="21" r="16"></circle>
+            </svg>
+            <div><span class="stat-label">Black accuracy</span><strong class="stat-value" id="statBlackAcc">—</strong></div>
+          </div>
+          <div class="stat-card review-vol-card" data-side="vol">
+            <div class="stat-label">Avg volatility</div>
             <div class="stat-value" id="statAvgVol">—</div>
           </div>
         </div>
+
+        <section id="reviewCoach" class="review-coach hidden" aria-live="polite">
+          <span class="review-coach-avatar" aria-hidden="true">♞</span>
+          <div>
+            <strong>Coach</strong>
+            <p id="reviewCoachText">Analyze a game to receive feedback.</p>
+          </div>
+        </section>
+
+        <section id="reviewMoveCard" class="review-move-card hidden" aria-live="polite">
+          <div class="review-move-card-head">
+            <div>
+              <span class="review-kicker" id="reviewMoveNumber">Move —</span>
+              <div class="review-move-title-row">
+                <strong id="reviewMoveSan">—</strong>
+                <span id="reviewMoveBadge" class="review-move-badge"></span>
+              </div>
+            </div>
+            <div class="review-move-accuracy">
+              <span>Move accuracy</span>
+              <strong id="reviewMoveAccuracy">—</strong>
+            </div>
+          </div>
+          <div class="review-move-metrics">
+            <div><span>Evaluation</span><strong id="reviewMoveEval">—</strong></div>
+            <div><span>Win probability</span><strong id="reviewMoveWin">—</strong></div>
+            <div><span>Expected loss</span><strong id="reviewMoveLoss">—</strong></div>
+          </div>
+          <div id="reviewBestMoveRow" class="review-best-move hidden">
+            <span>Top engine move</span>
+            <strong id="reviewBestMove">—</strong>
+          </div>
+        </section>
 
         <!-- 2. Move explainer card (Chess.com style) -->
         <section id="volExplainGame" class="move-explainer-card" aria-live="polite" aria-label="Volatility explanation">
@@ -642,7 +696,16 @@
 
         <!-- 3. Move list -->
         <div id="moveListWrap" class="move-list-wrap hidden">
+          <div class="review-section-title">Moves</div>
           <div id="moveList"></div>
+        </div>
+
+        <div id="reviewNavigation" class="review-navigation hidden" aria-label="Review navigation">
+          <button id="reviewFirst" type="button" title="First move">⏮</button>
+          <button id="reviewPrevious" type="button" title="Previous move">◀</button>
+          <span id="reviewMoveCounter">— / —</span>
+          <button id="reviewNext" type="button" title="Next move">▶</button>
+          <button id="reviewLast" type="button" title="Last move">⏭</button>
         </div>
 
         <!-- 4. Vol chart + heat band -->
@@ -651,11 +714,17 @@
           <div id="heatBand" class="heat-band hidden"></div>
         </div>
 
-        <!-- Classification counts (collapsed) -->
+        <!-- Classification counts -->
         <div class="stat-card stat-card-wide hidden" data-side="classes" id="gameClassCard">
           <div class="stat-label">Classifications</div>
-          <div class="stat-note" id="statClassWhite">White: —</div>
-          <div class="stat-note" id="statClassBlack">Black: —</div>
+          <div class="review-class-side">
+            <div class="stat-note" id="statClassWhiteLabel">White</div>
+            <div class="review-class-pills" id="statClassWhite"></div>
+          </div>
+          <div class="review-class-side">
+            <div class="stat-note" id="statClassBlackLabel">Black</div>
+            <div class="review-class-pills" id="statClassBlack"></div>
+          </div>
         </div>
 
         <div class="panel-status">
@@ -671,7 +740,7 @@
       <div class="library-drop" id="libraryDrop">
         <div>
           <h2>Saved Games Library</h2>
-          <p>Drop PGNs or ZIPs here, or choose files. Games are analyzed locally and stored in this browser.</p>
+          <p>Drop PGNs or ZIPs here, or choose files. Games are analyzed locally and saved to your account.</p>
         </div>
         <label class="file-pick">
           <input id="libraryFileInput" type="file" accept=".pgn,.zip,text/plain,application/zip" multiple />
@@ -720,8 +789,13 @@
             <option value="">Any</option>
             <option value="brilliant">Brilliant</option>
             <option value="great">Great</option>
+            <option value="best">Best</option>
+            <option value="excellent">Excellent</option>
+            <option value="good">Good</option>
+            <option value="book">Book</option>
             <option value="inaccuracy">Inaccuracy</option>
             <option value="mistake">Mistake</option>
+            <option value="miss">Miss</option>
             <option value="blunder">Blunder</option>
             <option value="practical">Practical</option>
             <option value="simplification">Simplification</option>
@@ -1013,6 +1087,7 @@
     <script src="/static/vendor/js/jszip.min.js"></script>
     <script src="/static/vol/audio.js"></script>
     <script src="/static/vol/library.js"></script>
+    <script src="/static/vol/review-ui.js"></script>
     <script src="/static/vol/app.js"></script>
     <!-- Puzzles app, then the shell tab controller (modules run in order, after classic scripts) -->
     <script type="module" src="/static/app.js?v=3"></script>

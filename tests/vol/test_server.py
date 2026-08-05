@@ -236,13 +236,16 @@ class TestAnalyzePgn:
             assert ev["total"] == 4
             ply_json = ev["ply"]
             assert ply_json["ply"] == i
-            assert {"san", "fen_before", "fen_after", "eval_cp", "volatility"} <= set(
+            assert {"san", "fen_before", "fen_after", "eval_cp", "volatility", "review"} <= set(
                 ply_json.keys()
             )
 
         done_payload = events[-1][1]
         assert done_payload["plies_analysed"] == 4
         assert done_payload["total_analyses"] == engine.call_count
+        assert done_payload["game_review"]["accuracy"]["white"] is not None
+        assert done_payload["game_review"]["accuracy"]["black"] is not None
+        assert done_payload["game_review"]["coach"]
 
     def test_deep_mode_label(self, client: TestClient, patch_engine: Any) -> None:
         patch_engine(FakeEngine(producer=_flat_producer))
