@@ -17,6 +17,7 @@ const ROUTES = [
   { path: "/game-review/why", app: "vol", tab: "about", top: "game-review" },
   { path: "/insights", app: "insights", tab: "insights", top: "insights" },
   { path: "/guess-the-elo", app: "elo", tab: "eloduels", top: "elo" },
+  { path: "/guess-the-eval", app: "eval", tab: "evalduels", top: "eval" },
 ];
 
 const TAB_TO_PATH = Object.fromEntries(
@@ -28,6 +29,7 @@ TAB_TO_PATH.editor = "/game-review/editor";
 TAB_TO_PATH.library = "/game-review/library";
 TAB_TO_PATH.about = "/game-review/why";
 TAB_TO_PATH.eloduels = "/guess-the-elo";
+TAB_TO_PATH.evalduels = "/guess-the-eval";
 TAB_TO_PATH.insights = "/insights";
 
 const TRAINING_TABS = new Set([
@@ -41,6 +43,7 @@ const gameReviewNav = document.getElementById("game-review-subnav");
 const puzzlesRoot = document.getElementById("puzzles-root");
 const volRoot = document.getElementById("vol-root");
 const eloRoot = document.getElementById("elo-root");
+const evalRoot = document.getElementById("eval-root");
 const insightsRoot = document.getElementById("insights-root");
 
 let navigating = false;
@@ -84,6 +87,7 @@ function showRoots(app, tab) {
   puzzlesRoot.classList.toggle("hidden", app !== "puzzles");
   volRoot.classList.toggle("hidden", app !== "vol");
   if (eloRoot) eloRoot.classList.toggle("hidden", app !== "elo");
+  if (evalRoot) evalRoot.classList.toggle("hidden", app !== "eval");
   if (insightsRoot) insightsRoot.classList.toggle("hidden", app !== "insights");
   if (trainingNav) {
     trainingNav.classList.toggle("hidden", app !== "puzzles" || !TRAINING_TABS.has(tab));
@@ -113,20 +117,29 @@ function applyRoute(route, { push = false } = {}) {
     }
     if (window.__puzzlesSwitchTab) window.__puzzlesSwitchTab(route.tab);
     if (window.__eloSetActive) window.__eloSetActive(false);
+    if (window.__evalSetActive) window.__evalSetActive(false);
     if (window.__insightsSetActive) window.__insightsSetActive(false);
   } else if (route.app === "vol") {
     if (window.__puzzlesDeactivate) window.__puzzlesDeactivate();
     if (gameReviewNav) highlightSubnav(gameReviewNav, route.tab);
     if (window.__volSetTab) window.__volSetTab(route.tab);
     if (window.__eloSetActive) window.__eloSetActive(false);
+    if (window.__evalSetActive) window.__evalSetActive(false);
     if (window.__insightsSetActive) window.__insightsSetActive(false);
   } else if (route.app === "elo") {
     if (window.__puzzlesDeactivate) window.__puzzlesDeactivate();
     if (window.__eloSetActive) window.__eloSetActive(true);
+    if (window.__evalSetActive) window.__evalSetActive(false);
+    if (window.__insightsSetActive) window.__insightsSetActive(false);
+  } else if (route.app === "eval") {
+    if (window.__puzzlesDeactivate) window.__puzzlesDeactivate();
+    if (window.__eloSetActive) window.__eloSetActive(false);
+    if (window.__evalSetActive) window.__evalSetActive(true);
     if (window.__insightsSetActive) window.__insightsSetActive(false);
   } else if (route.app === "insights") {
     if (window.__puzzlesDeactivate) window.__puzzlesDeactivate();
     if (window.__eloSetActive) window.__eloSetActive(false);
+    if (window.__evalSetActive) window.__evalSetActive(false);
     if (window.__insightsSetActive) window.__insightsSetActive(true);
   }
 

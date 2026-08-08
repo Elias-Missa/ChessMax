@@ -278,6 +278,36 @@ CREATE TABLE IF NOT EXISTS elo_duels (
 );
 CREATE INDEX IF NOT EXISTS idx_elo_duels_players ON elo_duels(player_a, player_b, status);
 
+-- Guess the Eval Duels: positions with known engine eval (centipawns).
+CREATE TABLE IF NOT EXISTS eval_positions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fen TEXT NOT NULL,
+    true_eval_cp INTEGER NOT NULL,
+    fen_san_history TEXT,
+    source TEXT NOT NULL DEFAULT 'positions_db',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- One head-to-head eval duel: two players guess the position's eval within 1 minute; closest wins.
+CREATE TABLE IF NOT EXISTS eval_duels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    position_id INTEGER NOT NULL,
+    true_eval_cp INTEGER NOT NULL,
+    player_a INTEGER NOT NULL,
+    player_b INTEGER,
+    is_bot INTEGER NOT NULL DEFAULT 0,
+    guess_a INTEGER,
+    guess_b INTEGER,
+    deadline_ts INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    winner TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (position_id) REFERENCES eval_positions(id),
+    FOREIGN KEY (player_a) REFERENCES users(id),
+    FOREIGN KEY (player_b) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_eval_duels_players ON eval_duels(player_a, player_b, status);
+
 -- Insights / Game Review persistence (normalized for aggregation).
 CREATE TABLE IF NOT EXISTS games (
     game_id        TEXT PRIMARY KEY,

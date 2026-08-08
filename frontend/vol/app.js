@@ -333,6 +333,40 @@
 
     paintDemoBars();
     initFamousGame();
+    initFindabilitySimulator();
+  }
+
+  function initFindabilitySimulator() {
+    const slider = document.getElementById("whyEloSlider");
+    const valLabel = document.getElementById("whyEloValue");
+    if (!slider) return;
+
+    const update = () => {
+      const r = Number(slider.value);
+      if (valLabel) valLabel.textContent = `${r} Elo`;
+
+      const p1 = Math.min(99, Math.round(80 + (r - 600) * 0.012));
+      const p2 = Math.max(12, Math.min(96, Math.round(12 + (r - 600) * 0.042)));
+      const p3 = Math.max(3, Math.min(24, Math.round(3 + (r - 600) * 0.0105)));
+
+      const v1 = document.getElementById("probVal1");
+      const f1 = document.getElementById("probFill1");
+      if (v1) v1.textContent = `${p1}%`;
+      if (f1) f1.style.width = `${p1}%`;
+
+      const v2 = document.getElementById("probVal2");
+      const f2 = document.getElementById("probFill2");
+      if (v2) v2.textContent = `${p2}%`;
+      if (f2) f2.style.width = `${p2}%`;
+
+      const v3 = document.getElementById("probVal3");
+      const f3 = document.getElementById("probFill3");
+      if (v3) v3.textContent = `${p3}%`;
+      if (f3) f3.style.width = `${p3}%`;
+    };
+
+    slider.addEventListener("input", update);
+    update();
   }
 
   // ── Famous-game scrubber ────────────────────────────────────────────── //

@@ -745,3 +745,419 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Sub-Nav & Filter Toolbar ─────────────────────────────────────────── */
+
+.insights-subnav {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--ins-line);
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+  overflow-x: auto;
+}
+
+.insights-subtab {
+  background: transparent;
+  border: none;
+  color: var(--ins-dim);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.insights-subtab:hover {
+  color: var(--ins-fg);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.insights-subtab.active {
+  color: var(--ins-green-hi);
+  background: rgba(68, 214, 44, 0.12);
+  box-shadow: inset 0 -2px 0 var(--ins-green);
+}
+
+.insights-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--ins-panel-2);
+  border: 1px solid var(--ins-line);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+}
+
+.insights-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ins-mute);
+}
+
+.filter-btn {
+  background: transparent;
+  border: 1px solid var(--ins-line);
+  border-radius: 6px;
+  color: var(--ins-dim);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-btn:hover {
+  color: var(--ins-fg);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.filter-btn.active {
+  background: rgba(68, 214, 44, 0.15);
+  border-color: rgba(68, 214, 44, 0.5);
+  color: var(--ins-green-hi);
+}
+
+.insights-practice-top-btn {
+  font-size: 0.78rem;
+  padding: 0.35rem 0.8rem;
+}
+
+/* ── AI Performance Coach Banner ──────────────────────────────────────── */
+
+.insights-coach-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: linear-gradient(135deg, rgba(68, 214, 44, 0.08), rgba(22, 24, 29, 0.85));
+  border: 1px solid var(--ins-line-green);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+
+.coach-avatar {
+  font-size: 1.6rem;
+  line-height: 1;
+  background: rgba(68, 214, 44, 0.15);
+  border: 1px solid rgba(68, 214, 44, 0.3);
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.coach-content {
+  flex: 1;
+}
+
+.coach-title {
+  margin: 0 0 6px;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--ins-green-hi);
+  letter-spacing: 0.02em;
+}
+
+.coach-takeaways-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ins-fg);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.coach-takeaways-list li + li {
+  margin-top: 4px;
+}
+
+/* ── Metrics Grid & Subviews ─────────────────────────────────────────── */
+
+.insights-subview.hidden {
+  display: none;
+}
+
+.insights-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+/* ── Learnable Misses Practice Grid ────────────────────────────────── */
+
+.insights-practice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.practice-card {
+  background: var(--ins-ink);
+  border: 1px solid var(--ins-line);
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.practice-card:hover {
+  border-color: rgba(68, 214, 44, 0.5);
+  background: rgba(68, 214, 44, 0.04);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+.practice-card-head {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.practice-card-badge {
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: var(--ins-bad);
+  background: rgba(224, 68, 58, 0.12);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.practice-card-meta {
+  font-size: 0.78rem;
+  color: var(--ins-dim);
+}
+
+/* ── Game Explorer Table ─────────────────────────────────────────────── */
+
+.insights-explorer-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.explorer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+
+.explorer-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.explorer-header input {
+  background: var(--ins-ink);
+  border: 1px solid var(--ins-line);
+  border-radius: 8px;
+  color: var(--ins-fg);
+  padding: 0.4rem 0.7rem;
+  font-size: 0.82rem;
+  width: 220px;
+}
+
+.table-responsive {
+  overflow-x: auto;
+}
+
+.insights-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  text-align: left;
+}
+
+.insights-table th {
+  background: var(--ins-ink);
+  color: var(--ins-mute);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ins-line);
+}
+
+.insights-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ins-line);
+  color: var(--ins-dim);
+}
+
+.insights-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--ins-fg);
+}
+
+.sparkline-svg {
+  width: 80px;
+  height: 20px;
+  vertical-align: middle;
+}
+
+.sparkline-path {
+  fill: none;
+  stroke: var(--ins-green-hi);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* ── Position Inspector Modal (Chessground) ──────────────────────────── */
+
+.insights-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: insights-modal-fade 0.2s ease;
+}
+
+.insights-modal-overlay.hidden {
+  display: none;
+}
+
+.insights-modal-card {
+  background: var(--ins-panel-2);
+  border: 1px solid var(--ins-line-green);
+  border-radius: 16px;
+  width: min(720px, 95vw);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(68, 214, 44, 0.15);
+  overflow: hidden;
+}
+
+.insights-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--ins-line);
+  background: var(--ins-panel);
+}
+
+.insights-modal-eyebrow {
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ins-green);
+}
+
+.insights-modal-head h3 {
+  margin: 2px 0 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.modal-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--ins-dim);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modal-close-btn:hover {
+  color: var(--ins-fg);
+}
+
+.insights-modal-body {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  padding: 20px;
+}
+
+.modal-board {
+  width: 280px;
+  height: 280px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.modal-info-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.modal-meta-card {
+  background: var(--ins-ink);
+  border: 1px solid var(--ins-line);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal-meta-card .meta-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+
+.accent-green {
+  color: var(--ins-green-hi);
+}
+
+.modal-caption {
+  font-size: 0.85rem;
+  color: var(--ins-dim);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+}
+
+@keyframes insights-modal-fade {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (max-width: 640px) {
+  .insights-modal-body {
+    grid-template-columns: 1fr;
+  }
+  .modal-board {
+    width: 100%;
+    max-width: 280px;
+    margin: 0 auto;
+  }
+}
+

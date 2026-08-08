@@ -1,4 +1,4 @@
-/* Insights tab: chess.com window → Mistakes generate → practice deep link. */
+/* Insights Tab — ChessMax Performance Intelligence Dashboard */
 (function () {
   const root = document.getElementById("insights-root");
   if (!root) return;
@@ -16,15 +16,34 @@
   const runList = document.getElementById("insights-run-list");
   const runCountEl = document.getElementById("insights-run-count");
   const metricsSection = document.getElementById("insights-metrics");
-  const metricsBody = document.getElementById("insights-metrics-body");
   const progressBar = document.getElementById("insights-progress-bar");
   const statGames = document.getElementById("insights-stat-games");
   const statFixable = document.getElementById("insights-stat-fixable");
   const statPractice = document.getElementById("insights-stat-practice");
 
+  // Modal elements
+  const modalOverlay = document.getElementById("insights-modal-overlay");
+  const modalCloseBtn = document.getElementById("modal-close");
+  const modalTitle = document.getElementById("modal-title");
+  const modalEyebrow = document.getElementById("modal-eyebrow");
+  const modalMovePlayed = document.getElementById("modal-move-played");
+  const modalMoveBest = document.getElementById("modal-move-best");
+  const modalDeltaW = document.getElementById("modal-delta-w");
+  const modalFindability = document.getElementById("modal-findability");
+  const modalVolatility = document.getElementById("modal-volatility");
+  const modalCaption = document.getElementById("modal-caption");
+  const modalBtnPractice = document.getElementById("modal-btn-practice");
+  const modalBtnReview = document.getElementById("modal-btn-review");
+
   let generating = false;
-  let lastUnsolved = 0;
   let activeRunId = null;
+  let currentMetrics = null;
+  let activeSubtab = "overview";
+  let activeFilters = { color: "all", outcome: "all" };
+  let modalGround = null;
+
+  // Chart.js instances dictionary
+  const chartInstances = {};
 
   function setStatus(text) {
     if (statusEl) statusEl.textContent = text;
@@ -63,31 +82,13 @@
     }
     if (statPractice) {
       const n =
-        (metrics && metrics.practice_flags && metrics.practice_flags.count) ||
-        lastUnsolved ||
-        0;
+        (metrics && metrics.practice_flags && metrics.practice_flags.count) || 0;
       statPractice.textContent = n ? String(n) : "—";
     }
-  }
-
-  function practiceBtnHtml(kind, label) {
-    return (
-      `<div class="insights-card-foot">` +
-      `<button type="button" class="insights-ghost insights-practice-link" data-practice="${kind}">` +
-      `${escapeHtml(label)}</button></div>`
-    );
-  }
-
-  function metricCard(title, bodyHtml, opts) {
-    const o = opts || {};
-    const cls = ["insights-metric-card"];
-    if (o.trend) cls.push("insights-metric-card--trend");
-    if (o.wide) cls.push("insights-metric-card--wide");
-    return (
-      `<article class="${cls.join(" ")}">` +
-      (o.eyebrow ? `<p class="eyebrow">${escapeHtml(o.eyebrow)}</p>` : "") +
-      `<h3>${escapeHtml(title)}</h3>${bodyHtml}</article>`
-    );
+    if (practiceBtn) {
+      const n = (metrics && metrics.practice_flags && metrics.practice_flags.count) || 0;
+      practiceBtn.disabled = n <= 0;
+    }
   }
 
   function statusPill(status) {
@@ -112,38 +113,8 @@
     return resp;
   }
 
-  async function consumeEventStream(body, onEvent) {
-    const reader = body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() || "";
-      for (const chunk of parts) {
-        let event = "message";
-        let data = "";
-        for (const line of chunk.split("\n")) {
-          if (line.startsWith("event:")) event = line.slice(6).trim();
-          else if (line.startsWith("data:")) data += line.slice(5).trim();
-        }
-        if (!data) continue;
-        let parsed;
-        try {
-          parsed = JSON.parse(data);
-        } catch {
-          parsed = { message: data };
-        }
-        onEvent(event, parsed);
-      }
-    }
-  }
-
   function sourceLabel(source) {
-    if (source === "lichess") return "Lichess";
-    return "Chess.com";
+    return source === "lichess" ? "Lichess" : "Chess.com";
   }
 
   function practiceHref(kind) {
@@ -156,8 +127,538 @@
   function goPractice(kind) {
     const path = practiceHref(kind);
     if (window.__shellNavigate) window.__shellNavigate(path);
-    else if (window.__shellSwitchTab) window.__shellSwitchTab(kind === "mistakes" ? "mistakes" : kind);
+    else if (window.__shellSwitchTab) window.__shellSwitchTab("train");
   }
+
+  // ── Sub-Tab Navigation & Filtering ─────────────────────────────────────
+
+  function initSubTabs() {
+    const subnav = document.getElementById("insights-subnav");
+    if (!subnav) return;
+    subnav.querySelectorAll(".insights-subtab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const subtab = btn.getAttribute("data-subtab");
+        if (!subtab || subtab === activeSubtab) return;
+        activeSubtab = subtab;
+        subnav.querySelectorAll(".insights-subtab").forEach((b) => {
+          const isActive = b.getAttribute("data-subtab") === subtab;
+          b.classList.toggle("active", isActive);
+          b.setAttribute("aria-selected", isActive ? "true" : "false");
+        });
+        document.querySelectorAll(".insights-subview").forEach((view) => {
+          view.classList.toggle("hidden", view.id !== `insights-view-${subtab}`);
+        });
+        if (currentMetrics) {
+          renderActiveSubtab(currentMetrics);
+        }
+      });
+    });
+
+    // Filter buttons
+    document.querySelectorAll(".filter-btn[data-filter-color]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".filter-btn[data-filter-color]").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        activeFilters.color = btn.getAttribute("data-filter-color") || "all";
+        if (currentMetrics) renderActiveSubtab(currentMetrics);
+      });
+    });
+
+    document.querySelectorAll(".filter-btn[data-filter-outcome]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".filter-btn[data-filter-outcome]").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        activeFilters.outcome = btn.getAttribute("data-filter-outcome") || "all";
+        if (currentMetrics) renderActiveSubtab(currentMetrics);
+      });
+    });
+
+    if (practiceBtn) {
+      practiceBtn.addEventListener("click", () => goPractice("mistakes"));
+    }
+
+    // Modal close
+    if (modalCloseBtn) modalCloseBtn.addEventListener("click", hideModal);
+    if (modalOverlay) {
+      modalOverlay.addEventListener("click", (e) => {
+        if (e.target === modalOverlay) hideModal();
+      });
+    }
+  }
+
+  // ── Render Dashboard Views & Chart.js ───────────────────────────────────
+
+  function renderMetrics(metrics, gamesAnalyzed) {
+    currentMetrics = metrics;
+    updateHeroStats(metrics, gamesAnalyzed);
+    renderAICoachTakeaways(metrics.ai_coach_takeaways || []);
+    renderActiveSubtab(metrics);
+
+    // Auto re-computation trigger if full-tier features were queued
+    if (metrics.practice_flags && metrics.practice_flags.full_tier_queued > 0 && activeRunId) {
+      setTimeout(async () => {
+        try {
+          const resp = await api(`/api/insights/${activeRunId}/recompute`, { method: "POST" });
+          const data = await resp.json();
+          if (data.metrics) {
+            currentMetrics = data.metrics;
+            updateHeroStats(data.metrics, data.metrics.games);
+            renderActiveSubtab(data.metrics);
+          }
+        } catch {
+          /* best effort */
+        }
+      }, 12000);
+    }
+  }
+
+  function renderAICoachTakeaways(takeaways) {
+    const el = document.getElementById("insights-coach-takeaways");
+    if (!el) return;
+    if (!takeaways || !takeaways.length) {
+      el.innerHTML = "<li>Consistent overall play. Practice tactical misses to sharpen precision.</li>";
+      return;
+    }
+    el.innerHTML = takeaways
+      .map((t) => `<li>${escapeHtml(t)}</li>`)
+      .join("");
+  }
+
+  function renderActiveSubtab(m) {
+    if (activeSubtab === "overview") renderOverview(m);
+    else if (activeSubtab === "tactics") renderTactics(m);
+    else if (activeSubtab === "openings") renderOpenings(m);
+    else if (activeSubtab === "psychology") renderPsychology(m);
+    else if (activeSubtab === "explorer") renderExplorer(m);
+  }
+
+  // ── Sub-Tab 1: Overview ────────────────────────────────────────────────
+
+  function renderOverview(m) {
+    // 1. Accuracy Timeline Chart
+    const accData = (m.tier2 && m.tier2.standard && m.tier2.standard.accuracy_over_time) || [];
+    renderChart("chart-accuracy-timeline", {
+      type: "line",
+      data: {
+        labels: accData.map((d, i) => `#${i + 1}`),
+        datasets: [
+          {
+            label: "Game Accuracy %",
+            data: accData.map((d) => Math.round(d.accuracy)),
+            borderColor: "#57e83f",
+            backgroundColor: "rgba(68, 214, 44, 0.12)",
+            fill: true,
+            tension: 0.35,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+          },
+        ],
+      },
+      options: chartOptions({ yMin: 40, yMax: 100, ySuffix: "%" }),
+    });
+
+    // 2. Fixable Loss Card
+    const fixCard = document.getElementById("body-fixable-loss");
+    if (fixCard) {
+      const total = m.total_loss != null ? Math.round(m.total_loss) : "—";
+      const fixable = m.fixable_loss != null ? Math.round(m.fixable_loss) : "N/A";
+      const sample = m.fixable_sample_size || 0;
+      fixCard.innerHTML =
+        `<div class="stat-row">` +
+        `<div class="stat"><b>${total}</b><span>Total Δw</span></div>` +
+        `<div class="stat"><b>${fixable}</b><span>Fixable</span></div>` +
+        `</div>` +
+        `<p style="margin-top:8px">Win% dropped on humanly findable moves` +
+        (sample ? ` · n=${sample} full reviews.` : ` · background full tier queued.`) +
+        `</p>`;
+    }
+
+    // 3. Maia Intuition Card
+    const maiaCard = document.getElementById("body-maia-intuition");
+    if (maiaCard) {
+      const nat = m.maia_naturalness || {};
+      const rateStr = nat.naturalness_rate != null ? `${Math.round(nat.naturalness_rate * 100)}%` : "N/A";
+      maiaCard.innerHTML =
+        `<div class="stat-row">` +
+        `<div class="stat"><b>${rateStr}</b><span>Match Rate</span></div>` +
+        `</div>` +
+        `<p style="margin-top:8px"><strong>${escapeHtml(nat.label || "Maia Intuition")}</strong>` +
+        (nat.sample_size ? ` · based on ${nat.sample_size} findability points.` : "") +
+        `</p>`;
+    }
+  }
+
+  // ── Sub-Tab 2: Tactics & Blunders ──────────────────────────────────────
+
+  function renderTactics(m) {
+    // 1. Loss Taxonomy Donut Chart
+    const tax = m.loss_taxonomy && m.loss_taxonomy.counts ? m.loss_taxonomy.counts : {};
+    const taxKeys = Object.keys(tax);
+    const taxVals = Object.values(tax);
+    renderChart("chart-loss-taxonomy", {
+      type: "doughnut",
+      data: {
+        labels: taxKeys.map((k) => k.replaceAll("_", " ")),
+        datasets: [
+          {
+            data: taxVals,
+            backgroundColor: ["#e0443a", "#e8a53d", "#3db8c5", "#5d6877", "#44d62c"],
+            borderWidth: 1,
+            borderColor: "#1d2026",
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: "right", labels: { color: "#98a0aa" } } },
+      },
+    });
+
+    // 2. Missed Tactics Chart
+    const mt = (m.missed_tactics && m.missed_tactics.tags) || [];
+    renderChart("chart-missed-tactics", {
+      type: "bar",
+      data: {
+        labels: mt.slice(0, 6).map((t) => (t.tag || "").replaceAll("_", " ")),
+        datasets: [
+          {
+            label: "Missed Count",
+            data: mt.slice(0, 6).map((t) => t.n || 0),
+            backgroundColor: "rgba(224, 68, 58, 0.75)",
+            borderColor: "#e0443a",
+            borderWidth: 1,
+          },
+        ],
+      },
+      options: chartOptions({ indexAxis: "y", xMin: 0 }),
+    });
+
+    // 3. Practice Cards Grid
+    const grid = document.getElementById("insights-practice-grid");
+    if (grid) {
+      const items = (m.practice_flags && m.practice_flags.items) || [];
+      if (!items.length) {
+        grid.innerHTML = '<p class="insights-empty">No flagged mistakes found in this snapshot.</p>';
+        return;
+      }
+      grid.innerHTML = items
+        .slice(0, 8)
+        .map((it, idx) => {
+          const moveText = escapeHtml(it.san || it.move_uci || "?");
+          const deltaText = `Δw ${Math.round(it.delta_w || 0)}`;
+          const findText = it.findability != null ? `find ${it.findability}` : "shallow";
+          const oppText = it.opponent ? `vs ${escapeHtml(it.opponent)}` : "";
+          return (
+            `<div class="practice-card" data-practice-idx="${idx}">` +
+            `<div class="practice-card-head"><span>${moveText}</span><span class="practice-card-badge">${deltaText}</span></div>` +
+            `<div class="practice-card-meta">${findText} ${oppText}</div>` +
+            `</div>`
+          );
+        })
+        .join("");
+
+      grid.querySelectorAll(".practice-card[data-practice-idx]").forEach((card) => {
+        card.addEventListener("click", () => {
+          const idx = Number(card.getAttribute("data-practice-idx"));
+          if (items[idx]) showPositionModal(items[idx]);
+        });
+      });
+    }
+  }
+
+  // ── Sub-Tab 3: Openings & Phases ───────────────────────────────────────
+
+  function renderOpenings(m) {
+    const t2 = m.tier2 || {};
+
+    // 1. Phase Attribution Grouped Bar Chart
+    const phases = t2.phase_attribution || [];
+    renderChart("chart-phase-attribution", {
+      type: "bar",
+      data: {
+        labels: phases.map((p) => (p.phase || "").toUpperCase()),
+        datasets: [
+          {
+            label: "Δw per move lost",
+            data: phases.map((p) => p.delta_w_per_move || 0),
+            backgroundColor: ["#3db8c5", "#e8a53d", "#e0443a"],
+            borderRadius: 6,
+          },
+        ],
+      },
+      options: chartOptions({ yMin: 0 }),
+    });
+
+    // 2. Repertoire Depth Card
+    const repCard = document.getElementById("body-repertoire-depth");
+    if (repCard) {
+      const r = t2.repertoire_depth || {};
+      repCard.innerHTML =
+        `<div class="stat-row">` +
+        `<div class="stat"><b>${r.mean_leave_book_ply != null ? Math.round(r.mean_leave_book_ply) : "—"}</b><span>Leave book</span></div>` +
+        `<div class="stat"><b>${r.mean_delta_w_next_5 != null ? r.mean_delta_w_next_5.toFixed(1) : "—"}</b><span>Next-5 Δw</span></div>` +
+        `</div>`;
+    }
+
+    // 3. Castling Card
+    const castleCard = document.getElementById("body-castling-stats");
+    if (castleCard) {
+      const c = t2.castling || {};
+      const rows = Object.entries(c)
+        .filter(([, v]) => (v.n || 0) > 0)
+        .map(([k, v]) => `<div class="meta"><strong>${escapeHtml(k.replaceAll("_", " "))}</strong>: ${pct(v.win_rate)} (n=${v.n})</div>`)
+        .join("");
+      castleCard.innerHTML = rows || '<p class="insights-empty">No castling data.</p>';
+    }
+
+    // 4. ECO Openings Table
+    const ecoCard = document.getElementById("body-eco-table");
+    if (ecoCard) {
+      const ecoRows = (t2.standard && t2.standard.by_eco) || [];
+      if (!ecoRows.length) {
+        ecoCard.innerHTML = '<p class="insights-empty">No ECO data.</p>';
+        return;
+      }
+      const tableHtml =
+        `<table class="insights-table">` +
+        `<thead><tr><th>ECO</th><th>Games</th><th>Win Rate</th></tr></thead>` +
+        `<tbody>` +
+        ecoRows.map((e) => `<tr><td><strong>${escapeHtml(e.eco)}</strong></td><td>${e.n}</td><td>${pct(e.win_rate)}</td></tr>`).join("") +
+        `</tbody></table>`;
+      ecoCard.innerHTML = tableHtml;
+    }
+  }
+
+  // ── Sub-Tab 4: Speed & Psychology ──────────────────────────────────────
+
+  function renderPsychology(m) {
+    // 1. Scramble Decay Chart
+    const scramble = (m.time_scramble_decay && m.time_scramble_decay.buckets) || [];
+    renderChart("chart-scramble-decay", {
+      type: "line",
+      data: {
+        labels: scramble.map((b) => b.label),
+        datasets: [
+          {
+            label: "Δw per move",
+            data: scramble.map((b) => b.delta_w_per_move),
+            borderColor: "#e0443a",
+            backgroundColor: "rgba(224, 68, 58, 0.15)",
+            fill: true,
+            tension: 0.3,
+          },
+        ],
+      },
+      options: chartOptions({ yMin: 0 }),
+    });
+
+    // 2. Time vs Criticality Chart
+    const tc = m.time_vs_criticality || {};
+    renderChart("chart-time-criticality", {
+      type: "bar",
+      data: {
+        labels: ["High Volatility (>60)", "Quiet Position (<30)"],
+        datasets: [
+          {
+            label: "Avg Think Time (seconds)",
+            data: [tc.avg_time_high_vol || 0, tc.avg_time_low_vol || 0],
+            backgroundColor: ["#e8a53d", "#3db8c5"],
+            borderRadius: 6,
+          },
+        ],
+      },
+      options: chartOptions({ yMin: 0 }),
+    });
+
+    // 3. Session & Tilt Chart
+    const t3 = m.tier3 || {};
+    const sessionIdx = t3.by_session_index || [];
+    renderChart("chart-session-tilt", {
+      type: "bar",
+      data: {
+        labels: sessionIdx.slice(0, 6).map((s) => `Game #${s.game_index}`),
+        datasets: [
+          {
+            label: "Win Rate %",
+            data: sessionIdx.slice(0, 6).map((s) => Math.round((s.win_rate || 0) * 100)),
+            backgroundColor: "#57e83f",
+            borderRadius: 6,
+          },
+        ],
+      },
+      options: chartOptions({ yMin: 0, yMax: 100, ySuffix: "%" }),
+    });
+  }
+
+  // ── Sub-Tab 5: Game Explorer ───────────────────────────────────────────
+
+  function renderExplorer(m) {
+    const tbody = document.getElementById("insights-explorer-tbody");
+    const searchInput = document.getElementById("insights-explorer-search");
+    if (!tbody) return;
+
+    let games = m.game_explorer || [];
+    const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
+
+    // Apply active filters
+    games = games.filter((g) => {
+      if (activeFilters.color !== "all" && g.user_color !== activeFilters.color) return false;
+      if (activeFilters.outcome !== "all" && g.outcome !== activeFilters.outcome) return false;
+      if (query) {
+        const matchOpp = (g.opponent || "").toLowerCase().includes(query);
+        const matchEco = (g.eco || "").toLowerCase().includes(query);
+        if (!matchOpp && !matchEco) return false;
+      }
+      return true;
+    });
+
+    if (!games.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="insights-empty">No matching games.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = games
+      .slice(0, 50)
+      .map((g) => {
+        const dateStr = g.played_at ? String(g.played_at).slice(0, 10) : "—";
+        const colorBadge = `<span class="insights-pill">${escapeHtml(g.user_color)}</span>`;
+        const outcomeClass = g.outcome === "win" ? "insights-pill--ok" : g.outcome === "loss" ? "insights-pill--err" : "insights-pill--busy";
+        const outcomeBadge = `<span class="insights-pill ${outcomeClass}">${escapeHtml(g.result)}</span>`;
+        const accStr = g.accuracy != null ? `${Math.round(g.accuracy)}%` : "—";
+        const sparkSvg = renderSparklineSvg(g.sparkline || []);
+
+        return (
+          `<tr>` +
+          `<td>${escapeHtml(dateStr)}</td>` +
+          `<td>${colorBadge}</td>` +
+          `<td><strong>${escapeHtml(g.opponent)}</strong> <span class="meta">(${g.opponent_rating || "?"})</span></td>` +
+          `<td>${escapeHtml(g.eco)}</td>` +
+          `<td>${outcomeBadge}</td>` +
+          `<td>${accStr}</td>` +
+          `<td>${sparkSvg}</td>` +
+          `<td><button type="button" class="insights-ghost" data-explorer-game="${escapeHtml(g.game_id)}">Review</button></td>` +
+          `</tr>`
+        );
+      })
+      .join("");
+
+    tbody.querySelectorAll("button[data-explorer-game]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const gid = btn.getAttribute("data-explorer-game");
+        if (gid && window.__shellNavigate) window.__shellNavigate(`/game-review?game=${gid}`);
+      });
+    });
+
+    if (searchInput) {
+      searchInput.oninput = () => renderExplorer(m);
+    }
+  }
+
+  function renderSparklineSvg(points) {
+    if (!points || !points.length) return "—";
+    const w = 80;
+    const h = 20;
+    const step = w / Math.max(1, points.length - 1);
+    const pathD = points
+      .map((val, idx) => {
+        const x = idx * step;
+        const y = h - val * h;
+        return `${idx === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+      })
+      .join(" ");
+    return `<svg class="sparkline-svg"><path class="sparkline-path" d="${pathD}" /></svg>`;
+  }
+
+  // ── Position Inspector Modal (Chessground) ─────────────────────────────
+
+  function showPositionModal(item) {
+    if (!modalOverlay) return;
+
+    if (modalEyebrow) modalEyebrow.textContent = `Flagged Miss (Ply ${item.ply || 0})`;
+    if (modalTitle) modalTitle.textContent = `${item.san || item.move_uci || "Position"} — Δw ${Math.round(item.delta_w || 0)}`;
+    if (modalMovePlayed) modalMovePlayed.textContent = item.san || item.move_uci || "—";
+    if (modalMoveBest) modalMoveBest.textContent = item.best_uci || "Engine top move";
+    if (modalDeltaW) modalDeltaW.textContent = `${Math.round(item.delta_w || 0)} win% points`;
+    if (modalFindability) modalFindability.textContent = item.findability != null ? `${item.findability} / 100` : "Shallow tier";
+    if (modalVolatility) modalVolatility.textContent = item.volatility != null ? Math.round(item.volatility) : "—";
+    if (modalCaption) {
+      modalCaption.textContent = item.findability != null && item.findability > 60
+        ? "This move was costly but highly findable for a human player at your rating level."
+        : "Costly position miss. Practice in Trainer to build pattern recognition.";
+    }
+
+    if (modalBtnPractice) {
+      modalBtnPractice.onclick = () => {
+        hideModal();
+        goPractice("mistakes");
+      };
+    }
+    if (modalBtnReview) {
+      modalBtnReview.onclick = () => {
+        hideModal();
+        if (item.game_id && window.__shellNavigate) window.__shellNavigate(`/game-review?game=${item.game_id}`);
+      };
+    }
+
+    modalOverlay.classList.remove("hidden");
+    modalOverlay.setAttribute("aria-hidden", "false");
+
+    // Init Chessground board inside modal
+    const boardEl = document.getElementById("modal-board");
+    if (boardEl && window.Chessground) {
+      const fen = item.fen || "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+      const orientation = item.user_color === "black" ? "black" : "white";
+      if (!modalGround) {
+        modalGround = window.Chessground(boardEl, {
+          fen: fen,
+          orientation: orientation,
+          viewOnly: true,
+        });
+      } else {
+        modalGround.set({ fen: fen, orientation: orientation });
+      }
+    }
+  }
+
+  function hideModal() {
+    if (modalOverlay) {
+      modalOverlay.classList.add("hidden");
+      modalOverlay.setAttribute("aria-hidden", "true");
+    }
+  }
+
+  // ── Chart.js Helper ────────────────────────────────────────────────────
+
+  function renderChart(id, config) {
+    const canvas = document.getElementById(id);
+    if (!canvas || !window.Chart) return;
+    if (chartInstances[id]) {
+      chartInstances[id].destroy();
+    }
+    chartInstances[id] = new window.Chart(canvas, config);
+  }
+
+  function chartOptions(opts) {
+    const o = opts || {};
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: o.indexAxis || "x",
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: "rgba(255,255,255,0.06)" }, ticks: { color: "#98a0aa" } },
+        y: {
+          min: o.yMin,
+          max: o.yMax,
+          grid: { color: "rgba(255,255,255,0.06)" },
+          ticks: { color: "#98a0aa", callback: (v) => `${v}${o.ySuffix || ""}` },
+        },
+      },
+    };
+  }
+
+  // ── Run Loading & Management ────────────────────────────────────────────
 
   async function loadRuns() {
     try {
@@ -167,8 +668,7 @@
       if (runCountEl) runCountEl.textContent = String(runs.length);
       if (!runList) return;
       if (!runs.length) {
-        runList.innerHTML =
-          '<li class="insights-empty" style="cursor:default;border:none;background:transparent;box-shadow:none">No runs yet — generate your first snapshot.</li>';
+        runList.innerHTML = '<li class="insights-empty">No runs yet — generate your first snapshot.</li>';
         return;
       }
       runList.innerHTML = runs
@@ -179,21 +679,18 @@
           const games = r.games_analyzed ?? 0;
           const windowDays = r.window_days ?? "—";
           const tc = r.time_class || "—";
-          const fixable =
-            r.metrics && r.metrics.fixable_loss != null
-              ? ` · fixable ${Math.round(r.metrics.fixable_loss)}`
-              : "";
+          const fixable = r.metrics && r.metrics.fixable_loss != null ? ` · fixable ${Math.round(r.metrics.fixable_loss)}` : "";
           const active = activeRunId && activeRunId === r.run_id ? " is-active" : "";
           return (
             `<li class="${active.trim()}" data-run-id="${escapeHtml(r.run_id || "")}">` +
             `<div><div class="run-title">${escapeHtml(handle)}</div>` +
-            `<div class="meta">${escapeHtml(source)} · ${escapeHtml(String(windowDays))}d ` +
-            `${escapeHtml(tc)} · ${games} games${fixable}</div></div>` +
+            `<div class="meta">${escapeHtml(source)} · ${escapeHtml(String(windowDays))}d ${escapeHtml(tc)} · ${games} games${fixable}</div></div>` +
             statusPill(status) +
             `</li>`
           );
         })
         .join("");
+
       runList.querySelectorAll("li[data-run-id]").forEach((li) => {
         li.addEventListener("click", async () => {
           const id = li.getAttribute("data-run-id");
@@ -208,24 +705,19 @@
               renderMetrics(data.metrics, data.games_analyzed);
               if (metricsSection) metricsSection.classList.remove("hidden");
             }
-            setStatus(
-              `Loaded run — ${data.games_analyzed || 0} games` +
-                (data.games_capped ? " (capped)." : "."),
-            );
+            setStatus(`Loaded run — ${data.games_analyzed || 0} games.`);
           } catch (err) {
             setStatus(err.message);
           }
         });
       });
     } catch (err) {
-      if (runList) {
-        runList.innerHTML = `<li class="insights-empty">${escapeHtml(err.message)}</li>`;
-      }
+      if (runList) runList.innerHTML = `<li class="insights-empty">${escapeHtml(err.message)}</li>`;
     }
   }
 
   async function loadMetrics() {
-    if (!metricsSection || !metricsBody) return;
+    if (!metricsSection) return;
     try {
       const resp = await api("/api/insights?limit=1");
       const data = await resp.json();
@@ -239,375 +731,13 @@
       renderMetrics(m, run.games_analyzed);
       metricsSection.classList.remove("hidden");
     } catch {
-      // Insights API may not exist until Phase 2 — ignore.
       metricsSection.classList.add("hidden");
     }
-  }
-
-  function renderMetrics(metrics, gamesAnalyzed) {
-    if (!metricsBody) return;
-    updateHeroStats(metrics, gamesAnalyzed);
-    const parts = [];
-    if (metrics.trend && (metrics.trend.highlights || []).length) {
-      const rows = metrics.trend.highlights
-        .map((h) => `<div class="meta">${escapeHtml(h)}</div>`)
-        .join("");
-      const prevN = metrics.trend.previous_games_analyzed;
-      const priorLabel =
-        prevN != null ? `previous ${prevN}-game snapshot` : "previous snapshot";
-      parts.push(
-        metricCard(
-          "Since last run",
-          `<p>Compared to your ${escapeHtml(priorLabel)} for these filters.</p>${rows}`,
-          { eyebrow: "Progress", trend: true },
-        ),
-      );
-    }
-    if (metrics.total_loss != null || metrics.fixable_loss != null) {
-      const total = metrics.total_loss != null ? Math.round(metrics.total_loss) : "—";
-      const fixable =
-        metrics.fixable_loss != null ? Math.round(metrics.fixable_loss) : "N/A";
-      const sample = metrics.fixable_sample_size ?? 0;
-      parts.push(
-        metricCard(
-          "Fixable loss",
-          `<div class="stat-row">` +
-            `<div class="stat"><b>${total}</b><span>Total Δw</span></div>` +
-            `<div class="stat"><b>${fixable}</b><span>Fixable</span></div>` +
-            `</div>` +
-            `<p>Win% points you dropped` +
-            (sample ? ` · full-tier n=${sample}` : " · needs full review for findability") +
-            `.</p>` +
-            practiceBtnHtml("mistakes", "Practice this → Your Mistakes"),
-          { eyebrow: "Tier 1" },
-        ),
-      );
-    }
-    if (metrics.loss_taxonomy) {
-      const tax = metrics.loss_taxonomy;
-      const colors = {
-        converted_then_lost: "#e0443a",
-        cliff: "#e8a53d",
-        scramble: "#3db8c5",
-        never_in_it: "#5d6877",
-        bleed: "#44d62c",
-      };
-      const entries = Object.entries(tax.counts || tax);
-      const total = entries.reduce((s, [, n]) => s + Number(n || 0), 0) || 1;
-      const bars = entries
-        .map(
-          ([k, n]) =>
-            `<span style="width:${(100 * Number(n)) / total}%;background:${colors[k] || "#99a0aa"}" title="${k}: ${n}"></span>`,
-        )
-        .join("");
-      const legend = entries
-        .map(
-          ([k, n]) =>
-            `<span><i style="background:${colors[k] || "#99a0aa"}"></i>${k.replaceAll("_", " ")} (${n})</span>`,
-        )
-        .join("");
-      parts.push(
-        metricCard(
-          "Loss taxonomy",
-          `<p>How your games slip — cliffs vs slow bleeds in one stacked view.</p>` +
-            `<div class="insights-bars">${bars}</div>` +
-            `<div class="insights-legend">${legend}</div>` +
-            practiceBtnHtml("mistakes", "Practice this → Your Mistakes"),
-          { eyebrow: "Tier 1", wide: true },
-        ),
-      );
-    }
-    if (metrics.time_vs_criticality) {
-      const t = metrics.time_vs_criticality;
-      parts.push(
-        metricCard(
-          "Time vs criticality",
-          `<div class="stat-row">` +
-            `<div class="stat"><b>${fmtSec(t.avg_time_high_vol)}</b><span>High vol</span></div>` +
-            `<div class="stat"><b>${fmtSec(t.avg_time_low_vol)}</b><span>Quiet</span></div>` +
-            `</div>` +
-            `<p>` +
-            (t.note ? escapeHtml(t.note) : "Average think time on sharp vs quiet positions.") +
-            `</p>` +
-            practiceBtnHtml("forced", "Practice this → Forced Lines"),
-          { eyebrow: "Tier 1" },
-        ),
-      );
-    }
-    if (metrics.volatility_profile) {
-      const rows = (metrics.volatility_profile.buckets || [])
-        .map(
-          (b) =>
-            `<div class="meta">${escapeHtml(b.label)}: ` +
-            `${Math.round((b.win_rate || 0) * 100)}% win` +
-            ` (n=${b.n || 0})</div>`,
-        )
-        .join("");
-      parts.push(
-        metricCard(
-          "Volatility profile",
-          `${rows || "<p>No data yet.</p>"}` +
-            practiceBtnHtml("defense", "Practice this → Defense Gym"),
-          { eyebrow: "Tier 1" },
-        ),
-      );
-    }
-
-    const t2 = metrics.tier2 || {};
-    if (t2.phase_attribution && t2.phase_attribution.length) {
-      const rows = t2.phase_attribution
-        .map(
-          (p) =>
-            `<div class="meta">${escapeHtml(p.phase)}: ` +
-            `${(p.delta_w_per_move || 0).toFixed(1)} Δw/move ` +
-            `(${Math.round(p.total_delta_w || 0)} total, n=${p.moves || 0})</div>`,
-        )
-        .join("");
-      parts.push(
-        metricCard(
-          "Phase attribution",
-          `<p>Eval swing per move by phase — not confounded by how you entered.</p>${rows}`,
-          { eyebrow: "Tier 2" },
-        ),
-      );
-    }
-    if (t2.repertoire_depth && t2.repertoire_depth.n) {
-      const r = t2.repertoire_depth;
-      parts.push(
-        metricCard(
-          "Repertoire depth",
-          `<div class="stat-row">` +
-            `<div class="stat"><b>${r.mean_leave_book_ply != null ? Math.round(r.mean_leave_book_ply) : "—"}</b><span>Leave book</span></div>` +
-            `<div class="stat"><b>${r.mean_delta_w_next_5 != null ? r.mean_delta_w_next_5.toFixed(1) : "—"}</b><span>Next-5 Δw</span></div>` +
-            `</div>` +
-            `<p>Separates bad opening choice from fine openings with weak follow-ups.</p>`,
-          { eyebrow: "Tier 2" },
-        ),
-      );
-    }
-    if (t2.conversion || t2.comeback) {
-      const c = t2.conversion || {};
-      const b = t2.comeback || {};
-      parts.push(
-        metricCard(
-          "Conversion vs comeback",
-          `<div class="stat-row">` +
-            `<div class="stat"><b>${pct(c.win_rate)}</b><span>Convert (&gt;70%)</span></div>` +
-            `<div class="stat"><b>${pct(b.win_rate)}</b><span>Comeback (&lt;30%)</span></div>` +
-            `</div>` +
-            `<p>n=${c.n || 0} converting · n=${b.n || 0} scrambling back.</p>`,
-          { eyebrow: "Tier 2" },
-        ),
-      );
-    }
-    if (t2.castling) {
-      const rows = Object.entries(t2.castling)
-        .filter(([, v]) => (v.n || 0) > 0)
-        .map(
-          ([k, v]) =>
-            `<div class="meta">${escapeHtml(k.replaceAll("_", " "))}: ${pct(v.win_rate)} (n=${v.n})</div>`,
-        )
-        .join("");
-      if (rows) {
-        parts.push(metricCard("Castling", rows, { eyebrow: "Tier 2" }));
-      }
-    }
-    if (t2.opponent_relative && t2.opponent_relative.length) {
-      const rows = t2.opponent_relative
-        .map((b) => {
-          const phases = (b.phase_attribution || [])
-            .map((p) => `${p.phase} ${(p.delta_w_per_move || 0).toFixed(1)}`)
-            .join(", ");
-          return (
-            `<div class="meta"><strong>${escapeHtml(b.band)}</strong>: ${pct(b.win_rate)} ` +
-            `(n=${b.n}) · Δw/move ${escapeHtml(phases)}</div>`
-          );
-        })
-        .join("");
-      parts.push(
-        metricCard(
-          "Opponent-relative",
-          `<p>Win rate and phase loss vs lower / similar / higher-rated opponents.</p>${rows}`,
-          { eyebrow: "Tier 2", wide: true },
-        ),
-      );
-    }
-    if (t2.missed_wins) {
-      const mw = t2.missed_wins;
-      const examples = (mw.examples || [])
-        .slice(0, 5)
-        .map(
-          (ex) =>
-            `<div class="meta">vs ${escapeHtml(ex.opponent || "?")}: peak ${(ex.peak_win_prob * 100).toFixed(0)}% ` +
-            `→ slipped ${escapeHtml(ex.slip_san || "?")} (ply ${ex.slip_ply || "—"})</div>`,
-        )
-        .join("");
-      parts.push(
-        metricCard(
-          "Missed wins",
-          `<div class="stat-row"><div class="stat"><b>${mw.count || 0}</b><span>Slipped</span></div></div>` +
-            `<p>Games that reached &gt;85% win chance and weren’t won.</p>${examples}`,
-          { eyebrow: "Tier 2" },
-        ),
-      );
-    }
-    if (t2.standard) {
-      const s = t2.standard;
-      const color = Object.entries(s.by_color || {})
-        .map(([k, v]) => `${k} ${pct(v.win_rate)} (n=${v.n})`)
-        .join(" · ");
-      const eco = (s.by_eco || [])
-        .slice(0, 6)
-        .map((e) => `<div class="meta">${escapeHtml(e.eco)}: ${pct(e.win_rate)} (n=${e.n})</div>`)
-        .join("");
-      const lengths = (s.game_length || [])
-        .map((g) => `${escapeHtml(g.label)} ${pct(g.win_rate)} (n=${g.n})`)
-        .join(" · ");
-      const hours = (s.by_hour || [])
-        .slice(0, 8)
-        .map((h) => `${String(h.hour).padStart(2, "0")}:00 ${pct(h.win_rate)}`)
-        .join(" · ");
-      parts.push(
-        metricCard(
-          "Standard set",
-          `<p>${escapeHtml(color || "No color split yet.")}</p>` +
-            (eco ? `<p class="meta">By ECO</p>${eco}` : "") +
-            (lengths ? `<p class="meta">Length: ${escapeHtml(lengths)}</p>` : "") +
-            (hours ? `<p class="meta">Time of day: ${escapeHtml(hours)}</p>` : ""),
-          { eyebrow: "Tier 2", wide: true },
-        ),
-      );
-    }
-
-    if (metrics.volatility_steering) {
-      const s = metrics.volatility_steering;
-      parts.push(
-        metricCard(
-          "Volatility steering",
-          `<div class="stat-row">` +
-            `<div class="stat"><b>${fmtNum(s.mean_vol_played_best)}</b><span>Played best</span></div>` +
-            `<div class="stat"><b>${fmtNum(s.mean_vol_played_alt)}</b><span>Deviated</span></div>` +
-            `</div>` +
-            `<p>` +
-            (s.note ? escapeHtml(s.note) : "Sharpness of positions you chose vs engine alternatives.") +
-            `</p>`,
-          { eyebrow: "Advanced" },
-        ),
-      );
-    }
-
-    const t3 = metrics.tier3 || {};
-    if (t3.sessions || (t3.by_session_index && t3.by_session_index.length)) {
-      const idx = (t3.by_session_index || [])
-        .slice(0, 6)
-        .map(
-          (g) =>
-            `<div class="meta">Game #${g.game_index}: ${pct(g.win_rate)}` +
-            (g.mean_accuracy != null ? ` · acc ${Math.round(g.mean_accuracy)}` : "") +
-            ` (n=${g.n})</div>`,
-        )
-        .join("");
-      const after = t3.after_loss || {};
-      const lens = Object.values(t3.by_session_length || {})
-        .filter((v) => v.n)
-        .map((v) => `${escapeHtml(v.label)} ${pct(v.win_rate)} (n=${v.n})`)
-        .join(" · ");
-      parts.push(
-        metricCard(
-          "Tilt & sessions",
-          `<p><strong>${t3.sessions || 0}</strong> sessions` +
-            (t3.note ? ` — ${escapeHtml(t3.note)}` : ".") +
-            `</p>${idx}` +
-            `<p class="meta">After a loss: ${pct(after.win_rate)} (n=${after.n || 0})` +
-            (after.mean_accuracy != null ? ` · acc ${Math.round(after.mean_accuracy)}` : "") +
-            `</p>` +
-            (lens ? `<p class="meta">By session length: ${lens}</p>` : ""),
-          { eyebrow: "Tier 3", wide: true },
-        ),
-      );
-    }
-
-    if (metrics.missed_tactics && (metrics.missed_tactics.tags || []).length) {
-      const mt = metrics.missed_tactics;
-      const rows = mt.tags
-        .slice(0, 8)
-        .map(
-          (t) =>
-            `<div class="meta"><strong>${escapeHtml(String(t.tag || "").replaceAll("_", " "))}</strong>: ` +
-            `n=${t.n || 0} · mean Δw ${(t.mean_delta_w || 0).toFixed(1)}` +
-            (t.high_findability_n
-              ? ` · ${t.high_findability_n} with findability &gt; 60`
-              : "") +
-            `</div>`,
-        )
-        .join("");
-      const sample = mt.full_tier_sample_size ?? 0;
-      parts.push(
-        metricCard(
-          "Missed tactics",
-          `<p>${escapeHtml(mt.note || "Heuristic tags on costly misses, crossed with findability.")}` +
-            (sample
-              ? ` <span class="meta">(full-tier n=${sample})</span>`
-              : ' <span class="meta">(needs full review for findability cross)</span>') +
-            `</p>${rows}` +
-            practiceBtnHtml("mistakes", "Practice this → Your Mistakes"),
-          { eyebrow: "Tier 1", wide: true },
-        ),
-      );
-    }
-
-    const pf = metrics.practice_flags || {};
-    if (pf.count) {
-      const items = (pf.items || [])
-        .slice(0, 8)
-        .map(
-          (it) =>
-            `<div class="meta">${escapeHtml(it.san || it.move_uci || "?")} ` +
-            `Δw ${Math.round(it.delta_w || 0)}` +
-            (it.findability != null ? ` · find ${it.findability}` : " · needs full") +
-            (it.opponent ? ` · vs ${escapeHtml(it.opponent)}` : "") +
-            `</div>`,
-        )
-        .join("");
-      parts.push(
-        metricCard(
-          "Practice from your games",
-          `<div class="stat-row"><div class="stat"><b>${pf.count}</b><span>Flagged</span></div></div>` +
-            `<p>` +
-            (pf.full_tier_sample
-              ? `${pf.full_tier_sample} had findability scores`
-              : "Shallow run — full review upgrades findability") +
-            `. Threshold Δw ≥ ${pf.delta_w_threshold || 15}` +
-            (pf.findability_min ? `, findability &gt; ${pf.findability_min} when known` : "") +
-            `.</p>${items}` +
-            practiceBtnHtml("mistakes", "Practice this → Your Mistakes"),
-          { eyebrow: "Action", wide: true },
-        ),
-      );
-    }
-
-    metricsBody.innerHTML =
-      parts.join("") ||
-      '<p class="insights-empty">No metrics yet — generate a run to illuminate your patterns.</p>';
-    metricsBody.querySelectorAll(".insights-practice-link").forEach((btn) => {
-      btn.addEventListener("click", () => goPractice(btn.getAttribute("data-practice") || "mistakes"));
-    });
-    if (practiceBtn && pf.count) practiceBtn.disabled = false;
-  }
-
-  function fmtNum(v) {
-    if (v == null || Number.isNaN(Number(v))) return "—";
-    return Number(v).toFixed(0);
   }
 
   function pct(rate) {
     if (rate == null || Number.isNaN(Number(rate))) return "—";
     return `${Math.round(Number(rate) * 100)}%`;
-  }
-
-  function fmtSec(v) {
-    if (v == null || Number.isNaN(Number(v))) return "—";
-    return `${Math.round(Number(v))}s`;
   }
 
   function escapeHtml(s) {
@@ -632,65 +762,14 @@
     if (capNote) capNote.classList.add("hidden");
     setStatus(refresh ? "Refreshing…" : "Starting…");
 
-    // Prefer Phase 2 Insights API; fall back to Mistakes generate SSE (chess.com only).
     try {
-      const started = await tryStartInsightsRun(username, windowDays, timeClass, source);
-      if (started) {
-        await pollInsightsRun(started);
+      const runId = await tryStartInsightsRun(username, windowDays, timeClass, source);
+      if (runId) {
+        await pollInsightsRun(runId);
         await loadRuns();
         await loadMetrics();
-        await refreshPracticeButton();
         return;
       }
-    } catch (err) {
-      // Fall through to Mistakes if Insights endpoint missing or failed early.
-      if (!String(err.message || "").includes("404")) {
-        setStatus(err.message);
-        setBusy(false);
-        return;
-      }
-    }
-
-    if (source === "lichess") {
-      setStatus("Lichess ingest requires the Insights API.");
-      setBusy(false);
-      return;
-    }
-
-    try {
-      const resp = await api("/api/mistakes/generate", {
-        method: "POST",
-        body: JSON.stringify({
-          chesscom_username: username,
-          since_days: windowDays,
-          time_class: timeClass,
-          max_games: 300,
-        }),
-      });
-      await consumeEventStream(resp.body, (event, data) => {
-        if (event === "start") {
-          setStatus(`Scanning ${username}'s ${timeClass} games (last ${windowDays} days)…`);
-        } else if (event === "progress") {
-          if (data.games_capped && capNote) capNote.classList.remove("hidden");
-          setStatus(
-            `Scanned ${data.games_scanned || 0} games · ${data.puzzles_created || 0} puzzles found…`,
-          );
-        } else if (event === "done") {
-          if (data.games_capped && capNote) capNote.classList.remove("hidden");
-          lastUnsolved = data.total_unsolved || 0;
-          const created = data.puzzles_created || 0;
-          setStatus(
-            created > 0
-              ? `Done — ${created} new puzzles (${lastUnsolved} unsolved total).`
-              : `Done — no new puzzles (${lastUnsolved} unsolved waiting).`,
-          );
-          if (practiceBtn) practiceBtn.disabled = lastUnsolved <= 0;
-        } else if (event === "error") {
-          setStatus(data.message || "Generation failed.");
-        }
-      });
-      await loadRuns();
-      await refreshPracticeButton();
     } catch (err) {
       setStatus(err.message);
     } finally {
@@ -711,7 +790,6 @@
         time_class: timeClass,
       }),
     });
-    if (resp.status === 404) return null;
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       throw new Error(err.detail || "Insights start failed");
@@ -723,101 +801,44 @@
   async function pollInsightsRun(runId) {
     setStatus("Analyzing games…");
     activeRunId = runId;
-    let lastProgress = -1;
-    let stallTicks = 0;
-    // Keep polling while progress advances; only give up after a long stall.
     for (let i = 0; i < 7200; i++) {
       const resp = await api(`/api/insights/${runId}`);
       const data = await resp.json();
       if (data.games_capped && capNote) capNote.classList.remove("hidden");
       const progress = Math.round((data.progress || 0) * 100);
       setProgress(Math.max(8, progress));
-      setStatus(
-        `${data.status || "running"} — ${data.games_analyzed || 0} games (${progress}%)`,
-      );
-      if (progress > lastProgress || (data.games_analyzed || 0) > 0) {
-        if (progress !== lastProgress) stallTicks = 0;
-        lastProgress = progress;
-      } else {
-        stallTicks += 1;
-      }
+      setStatus(`${data.status || "running"} — ${data.games_analyzed || 0} games (${progress}%)`);
+
       if (data.status === "complete" || data.status === "done") {
         setProgress(100);
         if (data.metrics) renderMetrics(data.metrics, data.games_analyzed);
         if (metricsSection) metricsSection.classList.remove("hidden");
-        setStatus(
-          `Done — ${data.games_analyzed || 0} games analyzed` +
-            (data.games_capped ? " (capped at 300)." : "."),
-        );
+        setStatus(`Done — ${data.games_analyzed || 0} games analyzed.`);
         setBusy(false);
         return;
       }
       if (data.status === "error") {
         throw new Error(data.detail || data.message || "Insights run failed");
       }
-      // 5 minutes with zero progress change → likely stuck
-      if (stallTicks >= 300 && progress === lastProgress) {
-        setBusy(false);
-        setStatus(
-          `Still running in the background (${progress}% · ${data.games_analyzed || 0} games). ` +
-            `Click the run under Prior runs when it finishes.`,
-        );
-        await loadRuns();
-        return;
-      }
       await new Promise((r) => setTimeout(r, 1000));
     }
     setBusy(false);
-    setStatus(
-      "Analysis is still running on the server. Refresh Prior runs in a few minutes.",
-    );
-    await loadRuns();
   }
 
-  async function refreshPracticeButton() {
-    try {
-      const resp = await api("/api/mistakes/run");
-      const data = await resp.json();
-      lastUnsolved = data.unsolved_puzzles || 0;
-      if (practiceBtn) practiceBtn.disabled = lastUnsolved <= 0;
-    } catch {
-      /* ignore */
-    }
-  }
-
-  async function prefillUsername() {
-    try {
-      const resp = await api("/api/mistakes/username");
-      const data = await resp.json();
-      if (data.chesscom_username && usernameEl && !usernameEl.value) {
-        usernameEl.value = data.chesscom_username;
-      }
-    } catch {
-      /* ignore */
-    }
-  }
+  // ── Init ───────────────────────────────────────────────────────────────
 
   if (form) {
     form.addEventListener("submit", (e) => {
       e.preventDefault();
-      void generate({ refresh: false });
-    });
-  }
-  if (refreshBtn) {
-    refreshBtn.addEventListener("click", () => void generate({ refresh: true }));
-  }
-  if (practiceBtn) {
-    practiceBtn.addEventListener("click", () => {
-      if (window.__shellNavigate) window.__shellNavigate("/training/mistakes");
-      else if (window.__shellSwitchTab) window.__shellSwitchTab("mistakes");
+      generate();
     });
   }
 
-  window.__insightsSetActive = (active) => {
-    if (!active) return;
-    void prefillUsername();
-    void loadRuns();
-    void loadMetrics();
-    void refreshPracticeButton();
-  };
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", () => generate({ refresh: true }));
+  }
+
+  initSubTabs();
+  loadRuns();
+  loadMetrics();
 })();

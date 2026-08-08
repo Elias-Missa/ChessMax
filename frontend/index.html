@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="/static/vol/styles.css" />
     <link rel="stylesheet" href="/static/shell.css" />
     <link rel="stylesheet" href="/static/elo/styles.css" />
+    <link rel="stylesheet" href="/static/eval/styles.css" />
     <link rel="stylesheet" href="/static/insights/styles.css" />
   </head>
   <body>
@@ -48,6 +49,7 @@
         <button class="shell-tab" type="button" role="tab" data-top="game-review" data-tab="game" data-route="/game-review" aria-selected="false">Game Review</button>
         <button class="shell-tab" type="button" role="tab" data-top="insights" data-tab="insights" data-route="/insights" aria-selected="false">Insights</button>
         <button class="shell-tab shell-tab--accent" type="button" role="tab" data-top="elo" data-tab="eloduels" data-route="/guess-the-elo" aria-selected="false">Guess the Elo</button>
+        <button class="shell-tab shell-tab--accent" type="button" role="tab" data-top="eval" data-tab="evalduels" data-route="/guess-the-eval" aria-selected="false">Guess the Eval</button>
       </nav>
       <div class="shell-user hidden" id="shell-user-wrap">
         <span class="shell-user-email" id="shell-user"></span>
@@ -851,244 +853,392 @@
       </div>
     </section>
 
-    <!-- ── About panel (Why tab only) ────────────────────────────────────── -->
+    <!-- ── About panel (Why tab only: 3-Section Redesign) ────────────────── -->
     <section class="about-panel hidden" data-for="about">
-      <div class="about-prose">
-        <h2>Eval tells you who's winning. Volatility tells you how hard it is to play.</h2>
-        <p>Stockfish's eval ranks positions by best play. It can't see that one of two equally "equal" positions is a
-          bone-dry handshake while the other is a single-move minefield. The volatility bar measures that difference:
-          how punishing it is to choose the <em>wrong</em> move.</p>
-        <p>Below are two positions. Both evaluate to 0.00 — a dead draw. Watch what the volatility bar says.</p>
+      <div class="why-hero">
+        <h1 class="why-hero-title">Understanding Chess Beyond Raw Centipawns</h1>
+        <p class="why-hero-sub">Standard engines evaluate positions assuming perfect 3500-rated play. ChessMax introduces three breakthrough features to reveal human difficulty, realistic move findability, and true decision-making skills.</p>
       </div>
 
-      <!-- Section 1 — Same eval (0.00), different V -->
-      <h3 class="demo-pair-title">Same eval, different volatility — draws</h3>
-      <div class="demo-row">
-        <article class="demo-card" data-demo="dry">
-          <h3>Dry draw — opposite-coloured bishops</h3>
-          <div class="demo-stage">
-            <div class="sidebar-bar mini">
-              <div class="bar-tag">Eval</div>
-              <div class="eval-bar mini" id="demoEvalA">
-                <div class="eval-dark-fill"></div>
-                <div class="eval-midline"></div>
-              </div>
-              <div class="bar-readout" id="demoEvalLabelA">—</div>
-            </div>
-            <div class="demo-board" id="demoBoardA"></div>
-            <div class="sidebar-bar mini">
-              <div class="bar-tag">Vol</div>
-              <div class="vol-bar mini" id="demoVolA" data-color="low" data-decided="false">
-                <div class="vol-fill"></div>
-              </div>
-              <div class="bar-readout" id="demoVolLabelA">—</div>
-            </div>
-          </div>
-          <p class="demo-caption">Opposite-coloured bishops, symmetric pawns. Nearly every reasonable move holds — the
-            drawing margin is enormous. Low volatility means forgiving.</p>
-        </article>
+      <!-- SECTION 1: WHY VOLATILITY BAR -->
+      <section class="why-section" id="why-volatility">
+        <header class="why-section-header">
+          <span class="why-badge">FEATURE 01</span>
+          <h2>1. Why Volatility Bar</h2>
+          <p class="why-section-sub">Measuring positional difficulty, minefields, and practical danger beyond engine evaluation.</p>
+        </header>
 
-        <article class="demo-card" data-demo="sharp">
-          <h3>Sharp draw — the stalemate swindle</h3>
-          <div class="demo-stage">
-            <div class="sidebar-bar mini">
-              <div class="bar-tag">Eval</div>
-              <div class="eval-bar mini" id="demoEvalB">
-                <div class="eval-dark-fill"></div>
-                <div class="eval-midline"></div>
-              </div>
-              <div class="bar-readout" id="demoEvalLabelB">—</div>
-            </div>
-            <div class="demo-board" id="demoBoardB"></div>
-            <div class="sidebar-bar mini">
-              <div class="bar-tag">Vol</div>
-              <div class="vol-bar mini" id="demoVolB" data-color="high" data-decided="false">
-                <div class="vol-fill"></div>
-              </div>
-              <div class="bar-readout" id="demoVolLabelB">—</div>
-            </div>
-          </div>
-          <p class="demo-caption">White is down a queen, two bishops, a knight and a rook, and Black threatens
-            <em>…Qxg2#</em> next move. The one and only move that holds is <em>Qxg7+!!</em> — after <em>Kxg7</em>, White
-            is stalemated. Every other move loses on the spot. Same 0.00 eval — but every choice matters.
-          </p>
-        </article>
-      </div>
+        <div class="about-prose">
+          <p>Stockfish's eval ranks positions by best play. It can't see that one of two equally "equal" positions is a
+            bone-dry handshake while the other is a single-move minefield. The volatility bar measures that difference:
+            how punishing it is to choose the <em>wrong</em> move.</p>
+          <p>Below are two positions. Both evaluate to 0.00 — a dead draw. Watch what the volatility bar says.</p>
+        </div>
 
-      <!-- Section 2 — Same eval (+3.00), different V -->
-      <h3 class="demo-pair-title">Same eval, different volatility — winning</h3>
-      <div class="demo-row">
-        <article class="demo-card" data-demo="winLow">
-          <h3>Low V · +3.00 — technical conversion</h3>
-          <div class="demo-stage">
-            <div class="sidebar-bar mini">
-              <div class="bar-tag">Eval</div>
-              <div class="eval-bar mini" id="demoEvalC">
-                <div class="eval-dark-fill"></div>
-                <div class="eval-midline"></div>
+        <!-- Section 1 — Same eval (0.00), different V -->
+        <h3 class="demo-pair-title">Same eval, different volatility — draws</h3>
+        <div class="demo-row">
+          <article class="demo-card" data-demo="dry">
+            <h3>Dry draw — opposite-coloured bishops</h3>
+            <div class="demo-stage">
+              <div class="sidebar-bar mini">
+                <div class="bar-tag">Eval</div>
+                <div class="eval-bar mini" id="demoEvalA">
+                  <div class="eval-dark-fill"></div>
+                  <div class="eval-midline"></div>
+                </div>
+                <div class="bar-readout" id="demoEvalLabelA">—</div>
               </div>
-              <div class="bar-readout" id="demoEvalLabelC">—</div>
-            </div>
-            <div class="demo-board" id="demoBoardC"></div>
-            <div class="sidebar-bar mini">
-              <div class="bar-tag">Vol</div>
-              <div class="vol-bar mini" id="demoVolC" data-color="low" data-decided="false">
-                <div class="vol-fill"></div>
+              <div class="demo-board" id="demoBoardA"></div>
+              <div class="sidebar-bar mini">
+                <div class="bar-tag">Vol</div>
+                <div class="vol-bar mini" id="demoVolA" data-color="low" data-decided="false">
+                  <div class="vol-fill"></div>
+                </div>
+                <div class="bar-readout" id="demoVolLabelA">—</div>
               </div>
-              <div class="bar-readout" id="demoVolLabelC">—</div>
             </div>
-          </div>
-          <p class="demo-caption">King + two connected passers vs bare king. White is clearly winning, and almost any
-            reasonable move keeps the advantage. Low V — the conversion is straightforward.</p>
-        </article>
+            <p class="demo-caption">Opposite-coloured bishops, symmetric pawns. Nearly every reasonable move holds — the
+              drawing margin is enormous. Low volatility means forgiving.</p>
+          </article>
 
-        <article class="demo-card" data-demo="winHigh">
-          <h3>High V · +3.00 — only-move tactic</h3>
-          <div class="demo-stage">
-            <div class="sidebar-bar mini">
-              <div class="bar-tag">Eval</div>
-              <div class="eval-bar mini" id="demoEvalD">
-                <div class="eval-dark-fill"></div>
-                <div class="eval-midline"></div>
+          <article class="demo-card" data-demo="sharp">
+            <h3>Sharp draw — the stalemate swindle</h3>
+            <div class="demo-stage">
+              <div class="sidebar-bar mini">
+                <div class="bar-tag">Eval</div>
+                <div class="eval-bar mini" id="demoEvalB">
+                  <div class="eval-dark-fill"></div>
+                  <div class="eval-midline"></div>
+                </div>
+                <div class="bar-readout" id="demoEvalLabelB">—</div>
               </div>
-              <div class="bar-readout" id="demoEvalLabelD">—</div>
-            </div>
-            <div class="demo-board" id="demoBoardD"></div>
-            <div class="sidebar-bar mini">
-              <div class="bar-tag">Vol</div>
-              <div class="vol-bar mini" id="demoVolD" data-color="high" data-decided="false">
-                <div class="vol-fill"></div>
+              <div class="demo-board" id="demoBoardB"></div>
+              <div class="sidebar-bar mini">
+                <div class="bar-tag">Vol</div>
+                <div class="vol-bar mini" id="demoVolB" data-color="high" data-decided="false">
+                  <div class="vol-fill"></div>
+                </div>
+                <div class="bar-readout" id="demoVolLabelB">—</div>
               </div>
-              <div class="bar-readout" id="demoVolLabelD">—</div>
             </div>
-          </div>
-          <p class="demo-caption">Same +3.00, but here there's only one move that keeps the advantage. Every alternative
-            gives it all back. The eval can't tell you that — V can.</p>
-        </article>
-      </div>
+            <p class="demo-caption">White is down a queen, two bishops, a knight and a rook, and Black threatens
+              <em>…Qxg2#</em> next move. The one and only move that holds is <em>Qxg7+!!</em> — after <em>Kxg7</em>, White
+              is stalemated. Every other move loses on the spot. Same 0.00 eval — but every choice matters.
+            </p>
+          </article>
+        </div>
 
-      <!-- Section 3 — Same eval (−3.00), different V -->
-      <h3 class="demo-pair-title">Same eval, different volatility — losing</h3>
-      <div class="demo-row">
-        <article class="demo-card" data-demo="loseLow">
-          <h3>Low V · −3.00 — resigned, decided</h3>
-          <div class="demo-stage">
-            <div class="sidebar-bar mini">
-              <div class="bar-tag">Eval</div>
-              <div class="eval-bar mini" id="demoEvalE">
-                <div class="eval-dark-fill"></div>
-                <div class="eval-midline"></div>
+        <!-- Section 2 — Same eval (+3.00), different V -->
+        <h3 class="demo-pair-title">Same eval, different volatility — winning</h3>
+        <div class="demo-row">
+          <article class="demo-card" data-demo="winLow">
+            <h3>Low V · +3.00 — technical conversion</h3>
+            <div class="demo-stage">
+              <div class="sidebar-bar mini">
+                <div class="bar-tag">Eval</div>
+                <div class="eval-bar mini" id="demoEvalC">
+                  <div class="eval-dark-fill"></div>
+                  <div class="eval-midline"></div>
+                </div>
+                <div class="bar-readout" id="demoEvalLabelC">—</div>
               </div>
-              <div class="bar-readout" id="demoEvalLabelE">—</div>
-            </div>
-            <div class="demo-board" id="demoBoardE"></div>
-            <div class="sidebar-bar mini">
-              <div class="bar-tag">Vol</div>
-              <div class="vol-bar mini" id="demoVolE" data-color="low" data-decided="true">
-                <div class="vol-fill"></div>
+              <div class="demo-board" id="demoBoardC"></div>
+              <div class="sidebar-bar mini">
+                <div class="bar-tag">Vol</div>
+                <div class="vol-bar mini" id="demoVolC" data-color="low" data-decided="false">
+                  <div class="vol-fill"></div>
+                </div>
+                <div class="bar-readout" id="demoVolLabelC">—</div>
               </div>
-              <div class="bar-readout" id="demoVolLabelE">—</div>
             </div>
-          </div>
-          <p class="demo-caption">White is down two pawns with no counterplay. The position is decided — nothing White
-            does changes the outcome. Low V reflects that there's no landmine to step on, just a slow loss.</p>
-        </article>
+            <p class="demo-caption">King + two connected passers vs bare king. White is clearly winning, and almost any
+              reasonable move keeps the advantage. Low V — the conversion is straightforward.</p>
+          </article>
 
-        <article class="demo-card" data-demo="loseHigh">
-          <h3>High V · −3.00 — swindle setup</h3>
-          <div class="demo-stage">
-            <div class="sidebar-bar mini">
-              <div class="bar-tag">Eval</div>
-              <div class="eval-bar mini" id="demoEvalF">
-                <div class="eval-dark-fill"></div>
-                <div class="eval-midline"></div>
+          <article class="demo-card" data-demo="winHigh">
+            <h3>High V · +3.00 — only-move tactic</h3>
+            <div class="demo-stage">
+              <div class="sidebar-bar mini">
+                <div class="bar-tag">Eval</div>
+                <div class="eval-bar mini" id="demoEvalD">
+                  <div class="eval-dark-fill"></div>
+                  <div class="eval-midline"></div>
+                </div>
+                <div class="bar-readout" id="demoEvalLabelD">—</div>
               </div>
-              <div class="bar-readout" id="demoEvalLabelF">—</div>
-            </div>
-            <div class="demo-board" id="demoBoardF"></div>
-            <div class="sidebar-bar mini">
-              <div class="bar-tag">Vol</div>
-              <div class="vol-bar mini" id="demoVolF" data-color="high" data-decided="false">
-                <div class="vol-fill"></div>
+              <div class="demo-board" id="demoBoardD"></div>
+              <div class="sidebar-bar mini">
+                <div class="bar-tag">Vol</div>
+                <div class="vol-bar mini" id="demoVolD" data-color="high" data-decided="false">
+                  <div class="vol-fill"></div>
+                </div>
+                <div class="bar-readout" id="demoVolLabelD">—</div>
               </div>
-              <div class="bar-readout" id="demoVolLabelF">—</div>
             </div>
-          </div>
-          <p class="demo-caption">White is losing, but the position is a minefield for Black. One wrong move and the
-            tables turn. High V means Black must play precisely to convert — there's still a swindle in the air.</p>
-        </article>
-      </div>
+            <p class="demo-caption">Same +3.00, but here there's only one move that keeps the advantage. Every alternative
+              gives it all back. The eval can't tell you that — V can.</p>
+          </article>
+        </div>
 
-      <!-- Section 4 — Same position, two clocks -->
-      <h3 class="demo-pair-title">Same position, two clocks</h3>
-      <div class="demo-row demo-row-single">
-        <article class="demo-card demo-card-wide" data-demo="clocks">
-          <div class="demo-stage-wide">
-            <div class="demo-board demo-board-large" id="demoBoardG"></div>
-            <div class="demo-clocks-pair">
-              <div class="demo-clock-card">
-                <span class="demo-clock-tag">Classical · 90+30</span>
-                <p class="demo-caption">V = 70 is <em>information</em>. You have 90 minutes to calculate — the position
-                  is rich, but you'll find the right move if you look. High V just means the decision matters.</p>
+        <!-- Section 3 — Same eval (−3.00), different V -->
+        <h3 class="demo-pair-title">Same eval, different volatility — losing</h3>
+        <div class="demo-row">
+          <article class="demo-card" data-demo="loseLow">
+            <h3>Low V · −3.00 — resigned, decided</h3>
+            <div class="demo-stage">
+              <div class="sidebar-bar mini">
+                <div class="bar-tag">Eval</div>
+                <div class="eval-bar mini" id="demoEvalE">
+                  <div class="eval-dark-fill"></div>
+                  <div class="eval-midline"></div>
+                </div>
+                <div class="bar-readout" id="demoEvalLabelE">—</div>
               </div>
-              <div class="demo-clock-card">
-                <span class="demo-clock-tag">Blitz · 3+0</span>
-                <p class="demo-caption">V = 70 is a <em>death sentence</em>. Three minutes on the clock, and one slip
-                  throws the game. The same position, the same V number — but the human cost is entirely different.</p>
+              <div class="demo-board" id="demoBoardE"></div>
+              <div class="sidebar-bar mini">
+                <div class="bar-tag">Vol</div>
+                <div class="vol-bar mini" id="demoVolE" data-color="low" data-decided="true">
+                  <div class="vol-fill"></div>
+                </div>
+                <div class="bar-readout" id="demoVolLabelE">—</div>
               </div>
             </div>
-          </div>
-        </article>
-      </div>
+            <p class="demo-caption">White is down two pawns with no counterplay. The position is decided — nothing White
+              does changes the outcome. Low V reflects that there's no landmine to step on, just a slow loss.</p>
+          </article>
 
-      <!-- Section 5 — Famous-game scrubber -->
-      <h3 class="demo-pair-title">Famous game: Kasparov–Topalov, Wijk aan Zee 1999</h3>
-      <div class="demo-row demo-row-single">
-        <article class="demo-card demo-card-wide" data-demo="famous">
-          <div class="demo-stage-famous">
-            <div class="famous-board-wrap">
-              <div class="demo-board demo-board-large" id="famousBoard"></div>
+          <article class="demo-card" data-demo="loseHigh">
+            <h3>High V · −3.00 — swindle setup</h3>
+            <div class="demo-stage">
+              <div class="sidebar-bar mini">
+                <div class="bar-tag">Eval</div>
+                <div class="eval-bar mini" id="demoEvalF">
+                  <div class="eval-dark-fill"></div>
+                  <div class="eval-midline"></div>
+                </div>
+                <div class="bar-readout" id="demoEvalLabelF">—</div>
+              </div>
+              <div class="demo-board" id="demoBoardF"></div>
+              <div class="sidebar-bar mini">
+                <div class="bar-tag">Vol</div>
+                <div class="vol-bar mini" id="demoVolF" data-color="high" data-decided="false">
+                  <div class="vol-fill"></div>
+                </div>
+                <div class="bar-readout" id="demoVolLabelF">—</div>
+              </div>
             </div>
-            <div class="famous-meta">
-              <div class="famous-meta-row">
-                <span class="famous-meta-label">Move</span>
-                <span class="famous-meta-value" id="famousSanLabel">—</span>
-              </div>
-              <div class="famous-meta-row">
-                <span class="famous-meta-label">Eval</span>
-                <span class="famous-meta-value" id="famousEvalLabel">—</span>
-              </div>
-              <div class="famous-meta-row">
-                <span class="famous-meta-label">V</span>
-                <span class="famous-meta-value" id="famousVolLabel" data-color="low">—</span>
-              </div>
-              <div class="famous-controls">
-                <input type="range" id="famousSlider" class="famous-range" min="0" max="0" value="0" />
-              </div>
-              <div class="famous-chart-wrap">
-                <canvas id="famousChart"></canvas>
-              </div>
-              <div class="famous-status" id="famousStatus"></div>
-            </div>
-          </div>
-        </article>
-      </div>
+            <p class="demo-caption">White is losing, but the position is a minefield for Black. One wrong move and the
+              tables turn. High V means Black must play precisely to convert — there's still a swindle in the air.</p>
+          </article>
+        </div>
 
-      <!-- What V is not -->
-      <section class="about-not">
-        <h3>What V is <em>not</em></h3>
-        <ul>
-          <li><strong>V is not difficulty.</strong> A knife-edge position is V-high, but a strong player who has seen
-            the pattern finds the move in seconds. V measures the cost of guessing wrong, not the cognitive load of
-            guessing right.</li>
-          <li><strong>V is not a blunder predictor.</strong> It tells you what a blunder would cost, not how likely
-            either side is to make one.</li>
-          <li><strong>V is not a style score.</strong> "Sharp" and "quiet" describe openings; V answers — how punishing
-            is the wrong move right now?</li>
-        </ul>
+        <!-- Section 4 — Same position, two clocks -->
+        <h3 class="demo-pair-title">Same position, two clocks</h3>
+        <div class="demo-row demo-row-single">
+          <article class="demo-card demo-card-wide" data-demo="clocks">
+            <div class="demo-stage-wide">
+              <div class="demo-board demo-board-large" id="demoBoardG"></div>
+              <div class="demo-clocks-pair">
+                <div class="demo-clock-card">
+                  <span class="demo-clock-tag">Classical · 90+30</span>
+                  <p class="demo-caption">V = 70 is <em>information</em>. You have 90 minutes to calculate — the position
+                    is rich, but you'll find the right move if you look. High V just means the decision matters.</p>
+                </div>
+                <div class="demo-clock-card">
+                  <span class="demo-clock-tag">Blitz · 3+0</span>
+                  <p class="demo-caption">V = 70 is a <em>death sentence</em>. Three minutes on the clock, and one slip
+                    throws the game. The same position, the same V number — but the human cost is entirely different.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <!-- Section 5 — Famous-game scrubber -->
+        <h3 class="demo-pair-title">Famous game: Kasparov–Topalov, Wijk aan Zee 1999</h3>
+        <div class="demo-row demo-row-single">
+          <article class="demo-card demo-card-wide" data-demo="famous">
+            <div class="demo-stage-famous">
+              <div class="famous-board-wrap">
+                <div class="demo-board demo-board-large" id="famousBoard"></div>
+              </div>
+              <div class="famous-meta">
+                <div class="famous-meta-row">
+                  <span class="famous-meta-label">Move</span>
+                  <span class="famous-meta-value" id="famousSanLabel">—</span>
+                </div>
+                <div class="famous-meta-row">
+                  <span class="famous-meta-label">Eval</span>
+                  <span class="famous-meta-value" id="famousEvalLabel">—</span>
+                </div>
+                <div class="famous-meta-row">
+                  <span class="famous-meta-label">V</span>
+                  <span class="famous-meta-value" id="famousVolLabel" data-color="low">—</span>
+                </div>
+                <div class="famous-controls">
+                  <input type="range" id="famousSlider" class="famous-range" min="0" max="0" value="0" />
+                </div>
+                <div class="famous-chart-wrap">
+                  <canvas id="famousChart"></canvas>
+                </div>
+                <div class="famous-status" id="famousStatus"></div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <section class="about-not">
+          <h3>What V is <em>not</em></h3>
+          <ul>
+            <li><strong>V is not difficulty.</strong> A knife-edge position is V-high, but a strong player who has seen
+              the pattern finds the move in seconds. V measures the cost of guessing wrong, not the cognitive load of
+              guessing right.</li>
+            <li><strong>V is not a blunder predictor.</strong> It tells you what a blunder would cost, not how likely
+              either side is to make one.</li>
+            <li><strong>V is not a style score.</strong> "Sharp" and "quiet" describe openings; V answers — how punishing
+              is the wrong move right now?</li>
+          </ul>
+        </section>
+
+        <p class="about-takeaway">Green bar: the position plays itself. Red bar: you're walking on eggshells.</p>
       </section>
 
-      <p class="about-takeaway">Green bar: the position plays itself. Red bar: you're walking on eggshells.</p>
+      <!-- SECTION 2: WHY FINDABILITY SCORE -->
+      <section class="why-section" id="why-findability">
+        <header class="why-section-header">
+          <span class="why-badge why-badge--purple">FEATURE 02</span>
+          <h2>2. Why Findability Score</h2>
+          <p class="why-section-sub">How humanly possible is the engine's top move to find?</p>
+        </header>
+
+        <div class="about-prose">
+          <p>Traditional engine reviews scold you for missing a +3.5 top move that relies on a 7-ply quiet computer sacrifice. But no human below master strength would ever spot that line! Reviewing human play against 3500-rated Stockfish depth produces frustration rather than actionable feedback.</p>
+          <p><strong>Findability Score</strong> measures human possibility. Driven by rating-conditioned human policy models (Maia-3 / Maia-2) and search-visibility factors (depth d*, forcing checks/captures, and line narrowness), it computes the monotone human probability curve C_A(r) across ratings from 600 Elo to 2600 Elo.</p>
+        </div>
+
+        <div class="why-grid-2">
+          <div class="why-feature-card">
+            <h3>Rating Threshold (R_find) &amp; 5 Bands</h3>
+            <p>R_find is the rating level where 50% of players find an acceptable move. Findability scales R_find into a 0–100 score:</p>
+            <ul class="findability-bands-list">
+              <li><span class="band-tag band--obvious">90–100 Obvious</span> Trivial captures or basic checks (R_find &lt; 800).</li>
+              <li><span class="band-tag band--natural">70–89 Natural</span> Sound positional moves or standard tactics (R_find ~ 1100).</li>
+              <li><span class="band-tag band--thought">45–69 Needs Thought</span> Requires focused calculation (R_find ~ 1500).</li>
+              <li><span class="band-tag band--hard">20–44 Hard</span> Deep calculation or quiet maneuvering (R_find ~ 1900).</li>
+              <li><span class="band-tag band--engine">0–19 Engine-Only</span> Inhuman computer geometry (R_find &gt; 2400).</li>
+            </ul>
+          </div>
+          <div class="why-feature-card">
+            <h3>Best Findable Move Recommendation</h3>
+            <p>When the top engine move is labeled <em>Engine-Only</em>, ChessMax doesn't penalize you. Instead, it surfaces the <strong>strongest humanly findable alternative move</strong>—the move a human could realistically have found and played.</p>
+          </div>
+        </div>
+
+        <!-- Interactive Rating Curve Simulator -->
+        <div class="why-interactive-card">
+          <h3>Interactive Rating Curve Simulator (C_A(r))</h3>
+          <p>Drag the rating slider below to see how human findability probability increases across player rating levels:</p>
+
+          <div class="elo-simulator-controls">
+            <label for="whyEloSlider">Simulated Player Rating: <strong id="whyEloValue">1500 Elo</strong></label>
+            <input type="range" id="whyEloSlider" min="600" max="2600" step="50" value="1500" />
+            <div class="elo-slider-scale"><span>600 Elo</span><span>1100</span><span>1600</span><span>2100</span><span>2600 Elo</span></div>
+          </div>
+
+          <div class="findability-demo-grid">
+            <article class="findability-card" id="findCard1">
+              <span class="findability-badge band--obvious">Score 96 · Obvious</span>
+              <h4>1. Obvious Recapture</h4>
+              <p class="findability-desc">Forced piece recapture after a trade.</p>
+              <div class="findability-prob-wrap">
+                <span>Human Probability:</span>
+                <strong id="probVal1">94%</strong>
+              </div>
+              <div class="findability-prob-bar"><div class="findability-prob-fill" id="probFill1" style="width: 94%;"></div></div>
+            </article>
+
+            <article class="findability-card" id="findCard2">
+              <span class="findability-badge band--thought">Score 62 · Needs Thought</span>
+              <h4>2. Positional Outpost</h4>
+              <p class="findability-desc">Knight maneuver to a weak d5 square.</p>
+              <div class="findability-prob-wrap">
+                <span>Human Probability:</span>
+                <strong id="probVal2">52%</strong>
+              </div>
+              <div class="findability-prob-bar"><div class="findability-prob-fill" id="probFill2" style="width: 52%;"></div></div>
+            </article>
+
+            <article class="findability-card" id="findCard3">
+              <span class="findability-badge band--engine">Score 14 · Engine-Only</span>
+              <h4>3. Computer Quiet Sacrifice</h4>
+              <p class="findability-desc">Quiet pawn rush 7 plies before a fork.</p>
+              <div class="findability-prob-wrap">
+                <span>Human Probability:</span>
+                <strong id="probVal3">12%</strong>
+              </div>
+              <div class="findability-prob-bar"><div class="findability-prob-fill" id="probFill3" style="width: 12%;"></div></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 3: WHY PUZZLES 2.0 -->
+      <section class="why-section" id="why-puzzles">
+        <header class="why-section-header">
+          <span class="why-badge why-badge--blue">FEATURE 03</span>
+          <h2>3. Why Puzzles 2.0</h2>
+          <p class="why-section-sub">Eliminating the "Tactics Blindness" flaw of traditional puzzle trainers.</p>
+        </header>
+
+        <div class="about-prose">
+          <p>Standard puzzle trainers (Lichess, Chess.com) have a fatal flaw: <strong>you know a tactic exists!</strong> When you open a puzzle, you stop deciding whether to calculate and immediately hunt for checks, captures, and queen sacrifices. In real over-the-board games, nobody taps you on the shoulder to tell you "there's a tactic on move 22". You must decide whether a tactic is present or if you should play a solid positional move.</p>
+          <p><strong>Puzzles 2.0 fixes this fundamental flaw.</strong></p>
+        </div>
+
+        <div class="puzzles-comparison-grid">
+          <div class="puzzles-comp-card puzzles-comp-card--bad">
+            <span class="puzzles-comp-tag">Traditional Puzzle Trainers</span>
+            <h3>100% Tactical Bias</h3>
+            <ul>
+              <li>❌ Every single position contains a winning tactic.</li>
+              <li>❌ Trains "tactic hunting" instead of position assessment.</li>
+              <li>❌ Gives away the answer before you even look at the board.</li>
+              <li>❌ Forces 1 single computer move even when 6 moves hold equal eval.</li>
+            </ul>
+          </div>
+
+          <div class="puzzles-comp-card puzzles-comp-card--good">
+            <span class="puzzles-comp-tag">Puzzles 2.0 (ChessMax)</span>
+            <h3>50/50 Hidden Mix + Quiet Positions</h3>
+            <ul>
+              <li>✅ Seamlessly mixes tactical puzzles with <strong>quiet positions</strong> mined from master games.</li>
+              <li>✅ <strong>Strict "No Tell" Invariant:</strong> Positions look 100% identical before your move.</li>
+              <li>✅ <strong>Eval-Loss Grading:</strong> Any move within 100cp eval loss passes quiet positions.</li>
+              <li>✅ <strong>Maia Play-Out:</strong> Play out any position against human-like neural net engines.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- No-Tell Invariant visual card -->
+        <div class="why-interactive-card">
+          <h3>The "No Tell" UI Invariant</h3>
+          <p>Can you guess which position is tactical and which is quiet before moving? Both show identical headers, board styling, and side-to-move indicators:</p>
+
+          <div class="notell-demo-row">
+            <div class="notell-card">
+              <span class="notell-badge">Position A</span>
+              <div class="notell-placeholder-board">♟ ♞ ♝ ♛ ♚</div>
+              <p>Tactical or Quiet? You only discover the status <em>after</em> you play your move.</p>
+            </div>
+            <div class="notell-card">
+              <span class="notell-badge">Position B</span>
+              <div class="notell-placeholder-board">♙ ♘ ♗ ♕ ♔</div>
+              <p>Eval-loss grading accepts all reasonable positional moves if quiet.</p>
+            </div>
+          </div>
+        </div>
+      </section>
     </section>
 
     </main>
@@ -1177,7 +1327,81 @@
       </section>
     </div><!-- /#elo-root -->
 
-    <!-- Insights: chess.com / lichess window + practice from Mistakes -->
+    <!-- Guess the Eval Duels -->
+    <div id="eval-root" class="hidden">
+      <section class="eval-wrap">
+        <!-- Lobby -->
+        <div id="evalLobby" class="eval-lobby">
+          <div class="eval-hero">
+            <span class="eval-badge">1-MIN BATTLE</span>
+            <h1 class="eval-title">Guess the Eval Duels</h1>
+            <p class="eval-sub">
+              You and an opponent view the <strong>same</strong> chess position. You have <strong>60 seconds</strong> to enter your evaluation guess &mdash; <strong>closest wins.</strong>
+            </p>
+          </div>
+          <div class="eval-record-row">
+            <div class="eval-stat"><span id="evalWins">0</span><label>Wins</label></div>
+            <div class="eval-stat"><span id="evalLosses">0</span><label>Losses</label></div>
+            <div class="eval-stat"><span id="evalDraws">0</span><label>Draws</label></div>
+          </div>
+          <button id="evalFindBtn" class="eval-primary eval-find">Find a Match</button>
+          <div id="evalSearching" class="eval-searching hidden">
+            <div class="eval-spinner" aria-hidden="true"></div>
+            <span id="evalSearchText">Searching for an opponent&hellip;</span>
+            <button id="evalCancelBtn" class="eval-ghost">Cancel</button>
+          </div>
+          <p id="evalLobbyError" class="eval-error hidden"></p>
+        </div>
+
+        <!-- Duel -->
+        <div id="evalDuel" class="eval-duel hidden">
+          <div class="eval-duel-board">
+            <div id="evalBoard" class="eval-board cg-wrap"></div>
+          </div>
+
+          <aside class="eval-panel">
+            <div class="eval-vs">
+              <span class="eval-vs-you">You</span>
+              <span class="eval-vs-x">vs</span>
+              <span class="eval-vs-opp" id="evalOppName">Opponent</span>
+            </div>
+            <div class="eval-timer" id="evalTimer" data-low="false">1:00</div>
+
+            <div class="eval-guessbox" id="evalGuessBox">
+              <label class="eval-guess-caption">What is the Stockfish eval of this position?</label>
+              <div class="eval-guess-val" id="evalGuessVal">0.00</div>
+              <input type="range" id="evalGuessSlider" min="-10.00" max="10.00" step="0.10" value="0.00" />
+              <div class="eval-guess-scale"><span>−10.0</span><span>0.00</span><span>+10.0</span></div>
+              <button id="evalLockBtn" class="eval-primary">Lock in guess</button>
+              <div class="eval-wait-opp hidden" id="evalWaitOpp">
+                <div class="elo-spinner elo-spinner--sm" aria-hidden="true"></div>
+                Locked in <strong id="evalLockedVal">&mdash;</strong>. Waiting for opponent&hellip;
+              </div>
+            </div>
+
+            <div class="eval-result hidden" id="evalResult">
+              <div class="eval-outcome" id="evalOutcome">&mdash;</div>
+              <div class="eval-reveal-eval">Actual evaluation: <strong id="evalTrue">&mdash;</strong></div>
+              <div class="eval-scoreline">
+                <div class="eval-score-side">
+                  <label>You</label>
+                  <span id="evalYourGuess">&mdash;</span>
+                  <em id="evalYourPts">&mdash;</em>
+                </div>
+                <div class="eval-score-side eval-score-opp">
+                  <label id="evalOppLabel">Opponent</label>
+                  <span id="evalOppGuess">&mdash;</span>
+                  <em id="evalOppPts">&mdash;</em>
+                </div>
+              </div>
+              <button id="evalAgainBtn" class="eval-primary">Play again</button>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </div><!-- /#eval-root -->
+
+    <!-- Insights: chess.com / lichess window + performance intelligence -->
     <div id="insights-root" class="hidden">
       <section class="insights-wrap">
         <header class="insights-hero">
@@ -1185,7 +1409,7 @@
             <p class="insights-kicker">Performance intelligence</p>
             <h1 class="insights-title">Insights</h1>
             <p class="insights-sub">
-              Pull a window of your games, surface the patterns that cost you points, and practice the misses that are actually findable.
+              Deep performance analytics powered by Maia-3 human intuition, volatility math, and realistic findability metrics.
             </p>
           </div>
           <div class="insights-hero-stats" aria-live="polite">
@@ -1242,11 +1466,8 @@
           <p id="insights-cap-note" class="insights-hint hidden">Showing the most recent 300 games in this window.</p>
         </div>
 
-        <div class="insights-actions">
-          <button id="insights-practice" type="button" class="insights-primary" disabled>Practice this → Your Mistakes</button>
-        </div>
-
         <div class="insights-layout">
+          <!-- Left sidebar: Run history list -->
           <section class="insights-panel insights-runs">
             <div class="insights-panel-head">
               <h2>Prior runs</h2>
@@ -1255,16 +1476,216 @@
             <ul id="insights-run-list" class="insights-run-list"></ul>
           </section>
 
+          <!-- Main right content area: Dashboard with Sub-Tabs -->
           <section id="insights-metrics" class="insights-panel insights-metrics hidden">
-            <div class="insights-panel-head">
-              <h2>Your patterns</h2>
-              <span class="count">Live snapshot</span>
+            <!-- Executive Sub-Nav -->
+            <nav class="insights-subnav" id="insights-subnav" role="tablist">
+              <button type="button" class="insights-subtab active" data-subtab="overview" role="tab" aria-selected="true">Overview</button>
+              <button type="button" class="insights-subtab" data-subtab="tactics" role="tab" aria-selected="false">Tactics &amp; Blunders</button>
+              <button type="button" class="insights-subtab" data-subtab="openings" role="tab" aria-selected="false">Openings &amp; Phases</button>
+              <button type="button" class="insights-subtab" data-subtab="psychology" role="tab" aria-selected="false">Speed &amp; Psychology</button>
+              <button type="button" class="insights-subtab" data-subtab="explorer" role="tab" aria-selected="false">Game Explorer</button>
+            </nav>
+
+            <!-- Dynamic Filter Toolbar -->
+            <div class="insights-toolbar">
+              <div class="insights-filter-group">
+                <span class="filter-label">Color:</span>
+                <button type="button" class="filter-btn active" data-filter-color="all">All</button>
+                <button type="button" class="filter-btn" data-filter-color="white">White</button>
+                <button type="button" class="filter-btn" data-filter-color="black">Black</button>
+              </div>
+              <div class="insights-filter-group">
+                <span class="filter-label">Outcome:</span>
+                <button type="button" class="filter-btn active" data-filter-outcome="all">All</button>
+                <button type="button" class="filter-btn" data-filter-outcome="win">Wins</button>
+                <button type="button" class="filter-btn" data-filter-outcome="loss">Losses</button>
+                <button type="button" class="filter-btn" data-filter-outcome="draw">Draws</button>
+              </div>
+              <button id="insights-practice" type="button" class="insights-primary insights-practice-top-btn" disabled>Practice Mistakes →</button>
             </div>
-            <div id="insights-metrics-body" class="insights-metrics-body"></div>
+
+            <!-- AI Coach Banner -->
+            <div id="insights-coach-banner" class="insights-coach-card">
+              <div class="coach-avatar">♟</div>
+              <div class="coach-content">
+                <h4 class="coach-title">AI Performance Coach Takeaways</h4>
+                <ul id="insights-coach-takeaways" class="coach-takeaways-list">
+                  <li>Loading takeaways…</li>
+                </ul>
+              </div>
+            </div>
+
+            <!-- Sub-tab 1: Overview -->
+            <div id="insights-view-overview" class="insights-subview">
+              <div class="insights-metrics-grid">
+                <article class="insights-metric-card insights-metric-card--wide">
+                  <p class="eyebrow">Accuracy &amp; Win% Timeline</p>
+                  <h3>Performance Trend</h3>
+                  <div class="chart-container" style="position:relative; height:240px;">
+                    <canvas id="chart-accuracy-timeline"></canvas>
+                  </div>
+                </article>
+                <article class="insights-metric-card" id="card-fixable-loss">
+                  <p class="eyebrow">Realistic Headroom</p>
+                  <h3>Fixable Loss</h3>
+                  <div id="body-fixable-loss"></div>
+                </article>
+                <article class="insights-metric-card" id="card-maia-intuition">
+                  <p class="eyebrow">Maia-3 Intuition</p>
+                  <h3>Human Naturalness Score</h3>
+                  <div id="body-maia-intuition"></div>
+                </article>
+              </div>
+            </div>
+
+            <!-- Sub-tab 2: Tactics & Blunders -->
+            <div id="insights-view-tactics" class="insights-subview hidden">
+              <div class="insights-metrics-grid">
+                <article class="insights-metric-card">
+                  <p class="eyebrow">Loss Taxonomy</p>
+                  <h3>How Your Games Slip</h3>
+                  <div class="chart-container" style="position:relative; height:200px;">
+                    <canvas id="chart-loss-taxonomy"></canvas>
+                  </div>
+                </article>
+                <article class="insights-metric-card">
+                  <p class="eyebrow">Tactical Patterns</p>
+                  <h3>Missed Tactics Breakdown</h3>
+                  <div class="chart-container" style="position:relative; height:200px;">
+                    <canvas id="chart-missed-tactics"></canvas>
+                  </div>
+                </article>
+                <article class="insights-metric-card insights-metric-card--wide">
+                  <p class="eyebrow">Practice Set</p>
+                  <h3>Learnable Misses (Click to Inspect)</h3>
+                  <div id="insights-practice-grid" class="insights-practice-grid"></div>
+                </article>
+              </div>
+            </div>
+
+            <!-- Sub-tab 3: Openings & Phases -->
+            <div id="insights-view-openings" class="insights-subview hidden">
+              <div class="insights-metrics-grid">
+                <article class="insights-metric-card insights-metric-card--wide">
+                  <p class="eyebrow">Phase Attribution</p>
+                  <h3>Eval Swing per Move by Game Phase</h3>
+                  <div class="chart-container" style="position:relative; height:220px;">
+                    <canvas id="chart-phase-attribution"></canvas>
+                  </div>
+                </article>
+                <article class="insights-metric-card">
+                  <p class="eyebrow">Book Knowledge</p>
+                  <h3>Repertoire Depth</h3>
+                  <div id="body-repertoire-depth"></div>
+                </article>
+                <article class="insights-metric-card">
+                  <p class="eyebrow">King Safety</p>
+                  <h3>Castling Stats</h3>
+                  <div id="body-castling-stats"></div>
+                </article>
+                <article class="insights-metric-card insights-metric-card--wide">
+                  <p class="eyebrow">ECO Openings</p>
+                  <h3>Opening Performance Table</h3>
+                  <div id="body-eco-table"></div>
+                </article>
+              </div>
+            </div>
+
+            <!-- Sub-tab 4: Speed & Psychology -->
+            <div id="insights-view-psychology" class="insights-subview hidden">
+              <div class="insights-metrics-grid">
+                <article class="insights-metric-card">
+                  <p class="eyebrow">Time Pressure</p>
+                  <h3>Scramble Decay Curve</h3>
+                  <div class="chart-container" style="position:relative; height:200px;">
+                    <canvas id="chart-scramble-decay"></canvas>
+                  </div>
+                </article>
+                <article class="insights-metric-card">
+                  <p class="eyebrow">Think Time</p>
+                  <h3>Time vs Criticality</h3>
+                  <div class="chart-container" style="position:relative; height:200px;">
+                    <canvas id="chart-time-criticality"></canvas>
+                  </div>
+                </article>
+                <article class="insights-metric-card insights-metric-card--wide">
+                  <p class="eyebrow">Session Dynamics</p>
+                  <h3>Tilt &amp; Fatigue Curve</h3>
+                  <div class="chart-container" style="position:relative; height:220px;">
+                    <canvas id="chart-session-tilt"></canvas>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <!-- Sub-tab 5: Game Explorer -->
+            <div id="insights-view-explorer" class="insights-subview hidden">
+              <div class="insights-explorer-wrap">
+                <div class="explorer-header">
+                  <h3>Analyzed Games in Snapshot</h3>
+                  <input type="search" id="insights-explorer-search" placeholder="Filter by opponent or ECO…" />
+                </div>
+                <div class="table-responsive">
+                  <table class="insights-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Color</th>
+                        <th>Opponent</th>
+                        <th>ECO</th>
+                        <th>Outcome</th>
+                        <th>Accuracy</th>
+                        <th>Eval Curve</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="insights-explorer-tbody">
+                      <tr><td colspan="8" class="insights-empty">No games loaded.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div id="insights-metrics-body" class="hidden"></div>
           </section>
         </div>
       </section>
+
+      <!-- ── Position Inspector Modal (Chessground) ──────────────────────── -->
+      <div id="insights-modal-overlay" class="insights-modal-overlay hidden" aria-hidden="true">
+        <div class="insights-modal-card">
+          <header class="insights-modal-head">
+            <div>
+              <span class="insights-modal-eyebrow" id="modal-eyebrow">Flagged Miss</span>
+              <h3 id="modal-title">Position Breakdown</h3>
+            </div>
+            <button type="button" id="modal-close" class="modal-close-btn">&times;</button>
+          </header>
+          <div class="insights-modal-body">
+            <div class="modal-board-side">
+              <div id="modal-board" class="modal-board"></div>
+            </div>
+            <div class="modal-info-side">
+              <div class="modal-meta-card">
+                <div class="meta-row"><span>Move played</span><strong id="modal-move-played">—</strong></div>
+                <div class="meta-row"><span>Best engine move</span><strong id="modal-move-best" class="accent-green">—</strong></div>
+                <div class="meta-row"><span>Win% loss (Δw)</span><strong id="modal-delta-w">—</strong></div>
+                <div class="meta-row"><span>Findability</span><strong id="modal-findability">—</strong></div>
+                <div class="meta-row"><span>Volatility</span><strong id="modal-volatility">—</strong></div>
+              </div>
+              <p class="modal-caption" id="modal-caption"></p>
+              <div class="modal-actions">
+                <button type="button" id="modal-btn-practice" class="insights-primary">Practice in Trainer</button>
+                <button type="button" id="modal-btn-review" class="insights-ghost">Open Full Game Review</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div><!-- /#insights-root -->
+
 
     <!-- Vol app (classic scripts, run before modules) -->
     <script src="/static/auth.js"></script>
@@ -1279,6 +1700,7 @@
     <script src="/static/vol/review-ui.js"></script>
     <script src="/static/vol/app.js"></script>
     <script src="/static/elo/app.js"></script>
+    <script src="/static/eval/app.js"></script>
     <script src="/static/insights/app.js"></script>
     <!-- Puzzles app, then the shell tab controller (modules run in order, after classic scripts) -->
     <script type="module" src="/static/app.js?v=3"></script>

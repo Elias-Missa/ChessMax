@@ -3413,3 +3413,331 @@ body[data-tab="game"] #vol-root .panel-status {
   border-radius: 5px;
   background: rgba(255, 255, 255, 0.09);
 }
+
+/* ── Why Page 3-Section Redesign ────────────────────────────────────── */
+.why-hero {
+  text-align: center;
+  margin-bottom: 24px;
+  padding: 24px 20px;
+  background: radial-gradient(600px 200px at 50% 0%, rgba(68, 214, 44, 0.1), transparent);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--r-lg);
+}
+
+.why-hero-title {
+  font-size: clamp(22px, 3.5vw, 32px);
+  font-weight: 800;
+  margin-bottom: 8px;
+  color: #fff;
+}
+
+.why-hero-sub {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--fg-2);
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.why-section {
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-lg);
+  padding: 24px 22px;
+  margin-bottom: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.why-section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-bottom: 1px solid var(--border-1);
+  padding-bottom: 14px;
+}
+
+.why-badge {
+  align-self: flex-start;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #0f1a0a;
+  background: var(--green);
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.why-badge--purple {
+  background: #a855f7;
+  color: #fff;
+}
+
+.why-badge--blue {
+  background: #38bdf8;
+  color: #071722;
+}
+
+.why-section-header h2 {
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+  margin: 0;
+}
+
+.why-section-sub {
+  font-size: 13.5px;
+  color: var(--fg-2);
+  margin: 0;
+}
+
+.why-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.why-feature-card {
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.why-feature-card h3 {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.why-feature-card p {
+  font-size: 12.5px;
+  color: var(--fg-2);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.findability-bands-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.band-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 4px;
+  margin-right: 6px;
+}
+
+.band--obvious { background: rgba(57, 255, 20, 0.18); color: var(--vol-low); }
+.band--natural { background: rgba(56, 189, 248, 0.18); color: #38bdf8; }
+.band--thought { background: rgba(224, 179, 48, 0.18); color: var(--vol-med); }
+.band--hard { background: rgba(249, 115, 22, 0.18); color: #f97316; }
+.band--engine { background: rgba(224, 68, 58, 0.18); color: var(--vol-high); }
+
+.why-interactive-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.why-interactive-card h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.why-interactive-card p {
+  font-size: 12.5px;
+  color: var(--fg-2);
+  margin: 0;
+}
+
+.elo-simulator-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface-1);
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-1);
+}
+
+.elo-simulator-controls label {
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+.elo-simulator-controls input[type="range"] {
+  accent-color: #a855f7;
+  cursor: pointer;
+}
+
+.elo-slider-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--fg-3);
+}
+
+.findability-demo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.findability-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-sm);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.findability-card h4 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.findability-desc {
+  font-size: 11.5px;
+  color: var(--fg-3);
+  margin: 0;
+}
+
+.findability-prob-wrap {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.findability-prob-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.findability-prob-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #a855f7, #38bdf8);
+  transition: width 150ms ease-out;
+}
+
+.puzzles-comparison-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.puzzles-comp-card {
+  border-radius: var(--r);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.puzzles-comp-card--bad {
+  background: rgba(224, 68, 58, 0.05);
+  border: 1px solid rgba(224, 68, 58, 0.25);
+}
+
+.puzzles-comp-card--good {
+  background: rgba(68, 214, 44, 0.05);
+  border: 1px solid rgba(68, 214, 44, 0.25);
+}
+
+.puzzles-comp-tag {
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.puzzles-comp-card--bad .puzzles-comp-tag { color: var(--vol-high); }
+.puzzles-comp-card--good .puzzles-comp-tag { color: var(--green); }
+
+.puzzles-comp-card h3 {
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+  margin: 0;
+}
+
+.puzzles-comp-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--fg-2);
+  line-height: 1.45;
+}
+
+.notell-demo-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.notell-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-sm);
+  padding: 14px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.notell-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--fg-3);
+  text-transform: uppercase;
+}
+
+.notell-placeholder-board {
+  font-size: 28px;
+  letter-spacing: 6px;
+  padding: 12px;
+  background: var(--bg-2);
+  border: 1px dashed var(--border-1);
+  border-radius: 6px;
+  width: 100%;
+}
+
+@media (max-width: 780px) {
+  .why-grid-2, .findability-demo-grid, .puzzles-comparison-grid, .notell-demo-row {
+    grid-template-columns: 1fr;
+  }
+}

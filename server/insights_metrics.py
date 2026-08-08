@@ -59,7 +59,7 @@ def compute_tier1_metrics(
 
     moves = connection.execute(
         f"SELECT review_id, ply, san, phase, is_book, is_user_move, win_prob, delta_w, "
-        f"volatility, time_spent, classification, findability, detail, tactic_tags "
+        f"volatility, time_spent, clock_remaining, classification, findability, detail, tactic_tags "
         f"FROM review_moves WHERE review_id IN ({placeholders}) ORDER BY review_id, ply",
         review_ids,
     ).fetchall()
@@ -126,27 +126,42 @@ def compute_tier1_metrics(
     steering = _compute_volatility_steering(moves_by_review)
     practice = _compute_practice_flags(game_rows, moves_by_review)
     missed_tactics = _compute_missed_tactics(moves_by_review)
+    scramble_decay = _compute_time_scramble_decay(moves_by_review)
+    maia_nat = _compute_maia_naturalness(moves_by_review)
+    explorer_games = _compute_game_explorer_rows(game_rows, moves_by_review)
+
+    time_vs_crit = {
+        "avg_time_high_vol": _avg(high_vol_times),
+        "avg_time_low_vol": _avg(low_vol_times),
+        "n_high": len(high_vol_times),
+        "n_low": len(low_vol_times),
+        "note": (
+            "you rush critical positions"
+            if (
+                _avg(high_vol_times) is not None
+                and _avg(low_vol_times) is not None
+                and _avg(high_vol_times) < _avg(low_vol_times)  # type: ignore[operator]
+            )
+            else None
+        ),
+    }
+
+    ai_takeaways = _compute_ai_coach_takeaways(
+        total_loss=total_loss,
+        fixable_loss=fixable_loss,
+        tax_counts=dict(tax_counts),
+        tier2=tier2,
+        tier3=tier3,
+        time_vs_criticality=time_vs_crit,
+        scramble_decay=scramble_decay,
+    )
 
     return {
         "total_loss": total_loss,
         "fixable_loss": fixable_loss,
         "fixable_sample_size": len(full_reviews),
         "loss_taxonomy": {"counts": dict(tax_counts)},
-        "time_vs_criticality": {
-            "avg_time_high_vol": _avg(high_vol_times),
-            "avg_time_low_vol": _avg(low_vol_times),
-            "n_high": len(high_vol_times),
-            "n_low": len(low_vol_times),
-            "note": (
-                "you rush critical positions"
-                if (
-                    _avg(high_vol_times) is not None
-                    and _avg(low_vol_times) is not None
-                    and _avg(high_vol_times) < _avg(low_vol_times)  # type: ignore[operator]
-                )
-                else None
-            ),
-        },
+        "time_vs_criticality": time_vs_crit,
         "volatility_profile": {"buckets": profile},
         "volatility_steering": steering,
         "games": len(reviews),
@@ -154,7 +169,174 @@ def compute_tier1_metrics(
         "tier3": tier3,
         "practice_flags": practice,
         "missed_tactics": missed_tactics,
+        "time_scramble_decay": scramble_decay,
+        "maia_naturalness": maia_nat,
+        "game_explorer": explorer_games,
+        "ai_coach_takeaways": ai_takeaways,
     }
+
+
+def _compute_time_scramble_decay(moves_by_review: dict[str, list[Any]]) -> dict[str, Any]:
+    buckets: dict[str, dict[str, Any]] = {
+        "deep": {"label": ">60s clock", "loss_sum": 0.0, "moves": 0, "blunders": 0},
+        "medium": {"label": "30–60s clock", "loss_sum": 0.0, "moves": 0, "blunders": 0},
+        "low": {"label": "10–30s clock", "loss_sum": 0.0, "moves": 0, "blunders": 0},
+        "scramble": {"label": "<10s clock", "loss_sum": 0.0, "moves": 0, "blunders": 0},
+    }
+    for moves in moves_by_review.values():
+        for m in moves:
+            if not m["is_user_move"]:
+                continue
+            clock = m.get("clock_remaining") if isinstance(m, dict) or hasattr(m, "get") else None
+            if clock is None:
+                continue
+            try:
+                clk = float(clock)
+            except (TypeError, ValueError):
+                continue
+            dw = float(m["delta_w"] or 0)
+            key = "scramble" if clk < 10 else "low" if clk < 30 else "medium" if clk < 60 else "deep"
+            buckets[key]["loss_sum"] += dw
+            buckets[key]["moves"] += 1
+            if dw >= 25:
+                buckets[key]["blunders"] += 1
+
+    rows = []
+    for key in ("deep", "medium", "low", "scramble"):
+        b = buckets[key]
+        n = b["moves"]
+        rows.append({
+            "key": key,
+            "label": b["label"],
+            "moves": n,
+            "delta_w_per_move": (b["loss_sum"] / n) if n else 0.0,
+            "blunder_rate": (b["blunders"] / n) if n else 0.0,
+        })
+    return {"buckets": rows}
+
+
+def _compute_maia_naturalness(moves_by_review: dict[str, list[Any]]) -> dict[str, Any]:
+    matched = 0
+    total = 0
+    for moves in moves_by_review.values():
+        for m in moves:
+            if not m["is_user_move"]:
+                continue
+            findability = m["findability"]
+            if findability is not None:
+                total += 1
+                if int(findability) >= 50:
+                    matched += 1
+    rate = (matched / total) if total else None
+    return {
+        "naturalness_rate": rate,
+        "sample_size": total,
+        "label": (
+            "High intuition" if rate and rate >= 0.7
+            else "Mixed intuition" if rate and rate >= 0.45
+            else "Low intuition (engine-dependent / unorthodox)" if rate is not None
+            else "Needs full tier review for Maia intuition"
+        )
+    }
+
+
+def _compute_game_explorer_rows(
+    game_rows: list[Any],
+    moves_by_review: dict[str, list[Any]],
+) -> list[dict[str, Any]]:
+    out = []
+    for row in game_rows:
+        rid = str(row["review_id"])
+        color = row["user_color"] or "white"
+        won = _user_won(row["result"], color)
+        drew = _user_drew(row["result"])
+        outcome = "win" if won else "draw" if drew else "loss"
+        g_moves = moves_by_review.get(rid, [])
+        user_moves = [m for m in g_moves if m["is_user_move"]]
+
+        total_delta_w = sum(float(m["delta_w"] or 0) for m in user_moves)
+
+        # Sparkline evaluation trajectory (subsample to ~15 points)
+        wp_list = [float(m["win_prob"]) for m in g_moves if m["win_prob"] is not None]
+        if len(wp_list) > 20:
+            step = len(wp_list) / 15.0
+            sparkline = [round(wp_list[int(i * step)], 2) for i in range(15)]
+        else:
+            sparkline = [round(v, 2) for v in wp_list]
+
+        opp_name = row["black_name"] if color == "white" else row["white_name"]
+        opp_rating = row["black_rating"] if color == "white" else row["white_rating"]
+
+        out.append({
+            "review_id": rid,
+            "game_id": row["game_id"],
+            "played_at": row["played_at"],
+            "user_color": color,
+            "opponent": opp_name or "Opponent",
+            "opponent_rating": opp_rating,
+            "result": row["result"],
+            "outcome": outcome,
+            "accuracy": float(row["accuracy"]) if row["accuracy"] is not None else None,
+            "total_delta_w": total_delta_w,
+            "eco": row["eco"] or "Unk",
+            "opening_name": row["opening_name"] or "Standard",
+            "ply_count": int(row["ply_count"] or 0),
+            "sparkline": sparkline,
+        })
+    out.sort(key=lambda r: r.get("played_at") or "", reverse=True)
+    return out
+
+
+def _compute_ai_coach_takeaways(
+    total_loss: float,
+    fixable_loss: float | None,
+    tax_counts: dict[str, int],
+    tier2: dict[str, Any],
+    tier3: dict[str, Any],
+    time_vs_criticality: dict[str, Any],
+    scramble_decay: dict[str, Any],
+) -> list[str]:
+    takeaways = []
+
+    # 1. Phase leak
+    phase_attr = tier2.get("phase_attribution") or []
+    if phase_attr:
+        worst_phase = max(phase_attr, key=lambda p: float(p.get("delta_w_per_move") or 0))
+        if float(worst_phase.get("delta_w_per_move") or 0) > 2.0:
+            takeaways.append(
+                f"Your biggest rating leak is in the {worst_phase['phase'].capitalize()} phase, "
+                f"dropping an average of {worst_phase['delta_w_per_move']:.1f} win% points per move."
+            )
+
+    # 2. Time management vs criticality
+    if time_vs_criticality.get("note"):
+        high_t = time_vs_criticality.get("avg_time_high_vol")
+        low_t = time_vs_criticality.get("avg_time_low_vol")
+        if high_t is not None and low_t is not None:
+            takeaways.append(
+                f"You tend to rush critical moves: spending an average of {high_t:.0f}s on sharp positions vs {low_t:.0f}s on quiet positions."
+            )
+
+    # 3. Loss taxonomy pattern
+    top_tax = max(tax_counts.items(), key=lambda kv: kv[1]) if tax_counts else None
+    if top_tax:
+        tax_name = top_tax[0].replace("_", " ")
+        takeaways.append(
+            f"Primary loss mode: '{tax_name.capitalize()}' accounts for {top_tax[1]} of your analyzed losses."
+        )
+
+    # 4. Conversion / Comeback
+    conv = tier2.get("conversion") or {}
+    if conv.get("n", 0) >= 3 and conv.get("win_rate", 1.0) < 0.7:
+        takeaways.append(
+            f"Conversion headroom: winning positions (>70% win chance) convert into victories in {int(conv['win_rate'] * 100)}% of games."
+        )
+
+    if not takeaways:
+        takeaways.append("Solid overall play across the analyzed window. Focus on maintaining position stability under time pressure.")
+
+    return takeaways[:3]
+
 
 
 def _compute_tier2(
@@ -1026,3 +1208,52 @@ def persist_practice_flags(
         inserted += 1
     connection.commit()
     return inserted
+
+
+def recompute_run_metrics(connection: Any, run_id: str) -> dict[str, Any] | None:
+    """Re-compute metrics for an existing run and update insight_runs table."""
+
+    row = connection.execute(
+        "SELECT user_id, chesscom_handle, source, window_days, time_class FROM insight_runs WHERE run_id = ?",
+        (run_id,),
+    ).fetchone()
+    if row is None:
+        return None
+
+    game_rows = connection.execute(
+        "SELECT game_id FROM insight_run_games WHERE run_id = ?", (run_id,)
+    ).fetchall()
+    if not game_rows:
+        return None
+
+    game_ids = [g["game_id"] for g in game_rows]
+    placeholders = ",".join("?" for _ in game_ids)
+    reviews = connection.execute(
+        f"SELECT review_id FROM reviews WHERE user_id = ? AND game_id IN ({placeholders})",
+        [row["user_id"]] + game_ids,
+    ).fetchall()
+    review_ids = [r["review_id"] for r in reviews]
+    if not review_ids:
+        return None
+
+    metrics = compute_tier1_metrics(connection, review_ids=review_ids)
+    trend = compute_run_trend(
+        connection,
+        user_id=row["user_id"],
+        run_id=run_id,
+        handle=row["chesscom_handle"],
+        window_days=row["window_days"],
+        time_class=row["time_class"],
+        source=row["source"] if "source" in row.keys() else "chesscom",
+        current_metrics=metrics,
+    )
+    if trend is not None:
+        metrics["trend"] = trend
+
+    connection.execute(
+        "UPDATE insight_runs SET metrics = ?, updated_at = CURRENT_TIMESTAMP WHERE run_id = ?",
+        (json.dumps(metrics), run_id),
+    )
+    connection.commit()
+    return metrics
+

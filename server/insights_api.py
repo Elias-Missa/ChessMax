@@ -285,4 +285,22 @@ def build_insights_router(app: FastAPI) -> APIRouter:
         ).fetchall()
         return {"run_id": run_id, "flags": [dict(f) for f in flags]}
 
+    @router.post("/insights/{run_id}/recompute")
+    def recompute_insights(
+        run_id: str,
+        connection: sqlite3.Connection = Depends(get_connection),
+        user: sqlite3.Row = Depends(current_user),
+    ) -> dict[str, object]:
+        from server.insights_metrics import recompute_run_metrics
+
+        row = connection.execute(
+            "SELECT run_id FROM insight_runs WHERE run_id = ? AND user_id = ?",
+            (run_id, user["id"]),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Insights run not found")
+        metrics = recompute_run_metrics(connection, run_id)
+        return {"run_id": run_id, "status": "complete", "metrics": metrics}
+
     return router
+

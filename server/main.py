@@ -35,6 +35,7 @@ from server.mistakes_api import build_mistakes_router
 from server.auth_api import build_auth_router
 from server.vol_games_api import build_vol_games_router
 from server.guess_elo_api import build_guess_elo_router
+from server.guess_eval_api import build_guess_eval_router
 from server.insights_api import build_insights_router
 from server.reviews_api import build_reviews_router
 from server.deps import current_user, get_connection
@@ -119,6 +120,9 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
     # Guess the Elo Duels (matchmaking + guessing game).
     app.include_router(build_guess_elo_router())
 
+    # Guess the Eval Duels (1-minute eval guessing game).
+    app.include_router(build_guess_eval_router())
+
     # Volatility Bar API (/analyze/fen, /analyze/pgn SSE, /healthz) + its CORS policy.
     add_vol_cors_middleware(app)
     app.include_router(vol_api_router)
@@ -149,6 +153,7 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
     @app.get("/insights")
     @app.get("/insights/{rest:path}")
     @app.get("/guess-the-elo")
+    @app.get("/guess-the-eval")
     def spa_routes(rest: str = "") -> FileResponse:  # noqa: ARG001
         return _spa_index()
 
