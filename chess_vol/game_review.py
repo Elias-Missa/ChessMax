@@ -79,6 +79,167 @@ def _opening_prefixes() -> set[tuple[str, ...]]:
 _BOOK_PREFIXES = _opening_prefixes()
 
 
+# Curated ECO book for opening-name detection. Each entry is
+# ``(uci_sequence, eco, name)``; the longest sequence that is a prefix of the
+# played moves wins. This is intentionally small and recognizable rather than a
+# full ECO database — PGN ``[Opening]`` headers are preferred when present.
+_OPENING_BOOK: tuple[tuple[str, str, str], ...] = (
+    # 1.e4 e5
+    ("e2e4 e7e5 g1f3 b8c6 f1b5 a7a6", "C68", "Ruy López: Morphy Defense"),
+    ("e2e4 e7e5 g1f3 b8c6 f1b5", "C60", "Ruy López"),
+    ("e2e4 e7e5 g1f3 b8c6 f1c4 f8c5", "C50", "Italian Game: Giuoco Piano"),
+    ("e2e4 e7e5 g1f3 b8c6 f1c4 g8f6", "C55", "Italian Game: Two Knights Defense"),
+    ("e2e4 e7e5 g1f3 b8c6 f1c4", "C50", "Italian Game"),
+    ("e2e4 e7e5 g1f3 b8c6 d2d4", "C44", "Scotch Game"),
+    ("e2e4 e7e5 g1f3 g8f6", "C42", "Petrov's Defense"),
+    ("e2e4 e7e5 g1f3 d7d6", "C41", "Philidor Defense"),
+    ("e2e4 e7e5 b1c3", "C25", "Vienna Game"),
+    ("e2e4 e7e5 f2f4", "C30", "King's Gambit"),
+    ("e2e4 e7e5 f1c4", "C23", "Bishop's Opening"),
+    ("e2e4 e7e5", "C20", "King's Pawn Game"),
+    # 1.e4 c5 (Sicilian)
+    ("e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6 b1c3 a7a6", "B90", "Sicilian: Najdorf"),
+    ("e2e4 c7c5 g1f3 b8c6 d2d4 c5d4 f3d4 g7g6", "B34", "Sicilian: Accelerated Dragon"),
+    ("e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6 b1c3 g7g6", "B70", "Sicilian: Dragon"),
+    ("e2e4 c7c5 g1f3 e7e6", "B40", "Sicilian: French Variation"),
+    ("e2e4 c7c5 g1f3 b8c6", "B30", "Sicilian: Old Sicilian"),
+    ("e2e4 c7c5 g1f3 d7d6", "B50", "Sicilian Defense"),
+    ("e2e4 c7c5 b1c3", "B23", "Sicilian: Closed"),
+    ("e2e4 c7c5", "B20", "Sicilian Defense"),
+    # 1.e4 e6 / c6 / d5 / d6 / g6 / Nf6
+    ("e2e4 e7e6 d2d4 d7d5 b1c3", "C10", "French Defense: Paulsen"),
+    ("e2e4 e7e6 d2d4 d7d5 e4e5", "C02", "French Defense: Advance"),
+    ("e2e4 e7e6 d2d4 d7d5 e4d5", "C01", "French Defense: Exchange"),
+    ("e2e4 e7e6", "C00", "French Defense"),
+    ("e2e4 c7c6 d2d4 d7d5 e4e5", "B12", "Caro-Kann: Advance"),
+    ("e2e4 c7c6 d2d4 d7d5 b1c3", "B15", "Caro-Kann Defense"),
+    ("e2e4 c7c6 d2d4 d7d5 e4d5", "B13", "Caro-Kann: Exchange"),
+    ("e2e4 c7c6", "B10", "Caro-Kann Defense"),
+    ("e2e4 d7d5", "B01", "Scandinavian Defense"),
+    ("e2e4 d7d6", "B07", "Pirc Defense"),
+    ("e2e4 g7g6", "B06", "Modern Defense"),
+    ("e2e4 g8f6", "B02", "Alekhine's Defense"),
+    ("e2e4 b7b6", "B00", "Owen's Defense"),
+    ("e2e4", "B00", "King's Pawn Opening"),
+    # 1.d4
+    ("d2d4 d7d5 c2c4 e7e6", "D30", "Queen's Gambit Declined"),
+    ("d2d4 d7d5 c2c4 c7c6", "D10", "Slav Defense"),
+    ("d2d4 d7d5 c2c4 d5c4", "D20", "Queen's Gambit Accepted"),
+    ("d2d4 d7d5 c2c4", "D06", "Queen's Gambit"),
+    ("d2d4 g8f6 c2c4 g7g6 b1c3 f8g7 e2e4", "E70", "King's Indian Defense"),
+    ("d2d4 g8f6 c2c4 g7g6 b1c3 d7d5", "D80", "Grünfeld Defense"),
+    ("d2d4 g8f6 c2c4 g7g6", "E60", "King's Indian Defense"),
+    ("d2d4 g8f6 c2c4 e7e6 b1c3 f8b4", "E20", "Nimzo-Indian Defense"),
+    ("d2d4 g8f6 c2c4 e7e6 g1f3 b7b6", "E12", "Queen's Indian Defense"),
+    ("d2d4 g8f6 c2c4 e7e6", "E00", "Indian Game"),
+    ("d2d4 g8f6 c2c4 c7c5", "A15", "Benoni Defense"),
+    ("d2d4 g8f6 c1g5", "A45", "Trompowsky Attack"),
+    ("d2d4 g8f6 g1f3", "A46", "Indian Game"),
+    ("d2d4 g8f6", "A45", "Indian Game"),
+    ("d2d4 d7d5 c1f4", "D00", "London System"),
+    ("d2d4 d7d5 g1f3 g8f6 c1f4", "D02", "London System"),
+    ("d2d4 f7f5", "A80", "Dutch Defense"),
+    ("d2d4 d7d5", "D00", "Queen's Pawn Game"),
+    ("d2d4", "A40", "Queen's Pawn Opening"),
+    # Flank
+    ("c2c4 e7e5", "A20", "English: Reversed Sicilian"),
+    ("c2c4 g8f6", "A15", "English: Anglo-Indian"),
+    ("c2c4", "A10", "English Opening"),
+    ("g1f3 d7d5 d2d4 g8f6", "D02", "Queen's Pawn Game"),
+    ("g1f3", "A04", "Réti Opening"),
+    ("b2b3", "A01", "Nimzo-Larsen Attack"),
+    ("g2g3", "A00", "King's Fianchetto Opening"),
+    ("f2f4", "A02", "Bird's Opening"),
+)
+
+
+def _opening_index() -> dict[tuple[str, ...], tuple[str, str]]:
+    return {tuple(line.split()): (eco, name) for line, eco, name in _OPENING_BOOK}
+
+
+_OPENING_INDEX = _opening_index()
+_OPENING_MAX_PLIES = max((len(key) for key in _OPENING_INDEX), default=0)
+
+
+def detect_opening(
+    results: list[PlyResult], headers: object | None = None
+) -> dict[str, object] | None:
+    """Identify the game's opening (spec §0: chess.com-parity).
+
+    Prefers the PGN ``[Opening]``/``[ECO]`` headers when the game carries them
+    (lichess/chess.com exports do); otherwise falls back to a longest-prefix
+    match against the curated built-in book. Returns ``None`` when nothing
+    matches (e.g. an irregular first move outside the book).
+    """
+
+    if headers is not None:
+        get = getattr(headers, "get", None)
+        if callable(get):
+            name = str(get("Opening", "") or "").strip()
+            eco = str(get("ECO", "") or "").strip()
+            variation = str(get("Variation", "") or "").strip()
+            if name and name != "?":
+                if variation and variation != "?" and variation.lower() not in name.lower():
+                    name = f"{name}: {variation}"
+                return {"name": name, "eco": eco or None, "source": "headers"}
+
+    played = [result.move_uci for result in results if result.move_uci]
+    upper = min(len(played), _OPENING_MAX_PLIES)
+    for length in range(upper, 0, -1):
+        entry = _OPENING_INDEX.get(tuple(played[:length]))
+        if entry is not None:
+            eco, name = entry
+            return {"name": name, "eco": eco, "source": "book"}
+    return None
+
+
+def compute_key_moments(
+    results: list[PlyResult], *, limit: int = 4, min_swing: float = 0.10
+) -> list[dict[str, object]]:
+    """Pick the game's turning points (spec §0: chess.com-parity "key moments").
+
+    A moment scores on how much expected value the move shed, with a bonus when
+    it flipped who was winning (crossed the 0.5 line). Returns up to ``limit``
+    moments sorted by impact, each carrying the 0-based ply ``index`` the review
+    UI uses to navigate. Empty when the game had no move above ``min_swing``.
+    """
+
+    scored: list[tuple[float, dict[str, object]]] = []
+    for idx, result in enumerate(results):
+        review = result.review
+        if review is None:
+            continue
+        swing = review.expected_points_loss
+        before = review.expected_points_before
+        after = review.expected_points_after
+        # A genuine lead change straddles 0.5 on both sides by a margin — a
+        # 0.50→0.49 nudge from an equal position is not a turning point.
+        lead_change = (before - 0.5) * (after - 0.5) < 0 and (
+            min(abs(before - 0.5), abs(after - 0.5)) >= 0.05
+        )
+        score = swing + (0.15 if lead_change else 0.0)
+        if score < min_swing:
+            continue
+        side = "white" if chess.Board(result.fen_before).turn == chess.WHITE else "black"
+        scored.append(
+            (
+                score,
+                {
+                    "ply": result.ply,
+                    "index": idx,
+                    "san": result.san,
+                    "side": side,
+                    "classification": review.classification,
+                    "swing_pct": round(swing * 100, 1),
+                    "lead_change": lead_change,
+                    "reason": review.coach,
+                },
+            )
+        )
+    scored.sort(key=lambda item: (-item[0], item[1]["ply"]))
+    return [moment for _, moment in scored[:limit]]
+
+
 @dataclass(frozen=True)
 class MoveReview:
     classification: ReviewLabel
@@ -346,6 +507,8 @@ def build_game_review_summary(results: list[PlyResult], pgn: str) -> dict[str, o
             "black": _estimated_elo(black_accuracy, ratings["black"]),
         },
         "classification_counts": counts,
+        "opening": detect_opening(results, headers),
+        "key_moments": compute_key_moments(results),
         "coach": coach,
     }
 
@@ -355,6 +518,8 @@ __all__ = [
     "ReviewLabel",
     "attach_move_reviews",
     "build_game_review_summary",
+    "compute_key_moments",
+    "detect_opening",
     "expected_points",
     "move_accuracy",
     "win_probability",

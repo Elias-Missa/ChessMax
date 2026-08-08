@@ -156,6 +156,20 @@ def evals_to_infos(
 # --------------------------------------------------------------------------- #
 
 
+@pytest.fixture(autouse=True)
+def disable_findability_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep reviews deterministic and engine-free.
+
+    ``chess_vol.server.POLICY_FACTORY`` defaults to the real Maia-backed policy,
+    which would fire lc0 on any dev machine that has Maia installed and make the
+    ``/analyze/pgn`` tests machine-dependent. Force it off by default; tests that
+    exercise findability opt back in by patching it to a fake policy.
+    """
+    import chess_vol.server as server_mod
+
+    monkeypatch.setattr(server_mod, "POLICY_FACTORY", lambda: None, raising=False)
+
+
 @pytest.fixture
 def startpos() -> chess.Board:
     return chess.Board()

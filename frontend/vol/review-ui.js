@@ -138,14 +138,176 @@
     }
   }
 
+  const FIND_BAND_COLORS = {
+    Obvious: "#7DB249",
+    Natural: "#96BC4B",
+    "Needs thought": "#E3AF35",
+    Hard: "#CA6830",
+    "Engine-only": "#B33430",
+    Forced: "#5C8BB0",
+  };
+
+  const SVG_NS = "http://www.w3.org/2000/svg";
+
+  /** Inline SVG sparkline of C_A(rating) — how the chance of finding a good
+   *  move rises with player strength, with a 50% reference line. */
+  function buildFindSparkline(curve, color) {
+    const wrap = document.createElement("div");
+    wrap.className = "review-find-spark";
+    const W = 240;
+    const H = 46;
+    const pad = 5;
+    const ratings = curve.map((p) => p[0]);
+    const rMin = Math.min.apply(null, ratings);
+    const rMax = Math.max.apply(null, ratings);
+    const px = (r) => (rMax === rMin ? pad : pad + ((r - rMin) / (rMax - rMin)) * (W - 2 * pad));
+    const py = (v) => H - pad - Math.max(0, Math.min(1, v)) * (H - 2 * pad);
+    const line = curve.map((p) => `${px(p[0]).toFixed(1)},${py(p[1]).toFixed(1)}`).join(" ");
+    const area = `${pad},${H - pad} ${line} ${(W - pad).toFixed(1)},${H - pad}`;
+
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.setAttribute("class", "review-find-spark-svg");
+    svg.setAttribute("preserveAspectRatio", "none");
+
+    const guide = document.createElementNS(SVG_NS, "line");
+    guide.setAttribute("x1", String(pad));
+    guide.setAttribute("x2", String(W - pad));
+    guide.setAttribute("y1", py(0.5).toFixed(1));
+    guide.setAttribute("y2", py(0.5).toFixed(1));
+    guide.setAttribute("class", "review-find-spark-guide");
+    svg.appendChild(guide);
+
+    const fill = document.createElementNS(SVG_NS, "polygon");
+    fill.setAttribute("points", area);
+    fill.setAttribute("fill", color);
+    fill.setAttribute("fill-opacity", "0.16");
+    svg.appendChild(fill);
+
+    const stroke = document.createElementNS(SVG_NS, "polyline");
+    stroke.setAttribute("points", line);
+    stroke.setAttribute("fill", "none");
+    stroke.setAttribute("stroke", color);
+    stroke.setAttribute("stroke-width", "2");
+    stroke.setAttribute("stroke-linejoin", "round");
+    svg.appendChild(stroke);
+
+    wrap.appendChild(svg);
+    const cap = document.createElement("div");
+    cap.className = "review-find-spark-cap";
+    cap.innerHTML = `<span>${rMin}</span><span>chance of finding it &rarr;</span><span>${rMax}</span>`;
+    wrap.appendChild(cap);
+    return wrap;
+  }
+
+  /**
+   * Render the findability panel (Game Review 2.0 §3) into ``panelEl``.
+   * Null-safe: hides the panel when ``findability`` is absent (position gated
+   * out, or no human model installed). Shows the band, a score meter, a
+   * rising-probability sparkline (the ``curve``), the personal likelihood, and
+   * the realistic alternative move.
+   */
+  function renderFindability(panelEl, findability, bestSan) {
+    if (!panelEl) return;
+    panelEl.innerHTML = "";
+    if (!findability) {
+      panelEl.classList.add("hidden");
+      return;
+    }
+    panelEl.classList.remove("hidden");
+    const band = findability.band || "";
+    const bandColor = FIND_BAND_COLORS[band] || "#5C8BB0";
+    const score = typeof findability.score === "number" ? findability.score : null;
+
+    // Best-move header — makes explicit that this whole panel describes how hard
+    // it is to FIND THE BEST MOVE (not the move that was actually played).
+    if (bestSan) {
+      const bm = document.createElement("div");
+      bm.className = "review-find-bestmove";
+      const bmLabel = document.createElement("span");
+      bmLabel.className = "review-find-bestmove-label";
+      bmLabel.textContent = "Best move to find";
+      const bmMove = document.createElement("strong");
+      bmMove.className = "review-find-bestmove-san";
+      bmMove.textContent = `→ ${bestSan}`;
+      bm.appendChild(bmLabel);
+      bm.appendChild(bmMove);
+      panelEl.appendChild(bm);
+    }
+
+    // Header: label + band verdict.
+    const head = document.createElement("div");
+    head.className = "review-find-head";
+    const title = document.createElement("span");
+    title.className = "review-find-title";
+    title.textContent = "How hard to find";
+    head.appendChild(title);
+    const bandEl = document.createElement("span");
+    bandEl.className = "review-find-band";
+    bandEl.style.color = bandColor;
+    bandEl.textContent = band;
+    head.appendChild(bandEl);
+    panelEl.appendChild(head);
+
+    // Score meter (0–100), filled and colored by band.
+    if (score != null) {
+      const meter = document.createElement("div");
+      meter.className = "review-find-meter";
+      const fillEl = document.createElement("div");
+      fillEl.className = "review-find-meter-fill";
+      fillEl.style.width = `${Math.max(0, Math.min(100, score))}%`;
+      fillEl.style.background = bandColor;
+      meter.appendChild(fillEl);
+      const val = document.createElement("span");
+      val.className = "review-find-meter-val";
+      val.textContent = String(score);
+      meter.appendChild(val);
+      panelEl.appendChild(meter);
+    }
+
+    // Rising-probability sparkline from the C_A curve.
+    const curve = Array.isArray(findability.curve) ? findability.curve : [];
+    if (curve.length >= 2) {
+      panelEl.appendChild(buildFindSparkline(curve, bandColor));
+    }
+
+    // Personal likelihood (needs the user's rating) or a strength hint.
+    const desc = document.createElement("div");
+    desc.className = "review-find-desc";
+    if (typeof findability.personal === "number") {
+      desc.textContent = `At your rating, you'd find this move ${Math.round(findability.personal * 100)}% of the time.`;
+    } else if (findability.r_find != null) {
+      desc.textContent =
+        findability.r_find <= 850
+          ? "Most players would find this move."
+          : `Takes about ${findability.r_find}-strength to find reliably.`;
+    }
+    if (desc.textContent) panelEl.appendChild(desc);
+
+    // The strongest move a human at this level would more plausibly have played.
+    if (findability.alternate && findability.alternate.san) {
+      const alt = document.createElement("div");
+      alt.className = "review-find-alt";
+      const label = document.createElement("span");
+      label.textContent = "You'd more likely find:";
+      const move = document.createElement("strong");
+      move.textContent = findability.alternate.san;
+      alt.appendChild(label);
+      alt.appendChild(move);
+      panelEl.appendChild(alt);
+    }
+  }
+
   window.ChessReviewUI = {
     CLASSIFICATION_STYLES,
+    FIND_BAND_COLORS,
     arrowColorForClassification,
     clearBoardOverlay,
     getClassificationStyle,
     renderBadgeIcon,
     renderBoardOverlay,
     renderClassificationPills,
+    renderFindability,
     squareToOverlayPosition,
   };
 })();

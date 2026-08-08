@@ -1,26 +1,30 @@
-/* ChessMax shell: page base + top-level tab bar shared by both apps. */
+/* ChessMax shell: page base + top-level tab bar shared by both apps.
+   Theme: chess.com-style dark cards with a Razer edge — near-black cool
+   surfaces + neon "Razer green" (#44d62c) accents and subtle green glow. */
 
 body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(1100px 500px at 8% -10%, rgba(74, 144, 255, 0.14), transparent 60%),
-    radial-gradient(900px 420px at 95% 0%, rgba(57, 255, 20, 0.05), transparent 55%),
-    linear-gradient(180deg, #14171f 0%, #101218 60%, #0d0f14 100%);
-  color: #e7edf5;
+    radial-gradient(1000px 480px at 92% -8%, rgba(68, 214, 44, 0.10), transparent 60%),
+    radial-gradient(880px 460px at 6% -6%, rgba(68, 214, 44, 0.05), transparent 58%),
+    linear-gradient(180deg, #0f1114 0%, #0b0d0f 58%, #08090b 100%);
+  color: #eef1f3;
   font-family: Inter, "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: rgba(138, 180, 248, 0.35);
+  background: rgba(68, 214, 44, 0.32);
+  color: #ffffff;
 }
 
 .shell-header {
   align-items: center;
   backdrop-filter: blur(14px);
-  background: rgba(17, 19, 24, 0.82);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(11, 13, 16, 0.86);
+  border-bottom: 1px solid rgba(68, 214, 44, 0.14);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 8px 30px rgba(0, 0, 0, 0.4);
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem 2rem;
@@ -31,7 +35,7 @@ body {
 }
 
 .shell-title {
-  background: linear-gradient(120deg, #e7edf5 30%, #8ab4f8 75%, #67e8a2);
+  background: linear-gradient(100deg, #ffffff 18%, #57e83f 68%, #44d62c);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -69,19 +73,19 @@ body {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 9px;
-  color: #9aa6b2;
+  color: #99a0aa;
   cursor: pointer;
   font: inherit;
   font-size: 0.88rem;
   font-weight: 600;
   padding: 0.48rem 0.8rem;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
-    transform 0.1s ease;
+    box-shadow 0.15s ease, transform 0.1s ease;
 }
 
 .shell-tab:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #e7edf5;
+  background: rgba(68, 214, 44, 0.08);
+  color: #eef1f3;
 }
 
 .shell-tab:active {
@@ -89,14 +93,59 @@ body {
 }
 
 .shell-tab:focus-visible {
-  outline: 2px solid rgba(138, 180, 248, 0.7);
+  outline: 2px solid rgba(68, 214, 44, 0.7);
   outline-offset: 1px;
 }
 
 .shell-tab.active {
-  background: linear-gradient(180deg, rgba(138, 180, 248, 0.16), rgba(138, 180, 248, 0.08));
-  border-color: rgba(138, 180, 248, 0.45);
-  box-shadow: 0 0 0 1px rgba(138, 180, 248, 0.08), 0 6px 18px rgba(0, 0, 0, 0.25);
+  background: linear-gradient(180deg, rgba(68, 214, 44, 0.20), rgba(68, 214, 44, 0.07));
+  border-color: rgba(68, 214, 44, 0.55);
+  box-shadow: 0 0 0 1px rgba(68, 214, 44, 0.12), 0 0 18px rgba(68, 214, 44, 0.18),
+    0 6px 18px rgba(0, 0, 0, 0.35);
+  color: #ffffff;
+}
+
+.shell-tab--accent.active {
+  border-color: rgba(68, 214, 44, 0.7);
+}
+
+.shell-subnav {
+  align-items: center;
+  background: rgba(8, 10, 12, 0.92);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.45rem clamp(1rem, 4vw, 3rem);
+  position: sticky;
+  top: 3.4rem;
+  z-index: 40;
+}
+
+.shell-subnav.hidden {
+  display: none;
+}
+
+.shell-subnav button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #8b93a0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.35rem 0.7rem;
+}
+
+.shell-subnav button:hover {
+  background: rgba(68, 214, 44, 0.08);
+  color: #eef1f3;
+}
+
+.shell-subnav button.active {
+  background: rgba(68, 214, 44, 0.14);
+  border-color: rgba(68, 214, 44, 0.4);
   color: #ffffff;
 }
 
@@ -124,7 +173,7 @@ body {
 }
 
 .shell-user-email {
-  color: #9aa6b2;
+  color: #99a0aa;
   font-size: 0.82rem;
   max-width: 18ch;
   overflow: hidden;
@@ -136,7 +185,7 @@ body {
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 9px;
-  color: #9aa6b2;
+  color: #99a0aa;
   cursor: pointer;
   font: inherit;
   font-size: 0.82rem;
@@ -146,9 +195,9 @@ body {
 }
 
 .shell-logout:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.22);
-  color: #e7edf5;
+  background: rgba(68, 214, 44, 0.10);
+  border-color: rgba(68, 214, 44, 0.4);
+  color: #eef1f3;
 }
 
 /* ── Auth overlay (login / signup) ─────────────────────────────────────── */
@@ -161,9 +210,9 @@ body {
   justify-content: center;
   padding: 1.5rem;
   background:
-    radial-gradient(1100px 500px at 8% -10%, rgba(74, 144, 255, 0.16), transparent 60%),
-    radial-gradient(900px 420px at 95% 0%, rgba(57, 255, 20, 0.06), transparent 55%),
-    linear-gradient(180deg, #14171f 0%, #101218 60%, #0d0f14 100%);
+    radial-gradient(1000px 480px at 92% -8%, rgba(68, 214, 44, 0.12), transparent 60%),
+    radial-gradient(880px 460px at 6% -6%, rgba(68, 214, 44, 0.06), transparent 58%),
+    linear-gradient(180deg, #0f1114 0%, #0b0d0f 58%, #08090b 100%);
 }
 
 .auth-overlay.hidden {
@@ -172,15 +221,15 @@ body {
 
 .auth-card {
   width: min(380px, 100%);
-  background: rgba(27, 31, 41, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(18, 20, 24, 0.94);
+  border: 1px solid rgba(68, 214, 44, 0.16);
   border-radius: 18px;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55), 0 0 40px rgba(68, 214, 44, 0.06);
   padding: 2rem 1.75rem;
 }
 
 .auth-title {
-  background: linear-gradient(120deg, #e7edf5 30%, #8ab4f8 75%, #67e8a2);
+  background: linear-gradient(100deg, #ffffff 18%, #57e83f 68%, #44d62c);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -193,7 +242,7 @@ body {
 }
 
 .auth-sub {
-  color: #9aa6b2;
+  color: #99a0aa;
   font-size: 0.9rem;
   margin: 0.4rem 0 1.4rem;
   text-align: center;
@@ -206,17 +255,18 @@ body {
 }
 
 .auth-form input {
-  background: #2a3142;
+  background: #20232a;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
-  color: #e7edf5;
+  color: #eef1f3;
   font: inherit;
   padding: 0.7rem 0.85rem;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .auth-form input:focus {
-  border-color: rgba(138, 180, 248, 0.6);
+  border-color: rgba(68, 214, 44, 0.6);
+  box-shadow: 0 0 0 3px rgba(68, 214, 44, 0.12);
   outline: none;
 }
 
@@ -231,14 +281,14 @@ body {
 }
 
 .auth-submit {
-  background: linear-gradient(180deg, #8ab4f8, #5b96f5);
+  background: linear-gradient(180deg, #4ee02f, #33a821);
   border: 0;
   border-radius: 10px;
-  box-shadow: 0 2px 10px rgba(91, 150, 245, 0.25);
-  color: #07111f;
+  box-shadow: 0 2px 10px rgba(68, 214, 44, 0.28), 0 0 20px rgba(68, 214, 44, 0.18);
+  color: #06140a;
   cursor: pointer;
   font: inherit;
-  font-weight: 700;
+  font-weight: 800;
   margin-top: 0.3rem;
   padding: 0.75rem 1rem;
   transition: filter 0.15s ease, transform 0.1s ease;
@@ -259,7 +309,7 @@ body {
 }
 
 .auth-toggle {
-  color: #9aa6b2;
+  color: #99a0aa;
   font-size: 0.85rem;
   margin: 1.1rem 0 0;
   text-align: center;
@@ -268,7 +318,7 @@ body {
 .auth-link {
   background: none;
   border: 0;
-  color: #8ab4f8;
+  color: #57e83f;
   cursor: pointer;
   font: inherit;
   font-weight: 600;

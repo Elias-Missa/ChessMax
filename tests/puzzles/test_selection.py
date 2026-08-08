@@ -17,8 +17,8 @@ def test_roll_bucket_no_openings_is_50_50() -> None:
     assert roll_bucket(rng, has_openings=False) == "quiet"
 
 
-def test_roll_bucket_with_openings_is_30_40_30() -> None:
-    rng = SequenceRng([0.0, 0.29, 0.3, 0.69, 0.7, 0.99])
+def test_roll_bucket_with_openings_is_40_20_40() -> None:
+    rng = SequenceRng([0.0, 0.39, 0.4, 0.59, 0.6, 0.99])
 
     assert roll_bucket(rng, has_openings=True) == "tactical_general"
     assert roll_bucket(rng, has_openings=True) == "tactical_general"

@@ -267,6 +267,14 @@ def detect_mistakes(
                 board.push(move)            # solution not humanly findable -> drop
                 continue
 
+        # User-POV eval after the solution move (the docstring contract for
+        # eval_best_cp). Resolved through the same helper as eval_played so
+        # both numbers fold terminal positions identically.
+        eval_best = _eval_after_move(
+            board, chess.Move.from_uci(best_uci), top,
+            analysis_fn=analysis_fn, depth=pass2_depth, user_color=user_color,
+        )
+
         pv = [str(m) for m in top[0].get("pv", [])] or [best_uci]
         actual_san = board.san(move)
         solution_san = board.san(chess.Move.from_uci(best_uci))
@@ -282,7 +290,7 @@ def detect_mistakes(
             solution_moves=" ".join(pv),
             user_actual_move=user_uci,
             eval_before_cp=eval_before,
-            eval_best_cp=eval_before,       # value with best play == after the solution
+            eval_best_cp=eval_best,
             eval_played_cp=eval_played,
             second_best_gap_cp=gap,
             volatility=volatility_fn(fen) if volatility_fn is not None else None,

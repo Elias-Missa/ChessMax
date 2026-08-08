@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import chess
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -33,6 +34,9 @@ from server.modes_api import build_modes_router
 from server.mistakes_api import build_mistakes_router
 from server.auth_api import build_auth_router
 from server.vol_games_api import build_vol_games_router
+from server.guess_elo_api import build_guess_elo_router
+from server.insights_api import build_insights_router
+from server.reviews_api import build_reviews_router
 from server.deps import current_user, get_connection
 from server.replies import engine_reply
 from server.selection import select_next_position
@@ -44,6 +48,20 @@ from chess_vol.server import api_router as vol_api_router
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 VENDOR_DIR = Path(__file__).resolve().parent.parent / "node_modules"
+
+
+class NoCacheStaticFiles(StaticFiles):
+    """StaticFiles that asks the browser to revalidate every request.
+
+    The app's own JS/CSS change during development; ``Cache-Control: no-cache``
+    forces a conditional request (304 when unchanged, 200 when edited) so a
+    plain reload always reflects the latest files instead of a stale disk copy.
+    """
+
+    async def get_response(self, path: str, scope):  # type: ignore[override]
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 class AttemptRequest(BaseModel):
@@ -66,6 +84,11 @@ class PlayoutMoveRequest(BaseModel):
     move: str = Field(min_length=4, max_length=5)
 
 
+class VolMaiaMoveRequest(BaseModel):
+    fen: str = Field(min_length=8)
+    rating: int = Field(default=1500, ge=1, le=3500)
+
+
 def create_app(db_path: str | Path | None = None) -> FastAPI:
     app = FastAPI(title="ChessMax")
     app.state.db_path = db_path
@@ -84,24 +107,50 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
     # "Your Mistakes": personalized puzzles mined from the user's Chess.com games.
     app.include_router(build_mistakes_router(app))
 
+    # Insights runs (chess.com window → shallow reviews → Tier 1 metrics).
+    app.include_router(build_insights_router(app))
+
+    # Async persisted Game Reviews.
+    app.include_router(build_reviews_router(app))
+
     # Per-user saved analyzed games (vol Library).
     app.include_router(build_vol_games_router(app))
+
+    # Guess the Elo Duels (matchmaking + guessing game).
+    app.include_router(build_guess_elo_router())
 
     # Volatility Bar API (/analyze/fen, /analyze/pgn SSE, /healthz) + its CORS policy.
     add_vol_cors_middleware(app)
     app.include_router(vol_api_router)
 
     if FRONTEND_DIR.exists():
-        app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+        app.mount("/static", NoCacheStaticFiles(directory=FRONTEND_DIR), name="static")
     if VENDOR_DIR.exists():
         app.mount("/vendor", StaticFiles(directory=VENDOR_DIR), name="vendor")
 
-    @app.get("/")
-    def index() -> FileResponse:
+    def _spa_index() -> FileResponse:
         index_path = FRONTEND_DIR / "index.html"
         if not index_path.exists():
             raise HTTPException(status_code=404, detail="Frontend not found")
-        return FileResponse(index_path)
+        return FileResponse(index_path, headers={"Cache-Control": "no-cache"})
+
+    @app.get("/")
+    def index() -> FileResponse:
+        return _spa_index()
+
+    # History-API deep links for the shell (Phase A). Keep ahead of API mounts
+    # that already have their own prefixes; these paths never collide with /api
+    # or /analyze.
+    @app.get("/puzzles")
+    @app.get("/training")
+    @app.get("/training/{rest:path}")
+    @app.get("/game-review")
+    @app.get("/game-review/{rest:path}")
+    @app.get("/insights")
+    @app.get("/insights/{rest:path}")
+    @app.get("/guess-the-elo")
+    def spa_routes(rest: str = "") -> FileResponse:  # noqa: ARG001
+        return _spa_index()
 
     @app.get("/api/user")
     def get_user(
@@ -309,6 +358,9 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            # Engine hiccup; the playout is unchanged and the move can be retried.
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return {
             "maia_move": result.maia_move,
             "fen": result.fen,
@@ -370,6 +422,50 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
     ) -> dict[str, object]:
         clamped = max(1, min(100, int(limit)))
         return {"playouts": list_recent_playouts(connection, user_id=int(user["id"]), limit=clamped)}
+
+    @app.post("/api/vol/play/maia-move")
+    def vol_maia_move(request: VolMaiaMoveRequest) -> dict[str, object]:
+        """Play one Maia reply from an arbitrary FEN (Game Review 2.0 Phase 5).
+
+        Stateless and unauthenticated (the review lives on the vol tab): the
+        client owns the game state and asks for the opponent's move per ply. Uses
+        the same ``playout_move_fn`` seam as the trainer playouts (Maia at the
+        requested rating, Stockfish fallback), so tests inject a fake.
+        """
+        try:
+            board = chess.Board(request.fen.strip())
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"invalid FEN: {exc}") from exc
+        if board.is_game_over(claim_draw=True):
+            return {
+                "move": None,
+                "san": None,
+                "engine": None,
+                "fen": board.fen(),
+                "game_over": True,
+                "result": board.result(claim_draw=True),
+            }
+        rating = normalize_maia_rating(request.rating)
+        move_uci, engine = app.state.playout_move_fn(board.fen(), rating)
+        if move_uci is None:
+            raise HTTPException(status_code=503, detail="engine returned no move")
+        try:
+            move = chess.Move.from_uci(move_uci)
+        except ValueError as exc:
+            raise HTTPException(status_code=502, detail=f"engine returned bad move: {move_uci!r}") from exc
+        if move not in board.legal_moves:
+            raise HTTPException(status_code=502, detail=f"engine returned illegal move: {move_uci}")
+        san = board.san(move)
+        board.push(move)
+        over = board.is_game_over(claim_draw=True)
+        return {
+            "move": move_uci,
+            "san": san,
+            "engine": engine,
+            "fen": board.fen(),
+            "game_over": over,
+            "result": board.result(claim_draw=True) if over else None,
+        }
 
     @app.get("/api/stats")
     def stats_route(

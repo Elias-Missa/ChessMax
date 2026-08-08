@@ -45,6 +45,8 @@ class UsernameRequest(BaseModel):
 class GenerateRequest(BaseModel):
     chesscom_username: str | None = Field(default=None, max_length=64)
     since_days: int = Field(default=chesscom.LOOKBACK_DAYS, ge=1, le=365)
+    time_class: str | None = Field(default=None, max_length=16)
+    max_games: int = Field(default=chesscom.MAX_GAMES, ge=1, le=chesscom.MAX_GAMES)
 
 
 class MistakeAttemptRequest(BaseModel):
@@ -62,6 +64,8 @@ def _default_generate(
     is_cancelled: Callable[[], bool],
     fetch_json: chesscom.FetchJson | None,
     maia_topk_fn: Callable[[str], list[str] | None] | None,
+    time_class: str | None = None,
+    max_games: int = chesscom.MAX_GAMES,
 ) -> dict[str, int]:
     """Real-engine generation: one Stockfish + one lc0 + one vol engine per run."""
 
@@ -97,11 +101,20 @@ def _default_generate(
             fetch_json=fetch_json,
             on_event=on_event,
             is_cancelled=is_cancelled,
+            time_class=time_class,
+            max_games=max_games,
         )
 
 
 def build_mistakes_router(app: FastAPI) -> APIRouter:
     router = APIRouter(prefix="/api")
+
+    # One generation run per user at a time. Entries are added when a generate
+    # request is accepted and removed by the worker's finally, so a second
+    # request is rejected until the previous worker thread has actually exited
+    # (even after a client disconnect, when the worker keeps finishing up).
+    generating_users: set[int] = set()
+    generating_lock = threading.Lock()
 
     # ------------------------------------------------------------------ #
     # Username (mirrors the openings get/set pair)                        #
@@ -147,6 +160,19 @@ def build_mistakes_router(app: FastAPI) -> APIRouter:
             "total_puzzles": int(counts["total"] or 0),
             "unsolved_puzzles": int(counts["unsolved"] or 0),
         }
+
+    @router.get("/mistakes/runs")
+    def list_runs(
+        limit: int = 10,
+        connection: sqlite3.Connection = Depends(get_connection),
+        user: sqlite3.Row = Depends(current_user),
+    ) -> dict[str, object]:
+        clamped = max(1, min(50, int(limit)))
+        rows = connection.execute(
+            "SELECT * FROM mistake_runs WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+            (user["id"], clamped),
+        ).fetchall()
+        return {"runs": [dict(r) for r in rows]}
 
     # ------------------------------------------------------------------ #
     # Serve + solve                                                       #
@@ -250,10 +276,27 @@ def build_mistakes_router(app: FastAPI) -> APIRouter:
             finally:
                 setup.close()
 
+        time_class = (request_body.time_class or "").strip().lower() or None
+        if time_class is not None and time_class not in chesscom.VALID_TIME_CLASSES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"time_class must be one of {sorted(chesscom.VALID_TIME_CLASSES)}",
+            )
         since = chesscom.default_since(request_body.since_days)
+        max_games = int(request_body.max_games)
         gen_fn = getattr(app.state, "mistakes_generate_fn", None)
         fetch_json = getattr(app.state, "fetch_json", None)
         maia_topk_fn = getattr(app.state, "maia_topk_fn", None)
+
+        # Claim the per-user slot last, so nothing between here and the worker's
+        # finally (which releases it) can raise and leave the user locked out.
+        with generating_lock:
+            if user_id in generating_users:
+                raise HTTPException(
+                    status_code=409,
+                    detail="A generation run is already in progress.",
+                )
+            generating_users.add(user_id)
 
         queue: asyncio.Queue[dict[str, str] | None] = asyncio.Queue()
         loop = asyncio.get_running_loop()
@@ -275,6 +318,7 @@ def build_mistakes_router(app: FastAPI) -> APIRouter:
                         connection,
                         user_id=user_id, username=username, since=since,
                         on_event=on_event, is_cancelled=cancelled.is_set,
+                        time_class=time_class, max_games=max_games,
                     )
                 else:
                     _default_generate(
@@ -282,9 +326,15 @@ def build_mistakes_router(app: FastAPI) -> APIRouter:
                         user_id=user_id, username=username, since=since,
                         on_event=on_event, is_cancelled=cancelled.is_set,
                         fetch_json=fetch_json, maia_topk_fn=maia_topk_fn,
+                        time_class=time_class, max_games=max_games,
                     )
             except _Cancelled:
                 logger.info("client disconnected; mistakes generation stopped")
+            except chesscom.ChesscomError as exc:
+                schedule({
+                    "event": "error",
+                    "data": json.dumps({"message": str(exc), "kind": exc.kind}),
+                })
             except Exception as exc:  # noqa: BLE001 — surface to the client
                 logger.exception("mistakes generation crashed")
                 schedule({
@@ -293,6 +343,8 @@ def build_mistakes_router(app: FastAPI) -> APIRouter:
                 })
             finally:
                 connection.close()
+                with generating_lock:
+                    generating_users.discard(user_id)
                 schedule(None)
 
         async def event_stream() -> AsyncIterator[dict[str, str]]:

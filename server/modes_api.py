@@ -103,6 +103,9 @@ def build_modes_router(app: FastAPI) -> APIRouter:
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            # Engine hiccup (no analysis / no reply); session state unchanged.
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return asdict(result)
 
     def _end_hold(

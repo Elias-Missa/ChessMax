@@ -2,15 +2,16 @@
    leak into the vol app, which ships its own theme under #vol-root. */
 #puzzles-root {
   color-scheme: dark;
-  --bg: #111318;
-  --panel: #1b1f29;
-  --panel-soft: #232936;
-  --panel-softer: #2a3142;
-  --text: #e7edf5;
-  --muted: #9aa6b2;
-  --accent: #8ab4f8;
-  --accent-strong: #5b96f5;
-  --good: #67e8a2;
+  --bg: #0d0f11;
+  --panel: #16181d;
+  --panel-soft: #1d2026;
+  --panel-softer: #24272f;
+  --text: #eef1f3;
+  --muted: #98a0aa;
+  --accent: #44d62c;
+  --accent-strong: #33a821;
+  --accent-glow: rgba(68, 214, 44, 0.30);
+  --good: #57e83f;
   --warn: #f5c542;
   --bad: #f28b82;
   --border: rgba(255, 255, 255, 0.08);
@@ -34,7 +35,7 @@
 
 #puzzles-root button {
   background: linear-gradient(180deg, var(--accent), var(--accent-strong));
-  box-shadow: 0 2px 10px rgba(91, 150, 245, 0.25);
+  box-shadow: 0 2px 10px rgba(68, 214, 44, 0.28), 0 0 16px rgba(68, 214, 44, 0.12);
   color: #07111f;
   cursor: pointer;
   font-weight: 700;
@@ -51,7 +52,7 @@
 }
 
 #puzzles-root button:focus-visible {
-  outline: 2px solid rgba(138, 180, 248, 0.8);
+  outline: 2px solid rgba(68, 214, 44, 0.8);
   outline-offset: 2px;
 }
 
@@ -90,7 +91,7 @@
 
 #puzzles-root input:focus,
 #puzzles-root select:focus {
-  border-color: rgba(138, 180, 248, 0.6);
+  border-color: rgba(68, 214, 44, 0.6);
   outline: none;
 }
 
@@ -105,7 +106,7 @@
 }
 
 #puzzles-root input[type="range"]::-webkit-slider-runnable-track {
-  background: linear-gradient(90deg, rgba(138, 180, 248, 0.35), rgba(103, 232, 162, 0.35));
+  background: linear-gradient(90deg, rgba(68, 214, 44, 0.35), rgba(103, 232, 162, 0.35));
   border-radius: 999px;
   height: 6px;
 }
@@ -208,7 +209,7 @@
 }
 
 .board-panel.calc-mode {
-  box-shadow: 0 0 0 3px #4a90ff, 0 0 42px rgba(74, 144, 255, 0.55), 0 24px 80px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 3px #44d62c, 0 0 42px rgba(68, 214, 44, 0.55), 0 24px 80px rgba(0, 0, 0, 0.35);
 }
 
 /* Translucent blue wash over the board only; pointer-events:none keeps it interactive. */
@@ -217,7 +218,7 @@
   position: absolute;
   inset: 0;
   z-index: 4;
-  background: rgba(74, 144, 255, 0.18);
+  background: rgba(68, 214, 44, 0.18);
   border-radius: 18px;
   pointer-events: none;
 }
@@ -231,8 +232,8 @@
   z-index: 5;
   pointer-events: none;
   white-space: nowrap;
-  background: #4a90ff;
-  color: #fff;
+  background: #44d62c;
+  color: #06140a;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -466,7 +467,7 @@
 /* ── Shared mode components ──────────────────────────────────────────── */
 
 .mode-header-card {
-  background: linear-gradient(160deg, rgba(138, 180, 248, 0.1), var(--panel-soft) 55%);
+  background: linear-gradient(160deg, rgba(68, 214, 44, 0.1), var(--panel-soft) 55%);
 }
 
 .mode-title-row {
@@ -632,7 +633,7 @@
 }
 
 .forced-ply.you {
-  background: rgba(138, 180, 248, 0.08);
+  background: rgba(68, 214, 44, 0.08);
 }
 
 .forced-ply.opp {

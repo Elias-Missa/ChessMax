@@ -14,6 +14,8 @@
     <link rel="stylesheet" href="/static/style.css" />
     <link rel="stylesheet" href="/static/vol/styles.css" />
     <link rel="stylesheet" href="/static/shell.css" />
+    <link rel="stylesheet" href="/static/elo/styles.css" />
+    <link rel="stylesheet" href="/static/insights/styles.css" />
   </head>
   <body>
     <div id="bootError" class="boot-error hidden" role="alert"></div>
@@ -37,30 +39,38 @@
       </div>
     </div>
 
-    <!-- ── ChessMax shell: one flat tab bar across both apps ──────────────── -->
+    <!-- ── ChessMax shell: five top-level apps + nested Training / Review ─── -->
     <header class="shell-header">
       <h1 class="shell-title">ChessMax</h1>
       <nav class="shell-tabs" role="tablist" aria-label="ChessMax sections">
-        <span class="shell-tab-group-label">Train</span>
-        <button class="shell-tab active" type="button" role="tab" data-app="puzzles" data-tab="train" aria-selected="true">Puzzles</button>
-        <button class="shell-tab" type="button" role="tab" data-app="puzzles" data-tab="evalhold" aria-selected="false">Eval Hold</button>
-        <button class="shell-tab" type="button" role="tab" data-app="puzzles" data-tab="defense" aria-selected="false">Defense Gym</button>
-        <button class="shell-tab" type="button" role="tab" data-app="puzzles" data-tab="forced" aria-selected="false">Forced Lines</button>
-        <button class="shell-tab" type="button" role="tab" data-app="puzzles" data-tab="guess" aria-selected="false">Guess</button>
-        <button class="shell-tab" type="button" role="tab" data-app="puzzles" data-tab="mistakes" aria-selected="false">Your Mistakes</button>
-        <button class="shell-tab" type="button" role="tab" data-app="puzzles" data-tab="playout" aria-selected="false">Play Out</button>
-        <button class="shell-tab" type="button" role="tab" data-app="puzzles" data-tab="stats" aria-selected="false">Stats</button>
-        <span class="shell-tab-group-label divided">Analyze</span>
-        <button class="shell-tab" type="button" role="tab" data-app="vol" data-tab="game" aria-selected="false">Game Review</button>
-        <button class="shell-tab" type="button" role="tab" data-app="vol" data-tab="editor" aria-selected="false">Position Editor</button>
-        <button class="shell-tab" type="button" role="tab" data-app="vol" data-tab="library" aria-selected="false">Library</button>
-        <button class="shell-tab" type="button" role="tab" data-app="vol" data-tab="about" aria-selected="false">Why</button>
+        <button class="shell-tab active" type="button" role="tab" data-top="puzzles" data-tab="train" data-route="/puzzles" aria-selected="true">Puzzles</button>
+        <button class="shell-tab" type="button" role="tab" data-top="training" data-tab="evalhold" data-route="/training" aria-selected="false">Training</button>
+        <button class="shell-tab" type="button" role="tab" data-top="game-review" data-tab="game" data-route="/game-review" aria-selected="false">Game Review</button>
+        <button class="shell-tab" type="button" role="tab" data-top="insights" data-tab="insights" data-route="/insights" aria-selected="false">Insights</button>
+        <button class="shell-tab shell-tab--accent" type="button" role="tab" data-top="elo" data-tab="eloduels" data-route="/guess-the-elo" aria-selected="false">Guess the Elo</button>
       </nav>
       <div class="shell-user hidden" id="shell-user-wrap">
         <span class="shell-user-email" id="shell-user"></span>
         <button class="shell-logout" id="logout-btn" type="button">Log out</button>
       </div>
     </header>
+
+    <nav id="training-subnav" class="shell-subnav hidden" aria-label="Training modes">
+      <button type="button" role="tab" data-tab="evalhold" aria-selected="false">Eval Hold</button>
+      <button type="button" role="tab" data-tab="defense" aria-selected="false">Defense Gym</button>
+      <button type="button" role="tab" data-tab="forced" aria-selected="false">Forced Lines</button>
+      <button type="button" role="tab" data-tab="guess" aria-selected="false">Guess Eval</button>
+      <button type="button" role="tab" data-tab="mistakes" aria-selected="false">Your Mistakes</button>
+      <button type="button" role="tab" data-tab="playout" aria-selected="false">Play Out</button>
+      <button type="button" role="tab" data-tab="stats" aria-selected="false">Stats</button>
+    </nav>
+
+    <nav id="game-review-subnav" class="shell-subnav hidden" aria-label="Game Review panels">
+      <button type="button" role="tab" data-tab="game" aria-selected="false">Review</button>
+      <button type="button" role="tab" data-tab="editor" aria-selected="false">Position Editor</button>
+      <button type="button" role="tab" data-tab="library" aria-selected="false">Library</button>
+      <button type="button" role="tab" data-tab="about" aria-selected="false">Why</button>
+    </nav>
 
     <!-- ════════════════════════════ PUZZLES APP ═══════════════════════════ -->
     <div id="puzzles-root">
@@ -328,16 +338,15 @@
             </div>
 
             <div class="card" id="mistakes-generate">
-              <div class="field-row">
-                <label for="mistakes-username">Chess.com username</label>
-                <input type="text" id="mistakes-username" placeholder="username" spellcheck="false" autocomplete="off" />
-              </div>
-              <button id="mistakes-generate-btn" type="button" class="btn-primary">Generate from my games</button>
-              <p class="mode-status" id="mistakes-gen-status">Scans your last 90 days of games. This can take a few minutes.</p>
+              <p class="mode-status" id="mistakes-gen-status">Mine puzzles from your Chess.com games on the Insights tab, then practice them here.</p>
+              <button id="mistakes-to-insights" type="button" class="btn-secondary">Open Insights</button>
+              <!-- Hidden username kept for API prefill compatibility -->
+              <input type="hidden" id="mistakes-username" value="" />
+              <button id="mistakes-generate-btn" type="button" class="hidden" aria-hidden="true">Generate</button>
             </div>
 
             <div class="card">
-              <p id="mistakes-prompt" class="mode-status">Generate puzzles from your games to begin.</p>
+              <p id="mistakes-prompt" class="mode-status">Generate puzzles from Insights to begin.</p>
               <div id="mistakes-feedback" class="feedback hidden"></div>
               <button id="mistakes-next" type="button" disabled>Next mistake</button>
             </div>
@@ -611,47 +620,72 @@
         </div>
 
         <!-- 1. Chess.com-style review summary -->
-        <section id="reviewPlayerHeader" class="review-player-header hidden" aria-label="Reviewed players">
-          <div>
-            <span class="review-color-dot white"></span>
-            <strong id="reviewWhiteName">White</strong>
-            <small id="reviewWhiteElo">Estimated performance —</small>
-          </div>
-          <span class="review-versus">vs</span>
-          <div class="review-player-black">
-            <span class="review-color-dot black"></span>
-            <strong id="reviewBlackName">Black</strong>
-            <small id="reviewBlackElo">Estimated performance —</small>
-          </div>
-        </section>
+        <section id="gameStats" class="review-summary hidden" aria-label="Game review summary">
 
-        <div id="gameStats" class="game-stats-bar review-stats hidden">
-          <div class="review-donut-card" data-side="white">
-            <svg class="review-donut" viewBox="0 0 42 42" aria-hidden="true">
-              <circle class="review-donut-track" cx="21" cy="21" r="16"></circle>
-              <circle id="reviewWhiteArc" class="review-donut-arc white" cx="21" cy="21" r="16"></circle>
-            </svg>
-            <div><span class="stat-label">White accuracy</span><strong class="stat-value" id="statWhiteAcc">—</strong></div>
+          <!-- Coach bubble -->
+          <div id="reviewCoach" class="rs-coach">
+            <span class="rs-coach-avatar" aria-hidden="true">
+              <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+                <circle cx="20" cy="14.5" r="7.5" fill="#f0d9b8"/>
+                <path d="M8 34c0-6.6 5.4-11 12-11s12 4.4 12 11" fill="#3a4b5c"/>
+                <path d="M12.6 11.5c1-4.6 4.2-6.6 7.4-6.6s6.4 2 7.4 6.6c-2.2-1.2-4.7-1.6-7.4-1.6s-5.2.4-7.4 1.6z" fill="#5a3d2b"/>
+                <rect x="14.5" y="12.8" width="4" height="1.7" rx="0.8" fill="#3a2a1c"/>
+                <rect x="21.5" y="12.8" width="4" height="1.7" rx="0.8" fill="#3a2a1c"/>
+              </svg>
+            </span>
+            <div class="rs-coach-bubble">
+              <p id="reviewCoachText">Analyze a game to receive coaching feedback.</p>
+            </div>
           </div>
-          <div class="review-donut-card" data-side="black">
-            <svg class="review-donut" viewBox="0 0 42 42" aria-hidden="true">
-              <circle class="review-donut-track" cx="21" cy="21" r="16"></circle>
-              <circle id="reviewBlackArc" class="review-donut-arc black" cx="21" cy="21" r="16"></circle>
-            </svg>
-            <div><span class="stat-label">Black accuracy</span><strong class="stat-value" id="statBlackAcc">—</strong></div>
-          </div>
-          <div class="stat-card review-vol-card" data-side="vol">
-            <div class="stat-label">Avg volatility</div>
-            <div class="stat-value" id="statAvgVol">—</div>
-          </div>
-        </div>
 
-        <section id="reviewCoach" class="review-coach hidden" aria-live="polite">
-          <span class="review-coach-avatar" aria-hidden="true">♞</span>
-          <div>
-            <strong>Coach</strong>
-            <p id="reviewCoachText">Analyze a game to receive feedback.</p>
+          <!-- Opening -->
+          <div id="reviewOpening" class="rs-opening hidden"></div>
+
+          <!-- Eval graph -->
+          <div id="chartWrap" class="rs-graph chart-wrap hidden">
+            <canvas id="chart"></canvas>
+            <div id="heatBand" class="heat-band hidden"></div>
           </div>
+
+          <!-- Player names header -->
+          <div class="rs-row rs-names-row">
+            <span></span>
+            <span class="rs-player-name" id="reviewWhiteName">White</span>
+            <span class="rs-player-name" id="reviewBlackName">Black</span>
+          </div>
+
+          <!-- Players -->
+          <div class="rs-row rs-players-row">
+            <span class="rs-row-label">Players</span>
+            <div class="rs-player" data-side="white">
+              <span class="rs-avatar rs-avatar--white" aria-hidden="true">♟</span>
+            </div>
+            <div class="rs-player" data-side="black">
+              <span class="rs-avatar rs-avatar--black" aria-hidden="true">♟</span>
+            </div>
+          </div>
+
+          <!-- Accuracy -->
+          <div class="rs-row rs-accuracy-row">
+            <span class="rs-row-label">Accuracy</span>
+            <span class="rs-acc-box" id="statWhiteAcc">—</span>
+            <span class="rs-acc-box" id="statBlackAcc">—</span>
+          </div>
+
+          <div class="rs-divider"></div>
+
+          <!-- Classification breakdown (icon-per-row, count per side) -->
+          <div class="rs-class-table" id="reviewClassTable"></div>
+
+          <!-- Key moments (turning points; click to jump) -->
+          <div id="reviewKeyMoments" class="rs-key-moments hidden"></div>
+
+          <div class="rs-avgvol">
+            <span>Average volatility</span>
+            <strong id="statAvgVol">—</strong>
+          </div>
+
+          <button type="button" id="btnStartReview" class="rs-start-btn">Start Review</button>
         </section>
 
         <section id="reviewMoveCard" class="review-move-card hidden" aria-live="polite">
@@ -706,25 +740,7 @@
           <span id="reviewMoveCounter">— / —</span>
           <button id="reviewNext" type="button" title="Next move">▶</button>
           <button id="reviewLast" type="button" title="Last move">⏭</button>
-        </div>
-
-        <!-- 4. Vol chart + heat band -->
-        <div id="chartWrap" class="chart-wrap hidden">
-          <canvas id="chart"></canvas>
-          <div id="heatBand" class="heat-band hidden"></div>
-        </div>
-
-        <!-- Classification counts -->
-        <div class="stat-card stat-card-wide hidden" data-side="classes" id="gameClassCard">
-          <div class="stat-label">Classifications</div>
-          <div class="review-class-side">
-            <div class="stat-note" id="statClassWhiteLabel">White</div>
-            <div class="review-class-pills" id="statClassWhite"></div>
-          </div>
-          <div class="review-class-side">
-            <div class="stat-note" id="statClassBlackLabel">Black</div>
-            <div class="review-class-pills" id="statClassBlack"></div>
-          </div>
+          <button id="reviewFlip" type="button" class="review-nav-flip" title="Flip board">⇅ Flip</button>
         </div>
 
         <div class="panel-status">
@@ -819,6 +835,7 @@
               <th>Result</th>
               <th>Plies</th>
               <th>Avg V</th>
+              <th>Eval</th>
               <th>White acc</th>
               <th>Black acc</th>
               <th>Blunders</th>
@@ -827,7 +844,7 @@
           </thead>
           <tbody id="libraryTableBody">
             <tr>
-              <td colspan="12" class="library-empty">No saved games yet.</td>
+              <td colspan="13" class="library-empty">No saved games yet.</td>
             </tr>
           </tbody>
         </table>
@@ -1077,6 +1094,178 @@
     </main>
     </div><!-- /#vol-root -->
 
+    <!-- Guess the Elo Duels -->
+    <div id="elo-root" class="hidden">
+      <section class="elo-wrap">
+        <!-- Lobby -->
+        <div id="eloLobby" class="elo-lobby">
+          <div class="elo-hero">
+            <span class="elo-badge">NEW</span>
+            <h1 class="elo-title">Guess the Elo Duels</h1>
+            <p class="elo-sub">
+              You and an opponent watch the <strong>same</strong> game, generated by Maia&#8209;2 at a
+              hidden human rating. You have two minutes to guess it &mdash; <strong>closest wins.</strong>
+            </p>
+          </div>
+          <div class="elo-record-row">
+            <div class="elo-stat"><span id="eloWins">0</span><label>Wins</label></div>
+            <div class="elo-stat"><span id="eloLosses">0</span><label>Losses</label></div>
+            <div class="elo-stat"><span id="eloDraws">0</span><label>Draws</label></div>
+          </div>
+          <button id="eloFindBtn" class="elo-primary elo-find">Find a Match</button>
+          <div id="eloSearching" class="elo-searching hidden">
+            <div class="elo-spinner" aria-hidden="true"></div>
+            <span id="eloSearchText">Searching for an opponent&hellip;</span>
+            <button id="eloCancelBtn" class="elo-ghost">Cancel</button>
+          </div>
+          <p id="eloLobbyError" class="elo-error hidden"></p>
+        </div>
+
+        <!-- Duel -->
+        <div id="eloDuel" class="elo-duel hidden">
+          <div class="elo-duel-board">
+            <div id="eloBoard" class="elo-board cg-wrap"></div>
+            <div class="elo-replay">
+              <button id="eloFirst" title="First move" type="button">&#9198;</button>
+              <button id="eloPrev" title="Previous" type="button">&#9664;</button>
+              <button id="eloPlay" title="Play/pause" type="button" class="elo-play">&#9654;</button>
+              <button id="eloNext" title="Next" type="button">&#9654;</button>
+              <button id="eloLast" title="Last move" type="button">&#9197;</button>
+              <span id="eloMoveLabel" class="elo-move-label">Start</span>
+            </div>
+          </div>
+
+          <aside class="elo-panel">
+            <div class="elo-vs">
+              <span class="elo-vs-you">You</span>
+              <span class="elo-vs-x">vs</span>
+              <span class="elo-vs-opp" id="eloOppName">Opponent</span>
+            </div>
+            <div class="elo-timer" id="eloTimer" data-low="false">2:00</div>
+
+            <div class="elo-guessbox" id="eloGuessBox">
+              <label class="elo-guess-caption">What rating is this game?</label>
+              <div class="elo-guess-val" id="eloGuessVal">1500</div>
+              <input type="range" id="eloGuessSlider" min="600" max="2600" step="25" value="1500" />
+              <div class="elo-guess-scale"><span>600</span><span>1600</span><span>2600</span></div>
+              <button id="eloLockBtn" class="elo-primary">Lock in guess</button>
+              <div class="elo-wait-opp hidden" id="eloWaitOpp">
+                <div class="elo-spinner elo-spinner--sm" aria-hidden="true"></div>
+                Locked in <strong id="eloLockedVal">&mdash;</strong>. Waiting for opponent&hellip;
+              </div>
+            </div>
+
+            <div class="elo-result hidden" id="eloResult">
+              <div class="elo-outcome" id="eloOutcome">&mdash;</div>
+              <div class="elo-reveal-elo">Actual rating: <strong id="eloTrue">&mdash;</strong></div>
+              <div class="elo-scoreline">
+                <div class="elo-score-side">
+                  <label>You</label>
+                  <span id="eloYourGuess">&mdash;</span>
+                  <em id="eloYourPts">&mdash;</em>
+                </div>
+                <div class="elo-score-side elo-score-opp">
+                  <label id="eloOppLabel">Opponent</label>
+                  <span id="eloOppGuess">&mdash;</span>
+                  <em id="eloOppPts">&mdash;</em>
+                </div>
+              </div>
+              <button id="eloAgainBtn" class="elo-primary">Play again</button>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </div><!-- /#elo-root -->
+
+    <!-- Insights: chess.com / lichess window + practice from Mistakes -->
+    <div id="insights-root" class="hidden">
+      <section class="insights-wrap">
+        <header class="insights-hero">
+          <div class="insights-hero-copy">
+            <p class="insights-kicker">Performance intelligence</p>
+            <h1 class="insights-title">Insights</h1>
+            <p class="insights-sub">
+              Pull a window of your games, surface the patterns that cost you points, and practice the misses that are actually findable.
+            </p>
+          </div>
+          <div class="insights-hero-stats" aria-live="polite">
+            <div class="insights-hero-stat">
+              <span class="label">Games</span>
+              <span class="value" id="insights-stat-games">—</span>
+            </div>
+            <div class="insights-hero-stat">
+              <span class="label">Fixable loss</span>
+              <span class="value is-accent" id="insights-stat-fixable">—</span>
+            </div>
+            <div class="insights-hero-stat">
+              <span class="label">Practice set</span>
+              <span class="value" id="insights-stat-practice">—</span>
+            </div>
+          </div>
+        </header>
+
+        <form id="insights-form" class="insights-form" novalidate>
+          <div class="insights-field">
+            <label for="insights-source">Source</label>
+            <select id="insights-source">
+              <option value="chesscom" selected>Chess.com</option>
+              <option value="lichess">Lichess</option>
+            </select>
+          </div>
+          <div class="insights-field">
+            <label for="insights-username">Username</label>
+            <input id="insights-username" type="text" placeholder="your handle" spellcheck="false" autocomplete="off" required />
+          </div>
+          <div class="insights-field">
+            <label for="insights-window">Window</label>
+            <select id="insights-window">
+              <option value="7">Last 7 days</option>
+              <option value="30" selected>Last 30 days</option>
+            </select>
+          </div>
+          <div class="insights-field">
+            <label for="insights-time-class">Time control</label>
+            <select id="insights-time-class">
+              <option value="blitz" selected>Blitz</option>
+              <option value="bullet">Bullet</option>
+              <option value="rapid">Rapid</option>
+              <option value="daily">Daily</option>
+            </select>
+          </div>
+          <button id="insights-generate" type="submit" class="insights-primary">Generate</button>
+          <button id="insights-refresh" type="button" class="insights-ghost">Refresh</button>
+        </form>
+
+        <div class="insights-status-row">
+          <p id="insights-status" class="insights-status">Pick a source and handle, then generate.</p>
+          <div class="insights-progress" id="insights-progress" aria-hidden="true"><i id="insights-progress-bar"></i></div>
+          <p id="insights-cap-note" class="insights-hint hidden">Showing the most recent 300 games in this window.</p>
+        </div>
+
+        <div class="insights-actions">
+          <button id="insights-practice" type="button" class="insights-primary" disabled>Practice this → Your Mistakes</button>
+        </div>
+
+        <div class="insights-layout">
+          <section class="insights-panel insights-runs">
+            <div class="insights-panel-head">
+              <h2>Prior runs</h2>
+              <span class="count" id="insights-run-count">0</span>
+            </div>
+            <ul id="insights-run-list" class="insights-run-list"></ul>
+          </section>
+
+          <section id="insights-metrics" class="insights-panel insights-metrics hidden">
+            <div class="insights-panel-head">
+              <h2>Your patterns</h2>
+              <span class="count">Live snapshot</span>
+            </div>
+            <div id="insights-metrics-body" class="insights-metrics-body"></div>
+          </section>
+        </div>
+      </section>
+    </div><!-- /#insights-root -->
+
     <!-- Vol app (classic scripts, run before modules) -->
     <script src="/static/auth.js"></script>
     <script src="/static/vendor/lichess/chessground.iife.js"></script>
@@ -1089,6 +1278,8 @@
     <script src="/static/vol/library.js"></script>
     <script src="/static/vol/review-ui.js"></script>
     <script src="/static/vol/app.js"></script>
+    <script src="/static/elo/app.js"></script>
+    <script src="/static/insights/app.js"></script>
     <!-- Puzzles app, then the shell tab controller (modules run in order, after classic scripts) -->
     <script type="module" src="/static/app.js?v=3"></script>
     <script type="module" src="/static/shell.js"></script>

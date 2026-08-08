@@ -395,9 +395,22 @@ def play_hold_move(
     )
     reply_san = None
     if reply_uci is not None:
-        reply_san = _safe_san(board, reply_uci)
-        board.push(chess.Move.from_uci(reply_uci))
-        move_list.append(reply_uci)
+        try:
+            reply_move = chess.Move.from_uci(reply_uci)
+        except ValueError:
+            reply_move = None
+        if reply_move is None or reply_move not in board.legal_moves:
+            reply_uci = None
+        else:
+            reply_san = _safe_san(board, reply_uci)
+            board.push(reply_move)
+            move_list.append(reply_uci)
+    if reply_uci is None:
+        # The game isn't over (checked above), so a missing/illegal engine
+        # reply is an engine fault. Nothing has been committed for this move,
+        # so the session stays at its previous position and the user can
+        # simply retry — never persist a session stuck on the wrong turn.
+        raise RuntimeError("Engine reply unavailable — please retry the move")
 
     outcome = board.outcome(claim_draw=True)
     if outcome is not None:
@@ -850,12 +863,16 @@ def score_guess(
 def guess_history(
     connection: sqlite3.Connection, user_id: int, limit: int = 200
 ) -> list[dict[str, Any]]:
+    # Newest N attempts, returned oldest-first for charting. A plain ASC LIMIT
+    # would forever return the first N attempts ever made.
     rows = connection.execute(
         """
-        SELECT id, guessed_eval_cp, actual_eval_cp, guessed_sharpness,
-               actual_sharpness, timestamp
-        FROM guess_attempts WHERE user_id = ?
-        ORDER BY id ASC LIMIT ?
+        SELECT * FROM (
+            SELECT id, guessed_eval_cp, actual_eval_cp, guessed_sharpness,
+                   actual_sharpness, timestamp
+            FROM guess_attempts WHERE user_id = ?
+            ORDER BY id DESC LIMIT ?
+        ) ORDER BY id ASC
         """,
         (user_id, limit),
     ).fetchall()

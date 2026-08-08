@@ -28,6 +28,20 @@ session cookie. */
     errEl.textContent = msg;
     errEl.classList.remove("hidden");
   }
+
+  // FastAPI's `detail` is a string for app errors, but a list of objects for
+  // request-validation errors — render those readably instead of
+  // "[object Object]".
+  function detailToMessage(detail) {
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      return detail
+        .map((d) => (d && d.msg ? d.msg : ""))
+        .filter(Boolean)
+        .join(" · ");
+    }
+    return "";
+  }
   function clearError() {
     errEl.textContent = "";
     errEl.classList.add("hidden");
@@ -79,7 +93,7 @@ session cookie. */
       });
       if (!resp.ok) {
         const data = await resp.json().catch(() => ({}));
-        throw new Error(data.detail || "Authentication failed.");
+        throw new Error(detailToMessage(data.detail) || "Authentication failed.");
       }
       location.reload();
     } catch (err) {

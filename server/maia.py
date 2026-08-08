@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import atexit
 import os
 import random
 import shutil
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -15,12 +17,15 @@ from server.engine import analyze
 
 
 MAIA_RATINGS: tuple[int, ...] = (1100, 1300, 1500, 1700, 1900)
-DEFAULT_LOCAL_LC0 = Path("data") / "lc0.exe"
+# Anchored to the repo root so lc0/weights resolve regardless of the CWD the
+# server was started from.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_LOCAL_LC0 = _REPO_ROOT / "data" / "lc0.exe"
 DEFAULT_LC0_COMMAND = os.environ.get("CHESS_TRAINER_LC0", "lc0")
 DEFAULT_WEIGHTS_DIR = Path(
     os.environ.get(
         "CHESS_TRAINER_MAIA_WEIGHTS_DIR",
-        str(Path("data") / "maia_weights"),
+        str(_REPO_ROOT / "data" / "maia_weights"),
     )
 )
 DEFAULT_MAIA_NODES = int(os.environ.get("CHESS_TRAINER_MAIA_NODES", "800"))
@@ -236,11 +241,48 @@ def best_move(
     return str(top_moves[0]["move"]), "stockfish"
 
 
-def _best_move_maia(fen: str, maia_rating: int) -> str | None:
-    weight_path = _resolved_weight_path(maia_rating)
+# Long-lived lc0 processes keyed by Maia rating. Spawning lc0 (and reloading
+# the weight file) for every playout/reply move took multiple seconds per ply;
+# reusing one process per rating makes moves near-instant after warmup.
+_PERSISTENT_LOCK = threading.Lock()
+_PERSISTENT_ENGINES: dict[int, chess.engine.SimpleEngine] = {}
+
+
+def _persistent_engine_locked(rating: int) -> chess.engine.SimpleEngine | None:
+    engine = _PERSISTENT_ENGINES.get(rating)
+    if engine is not None:
+        return engine
+    weight_path = _resolved_weight_path(rating)
     if weight_path is None:
         return None
     command = [_resolved_lc0_command(), f"--weights={weight_path}"]
+    try:
+        engine = chess.engine.SimpleEngine.popen_uci(command)
+    except (chess.engine.EngineError, OSError, ValueError):
+        return None
+    _PERSISTENT_ENGINES[rating] = engine
+    return engine
+
+
+def _drop_persistent_engine_locked(rating: int) -> None:
+    engine = _PERSISTENT_ENGINES.pop(rating, None)
+    if engine is not None:
+        try:
+            engine.quit()
+        except Exception:  # noqa: BLE001 — best-effort teardown
+            pass
+
+
+def _close_persistent_engines() -> None:
+    with _PERSISTENT_LOCK:
+        for rating in list(_PERSISTENT_ENGINES):
+            _drop_persistent_engine_locked(rating)
+
+
+atexit.register(_close_persistent_engines)
+
+
+def _best_move_maia(fen: str, maia_rating: int) -> str | None:
     board = chess.Board(fen)
     profile = MAIA_STRENGTH_PROFILES.get(
         maia_rating,
@@ -248,21 +290,28 @@ def _best_move_maia(fen: str, maia_rating: int) -> str | None:
     )
     nodes = max(1, int(profile["nodes"]))
     topk = max(1, int(profile["topk"]))
-    try:
-        with chess.engine.SimpleEngine.popen_uci(command) as engine:
-            if topk == 1:
-                result = engine.play(board, chess.engine.Limit(nodes=nodes))
-                if result.move is None:
-                    return None
-                return result.move.uci()
-            infos = engine.analyse(
-                board,
-                chess.engine.Limit(nodes=nodes),
-                multipv=topk,
-            )
-    except Exception:
-        return None
-    return _sample_uci_from_infos(infos, float(profile["temperature"]))
+
+    with _PERSISTENT_LOCK:
+        for _attempt in range(2):
+            engine = _persistent_engine_locked(maia_rating)
+            if engine is None:
+                return None
+            try:
+                if topk == 1:
+                    result = engine.play(board, chess.engine.Limit(nodes=nodes))
+                    if result.move is None:
+                        return None
+                    return result.move.uci()
+                infos = engine.analyse(
+                    board,
+                    chess.engine.Limit(nodes=nodes),
+                    multipv=topk,
+                )
+            except Exception:  # engine died mid-request — restart once
+                _drop_persistent_engine_locked(maia_rating)
+                continue
+            return _sample_uci_from_infos(infos, float(profile["temperature"]))
+    return None
 
 
 def _sample_uci_from_infos(

@@ -115,6 +115,33 @@ def test_old_archive_month_is_not_fetched() -> None:
     assert ARCHIVE_JUN in fetched
 
 
+def test_time_class_filter() -> None:
+    games = [
+        base_game(time_class="bullet", url="https://chess.com/game/bullet"),
+        base_game(time_class="blitz", url="https://chess.com/game/blitz"),
+    ]
+    fetch = make_fetch([ARCHIVE_JUN], {ARCHIVE_JUN: {"games": games}})
+    results = list(
+        chesscom.iter_games("alice", SINCE, fetch_json=fetch, time_class="blitz")
+    )
+    assert len(results) == 1
+    assert results[0][1]["url"] == "https://chess.com/game/blitz"
+
+
+def test_max_games_cap_newest_first() -> None:
+    games = [
+        base_game(end_time=ts(2026, 6, 1), uuid="old", url="https://chess.com/game/old"),
+        base_game(end_time=ts(2026, 6, 20), uuid="new", url="https://chess.com/game/new"),
+    ]
+    fetch = make_fetch([ARCHIVE_JUN], {ARCHIVE_JUN: {"games": games}})
+    collected, capped = chesscom.collect_games(
+        "alice", SINCE, fetch_json=fetch, max_games=1
+    )
+    assert capped is True
+    assert len(collected) == 1
+    assert collected[0][1]["url"] == "https://chess.com/game/new"
+
+
 def test_delay_called_between_months() -> None:
     fetch = make_fetch([ARCHIVE_JUN], {ARCHIVE_JUN: {"games": []}})
     slept: list[float] = []

@@ -72,6 +72,8 @@
   const reviewBlackArc = $("#reviewBlackArc");
   const reviewCoach = $("#reviewCoach");
   const reviewCoachText = $("#reviewCoachText");
+  const reviewOpening = $("#reviewOpening");
+  const reviewKeyMoments = $("#reviewKeyMoments");
   const reviewMoveCard = $("#reviewMoveCard");
   const reviewMoveNumber = $("#reviewMoveNumber");
   const reviewMoveSan = $("#reviewMoveSan");
@@ -91,6 +93,8 @@
   const reviewWhiteStripName = $("#reviewWhiteStripName");
   const reviewBlackStripName = $("#reviewBlackStripName");
   const gameClassCard = $("#gameClassCard");
+  const reviewClassTable = $("#reviewClassTable");
+  const btnStartReview = $("#btnStartReview");
 
   const libraryDrop = $("#libraryDrop");
   const libraryFileInput = $("#libraryFileInput");
@@ -791,6 +795,17 @@
   if (reviewLast) {
     reviewLast.addEventListener("click", () => jumpToPly(loadedPlies.length - 1));
   }
+  if (btnStartReview) {
+    btnStartReview.addEventListener("click", () => {
+      if (!loadedPlies.length) return;
+      if (moveListWrap) moveListWrap.classList.remove("hidden");
+      if (reviewNavigation) reviewNavigation.classList.remove("hidden");
+      jumpToPly(0);
+      if (reviewMoveCard) {
+        reviewMoveCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    });
+  }
 
   // Expand a FEN rank (e.g. "r3k2r" or "4P3") into an 8-char string where
   // empty squares are "." This lets us index the rank by file (a=0…h=7).
@@ -947,16 +962,18 @@
     }, 0);
   });
 
-  if (btnFlipGame) {
-    btnFlipGame.addEventListener("click", () => {
-      board.flip();
-      setTimeout(() => {
-        refreshArrow();
-        paintLastMoveDecor();
-        refreshReviewBoardOverlay();
-      }, 0);
-    });
+  function flipReviewBoard() {
+    board.flip();
+    setTimeout(() => {
+      refreshArrow();
+      paintLastMoveDecor();
+      refreshReviewBoardOverlay();
+    }, 0);
   }
+
+  if (btnFlipGame) btnFlipGame.addEventListener("click", flipReviewBoard);
+  const reviewFlipBtn = $("#reviewFlip");
+  if (reviewFlipBtn) reviewFlipBtn.addEventListener("click", flipReviewBoard);
 
   btnAnalyzeFen.addEventListener("click", () => {
     const fen = fenInput.value.trim();
@@ -1287,11 +1304,11 @@
     while (arrowLayer.firstChild) arrowLayer.removeChild(arrowLayer.firstChild);
   }
 
+  // The review arrow always points at the BEST move, so it is always drawn in
+  // the accent green ("play this") — never tinted by how the actual move scored,
+  // which previously made the best-move arrow turn red after a blunder.
   function currentReviewArrowColor() {
-    if (!ReviewUI || currentPlyIdx < 0) return null;
-    const result = plyResults[currentPlyIdx];
-    const kind = result && result.ply && result.ply.review && result.ply.review.classification;
-    return kind ? ReviewUI.arrowColorForClassification(kind) : null;
+    return "#44d62c";
   }
 
   function drawArrow(uci, color) {
@@ -1500,7 +1517,9 @@
     moveListWrap.classList.add("hidden");
     if (gameStatsEl) gameStatsEl.classList.add("hidden");
     if (reviewPlayerHeader) reviewPlayerHeader.classList.add("hidden");
-    if (reviewCoach) reviewCoach.classList.add("hidden");
+    if (reviewCoachText) reviewCoachText.textContent = "Analyze a game to receive coaching feedback.";
+    if (reviewOpening) { reviewOpening.innerHTML = ""; reviewOpening.classList.add("hidden"); }
+    if (reviewKeyMoments) { reviewKeyMoments.innerHTML = ""; reviewKeyMoments.classList.add("hidden"); }
     if (reviewMoveCard) reviewMoveCard.classList.add("hidden");
     if (reviewNavigation) reviewNavigation.classList.add("hidden");
     if (gameClassCard) gameClassCard.classList.add("hidden");
@@ -1535,6 +1554,7 @@
     setAccuracyDonut(reviewBlackArc, null);
     renderClassCountSide(statClassWhite, "white", {});
     renderClassCountSide(statClassBlack, "black", {});
+    renderClassTable({}, {});
   }
 
   function setAccuracyDonut(circle, accuracy) {
@@ -1563,9 +1583,86 @@
     setAccuracyDonut(reviewWhiteArc, accuracy.white);
     setAccuracyDonut(reviewBlackArc, accuracy.black);
     if (reviewCoachText) reviewCoachText.textContent = summary.coach || "";
+    renderOpening(summary.opening);
+    renderKeyMoments(summary.key_moments);
     if (reviewPlayerHeader) reviewPlayerHeader.classList.remove("hidden");
     if (reviewCoach) reviewCoach.classList.remove("hidden");
     if (gameClassCard) gameClassCard.classList.remove("hidden");
+  }
+
+  function renderOpening(opening) {
+    if (!reviewOpening) return;
+    if (!opening || !opening.name) {
+      reviewOpening.classList.add("hidden");
+      reviewOpening.innerHTML = "";
+      return;
+    }
+    reviewOpening.innerHTML = "";
+    const label = document.createElement("span");
+    label.className = "rs-opening-label";
+    label.textContent = "Opening";
+    const name = document.createElement("strong");
+    name.className = "rs-opening-name";
+    name.textContent = opening.eco ? `${opening.name} · ${opening.eco}` : opening.name;
+    reviewOpening.append(label, name);
+    reviewOpening.classList.remove("hidden");
+  }
+
+  // Reveal the move-by-move view (as "Start Review" does) and land on a ply.
+  function goToReviewPly(idx) {
+    if (!loadedPlies.length) return;
+    if (moveListWrap) moveListWrap.classList.remove("hidden");
+    if (reviewNavigation) reviewNavigation.classList.remove("hidden");
+    jumpToPly(idx);
+    if (reviewMoveCard) {
+      reviewMoveCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }
+
+  function renderKeyMoments(moments) {
+    if (!reviewKeyMoments) return;
+    reviewKeyMoments.innerHTML = "";
+    if (!moments || !moments.length) {
+      reviewKeyMoments.classList.add("hidden");
+      return;
+    }
+    const title = document.createElement("div");
+    title.className = "rs-key-moments-title";
+    title.textContent = "Key moments";
+    reviewKeyMoments.appendChild(title);
+
+    const list = document.createElement("div");
+    list.className = "rs-key-moments-list";
+    for (const m of moments) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "rs-key-moment";
+      chip.dataset.kind = m.classification || "";
+      const style = ReviewUI ? ReviewUI.getClassificationStyle(m.classification) : null;
+      if (style) chip.style.setProperty("--km-color", style.backgroundColor);
+      chip.title = m.reason || "";
+
+      const badge = ReviewUI ? ReviewUI.renderBadgeIcon(m.classification, "rs-key-moment-badge") : null;
+      if (badge) chip.appendChild(badge);
+
+      const moveNo = Math.floor((m.ply - 1) / 2) + 1;
+      const sep = m.side === "black" ? "…" : ".";
+      const move = document.createElement("span");
+      move.className = "rs-key-moment-move";
+      move.textContent = `${moveNo}${sep}${m.san}`;
+      chip.appendChild(move);
+
+      const swing = document.createElement("span");
+      swing.className = "rs-key-moment-swing";
+      swing.textContent = `−${m.swing_pct}%`;
+      chip.appendChild(swing);
+
+      const targetIdx = typeof m.index === "number" ? m.index : m.ply - 1;
+      chip.addEventListener("click", () => goToReviewPly(targetIdx));
+      list.appendChild(chip);
+    }
+    reviewKeyMoments.appendChild(list);
+    reviewKeyMoments.classList.remove("hidden");
   }
 
   const CLASS_LABELS = {
@@ -1617,6 +1714,60 @@
     return `${label}: ${parts.length ? parts.join(", ") : "—"}`;
   }
 
+  // Chess.com-style breakdown: one row per classification with the icon in the
+  // middle and each side's count flanking it.
+  const CLASS_TABLE_ORDER = [
+    "brilliant",
+    "great",
+    "book",
+    "best",
+    "excellent",
+    "good",
+    "inaccuracy",
+    "mistake",
+    "miss",
+    "blunder",
+  ];
+
+  function renderClassTable(whiteCounts, blackCounts) {
+    if (!reviewClassTable) return;
+    const w = whiteCounts || {};
+    const b = blackCounts || {};
+    reviewClassTable.innerHTML = "";
+    for (const kind of CLASS_TABLE_ORDER) {
+      const style = ReviewUI ? ReviewUI.getClassificationStyle(kind) : null;
+      const color = style ? style.backgroundColor : "#9c9891";
+
+      const row = document.createElement("div");
+      row.className = "rs-class-row";
+      row.dataset.kind = kind;
+
+      const label = document.createElement("span");
+      label.className = "rs-class-label";
+      label.textContent = style ? style.label : kind;
+
+      const wc = document.createElement("span");
+      wc.className = "rs-cc rs-cc--white";
+      wc.textContent = String(w[kind] || 0);
+      wc.style.color = color;
+
+      const icon = document.createElement("span");
+      icon.className = "rs-cc-icon";
+      if (ReviewUI) {
+        const img = ReviewUI.renderBadgeIcon(kind, "rs-class-badge");
+        if (img) icon.appendChild(img);
+      }
+
+      const bc = document.createElement("span");
+      bc.className = "rs-cc rs-cc--black";
+      bc.textContent = String(b[kind] || 0);
+      bc.style.color = color;
+
+      row.append(label, wc, icon, bc);
+      reviewClassTable.appendChild(row);
+    }
+  }
+
   function renderClassCountSide(el, side, counts) {
     if (!el) return;
     const labelEl = document.getElementById(
@@ -1636,32 +1787,29 @@
   function recomputeGameStats() {
     if (!gameStatsEl) return;
     const stats = window.ChessVolLibrary.computeGameStats(plyResults);
-    const fmtPct = (value) => (typeof value === "number" ? `${value.toFixed(1)}%` : "—");
+    const fmtAcc = (value) => (typeof value === "number" ? value.toFixed(1) : "—");
     const reviewAccuracy = gameReviewSummary && gameReviewSummary.accuracy;
 
-    statWhiteAcc.textContent = fmtPct(reviewAccuracy ? reviewAccuracy.white : stats.whiteAcc);
-    statBlackAcc.textContent = fmtPct(reviewAccuracy ? reviewAccuracy.black : stats.blackAcc);
+    if (statWhiteAcc) statWhiteAcc.textContent = fmtAcc(reviewAccuracy ? reviewAccuracy.white : stats.whiteAcc);
+    if (statBlackAcc) statBlackAcc.textContent = fmtAcc(reviewAccuracy ? reviewAccuracy.black : stats.blackAcc);
     setAccuracyDonut(reviewWhiteArc, reviewAccuracy ? reviewAccuracy.white : stats.whiteAcc);
     setAccuracyDonut(reviewBlackArc, reviewAccuracy ? reviewAccuracy.black : stats.blackAcc);
 
-    if (typeof stats.avgV === "number") {
-      statAvgVol.textContent = stats.avgV.toFixed(1);
-      statAvgVol.dataset.color = scoreToColor(stats.avgV);
-    } else {
-      statAvgVol.textContent = "—";
-      statAvgVol.removeAttribute("data-color");
+    if (statAvgVol) {
+      if (typeof stats.avgV === "number") {
+        statAvgVol.textContent = stats.avgV.toFixed(1);
+        statAvgVol.dataset.color = scoreToColor(stats.avgV);
+      } else {
+        statAvgVol.textContent = "—";
+        statAvgVol.removeAttribute("data-color");
+      }
     }
     const reviewCounts = gameReviewSummary && gameReviewSummary.classification_counts;
-    renderClassCountSide(
-      statClassWhite,
-      "white",
-      (reviewCounts && reviewCounts.white) || stats.classificationCounts.white,
-    );
-    renderClassCountSide(
-      statClassBlack,
-      "black",
-      (reviewCounts && reviewCounts.black) || stats.classificationCounts.black,
-    );
+    const whiteClassCounts = (reviewCounts && reviewCounts.white) || stats.classificationCounts.white;
+    const blackClassCounts = (reviewCounts && reviewCounts.black) || stats.classificationCounts.black;
+    renderClassCountSide(statClassWhite, "white", whiteClassCounts);
+    renderClassCountSide(statClassBlack, "black", blackClassCounts);
+    renderClassTable(whiteClassCounts, blackClassCounts);
 
     if (gameReviewSummary) renderReviewSummary(gameReviewSummary);
     gameStatsEl.classList.remove("hidden");
@@ -1862,13 +2010,36 @@
       typeof review.expected_points_loss === "number"
         ? `${(review.expected_points_loss * 100).toFixed(1)} pts`
         : "—";
-    if (review.best_move_san && review.best_move_san !== entry.san) {
+    const findability = result.ply.findability;
+    // The findability panel now surfaces the best move prominently, so the small
+    // "Top engine move" row is only needed as a fallback when findability is
+    // gated out (book / terminal / decided positions).
+    if (!findability && review.best_move_san && review.best_move_san !== entry.san) {
       reviewBestMove.textContent = review.best_move_san;
       reviewBestMoveRow.classList.remove("hidden");
     } else {
       reviewBestMoveRow.classList.add("hidden");
     }
+    const findPanel = ensureFindabilityPanel();
+    if (findPanel && ReviewUI && ReviewUI.renderFindability) {
+      ReviewUI.renderFindability(findPanel, findability, review.best_move_san);
+    }
     reviewMoveCard.classList.remove("hidden");
+  }
+
+  let findabilityPanelEl = null;
+  function ensureFindabilityPanel() {
+    if (findabilityPanelEl && findabilityPanelEl.isConnected) return findabilityPanelEl;
+    if (!reviewMoveCard) return null;
+    let el = reviewMoveCard.querySelector("#reviewFindability");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "reviewFindability";
+      el.className = "review-find hidden";
+      reviewMoveCard.appendChild(el);
+    }
+    findabilityPanelEl = el;
+    return el;
   }
 
   function updateReviewNavigation(idx) {
@@ -2077,24 +2248,170 @@
       if (plies) { loadedPlies = plies; renderMoveList(); }
     }
     collapsePgnDrawer(text, loadedPlies.length);
-    startPgnStream(text);
+    startReviewOrStream(text);
   });
 
   btnStopPgn.addEventListener("click", () => {
     if (pgnController) pgnController.abort();
+    reviewPollCancelled = true;
   });
 
-  async function startPgnStream(pgnText) {
+  let reviewPollCancelled = false;
+
+  function reviewUserColor() {
+    return document.body.dataset.reviewColor === "black" ||
+      window.__volUserColor === "black"
+      ? "black"
+      : "white";
+  }
+
+  async function startAndPollReview(pgnText, depthTier, { signal } = {}) {
+    const start = await fetch("/api/review", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pgn: pgnText,
+        source: "pgn",
+        user_color: reviewUserColor(),
+        depth_tier: depthTier,
+      }),
+      signal,
+    });
+    if (start.status === 401 || start.status === 403) return null;
+    if (!start.ok) {
+      const err = await start.json().catch(() => ({}));
+      throw new Error(err.detail || `Review start failed (${start.status})`);
+    }
+    const { review_id: reviewId, cached, status } = await start.json();
+    if (cached && status === "complete") {
+      const full = await fetch(`/api/review/${encodeURIComponent(reviewId)}`, {
+        credentials: "same-origin",
+        signal,
+      });
+      if (!full.ok) throw new Error("Could not load cached review");
+      return full.json();
+    }
+    for (let i = 0; i < 900; i++) {
+      if (reviewPollCancelled || (signal && signal.aborted)) {
+        const err = new Error("aborted");
+        err.name = "AbortError";
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+      const got = await fetch(`/api/review/${encodeURIComponent(reviewId)}`, {
+        credentials: "same-origin",
+        signal,
+      });
+      if (!got.ok) continue;
+      const data = await got.json();
+      const pct = Math.round((data.progress || 0) * 100);
+      gameStatus.textContent =
+        `Analyzing (${depthTier})… ${pct}%` +
+        (data.status === "running" || data.status === "pending" ? "" : "");
+      plyStatus.textContent = data.status || "";
+      if (data.status === "complete") return data;
+      if (data.status === "error") {
+        throw new Error((data.detail && data.detail.error) || "Review failed");
+      }
+    }
+    throw new Error("Review timed out");
+  }
+
+  function applyPersistedReview(review, { upgrading = false } = {}) {
+    if (!window.ChessVolLibrary || !window.ChessVolLibrary.reviewToReport) return;
+    const report = window.ChessVolLibrary.reviewToReport(review);
+    const mode = review.depth_tier || report.mode || "full";
+    if (review.pgn && pgnInput && !pgnInput.value.trim()) {
+      pgnInput.value = review.pgn;
+    }
+    if ((!loadedPlies || !loadedPlies.length) && report.plies && report.plies.length) {
+      loadedPlies = report.plies.map((ply) => {
+        const uci = ply.move_uci || "";
+        return {
+          san: ply.san,
+          fen_before: ply.fen_before,
+          fen_after: ply.fen_after,
+          from: uci.length >= 2 ? uci.slice(0, 2) : "",
+          to: uci.length >= 4 ? uci.slice(2, 4) : "",
+          move_uci: uci,
+        };
+      });
+      renderMoveList();
+    }
+    ensureChart();
+    chartWrap.classList.remove("hidden");
+    onDone({
+      mode: upgrading ? `${mode} · placeholder` : mode,
+      plies_analysed: (report.plies || []).length,
+      total_analyses: (report.plies || []).length,
+      plies: report.plies,
+      game_review: report.game_review,
+    });
+    if (upgrading) {
+      gameStatus.textContent =
+        `Shallow ready (${report.plies.length} plies) — upgrading to full…`;
+    }
+  }
+
+  async function startReviewOrStream(pgnText) {
     if (pgnController) pgnController.abort();
     const ctrl = new AbortController();
     pgnController = ctrl;
+    reviewPollCancelled = false;
     plyResults = [];
     destroyChart();
-
     btnAnalyzePgn.disabled = true;
     btnStopPgn.disabled = false;
     gameStatus.textContent = "Starting…";
     plyStatus.classList.remove("hidden");
+
+    try {
+      // Prefer durable job+poll: shallow placeholder, then full upgrade.
+      let shallow;
+      try {
+        shallow = await startAndPollReview(pgnText, "shallow", { signal: ctrl.signal });
+      } catch (err) {
+        if (err.name === "AbortError") throw err;
+        shallow = null;
+      }
+      if (shallow) {
+        applyPersistedReview(shallow, { upgrading: true });
+        const full = await startAndPollReview(pgnText, "full", { signal: ctrl.signal });
+        if (full) {
+          applyPersistedReview(full, { upgrading: false });
+          gameStatus.textContent =
+            `Done (full) · ${(full.moves || []).length} plies · persisted`;
+        }
+        return;
+      }
+      // Anonymous / API unavailable — live SSE (not persisted).
+      await startPgnStream(pgnText, ctrl);
+    } catch (err) {
+      if (err.name === "AbortError") {
+        gameStatus.textContent = "Analysis stopped (job continues server-side if started).";
+      } else {
+        gameStatus.textContent = `Error: ${err.message || err}`;
+      }
+    } finally {
+      btnAnalyzePgn.disabled = false;
+      btnStopPgn.disabled = true;
+      if (pgnController === ctrl) pgnController = null;
+    }
+  }
+
+  async function startPgnStream(pgnText, existingCtrl) {
+    const ctrl = existingCtrl || new AbortController();
+    if (!existingCtrl) {
+      if (pgnController) pgnController.abort();
+      pgnController = ctrl;
+      plyResults = [];
+      destroyChart();
+      btnAnalyzePgn.disabled = true;
+      btnStopPgn.disabled = false;
+      gameStatus.textContent = "Starting…";
+      plyStatus.classList.remove("hidden");
+    }
 
     try {
       const resp = await fetch("/analyze/pgn", {
@@ -2111,10 +2428,13 @@
       } else {
         gameStatus.textContent = `Error: ${err.message || err}`;
       }
+      throw err;
     } finally {
-      btnAnalyzePgn.disabled = false;
-      btnStopPgn.disabled = true;
-      if (pgnController === ctrl) pgnController = null;
+      if (!existingCtrl) {
+        btnAnalyzePgn.disabled = false;
+        btnStopPgn.disabled = true;
+        if (pgnController === ctrl) pgnController = null;
+      }
     }
   }
 
@@ -2275,7 +2595,7 @@
       libraryGames = await window.ChessVolLibrary.getAllGames();
     } catch (err) {
       libraryTableBody.innerHTML =
-        `<tr><td colspan="12" class="library-empty">Library unavailable: ${err.message || err}</td></tr>`;
+        `<tr><td colspan="13" class="library-empty">Library unavailable: ${err.message || err}</td></tr>`;
       return;
     }
 
@@ -2284,12 +2604,44 @@
     if (!games.length) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
-      td.colSpan = 12;
+      td.colSpan = 13;
       td.className = "library-empty";
       td.textContent = libraryGames.length ? "No games match these filters." : "No saved games yet.";
       tr.appendChild(td);
       libraryTableBody.appendChild(tr);
       return;
+    }
+
+    function sparklineSvg(values) {
+      const pts = (values || []).filter((v) => typeof v === "number" && !Number.isNaN(v));
+      if (pts.length < 2) return null;
+      const w = 72;
+      const h = 22;
+      const min = Math.min(...pts);
+      const max = Math.max(...pts);
+      const span = max - min || 1;
+      const path = pts
+        .map((v, i) => {
+          const x = (i / (pts.length - 1)) * w;
+          const y = h - ((v - min) / span) * (h - 2) - 1;
+          return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+        })
+        .join(" ");
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      svg.setAttribute("width", String(w));
+      svg.setAttribute("height", String(h));
+      svg.setAttribute("class", "library-sparkline");
+      svg.setAttribute("aria-hidden", "true");
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      line.setAttribute("d", path);
+      line.setAttribute("fill", "none");
+      line.setAttribute("stroke", "currentColor");
+      line.setAttribute("stroke-width", "1.5");
+      line.setAttribute("stroke-linecap", "round");
+      line.setAttribute("stroke-linejoin", "round");
+      svg.appendChild(line);
+      return svg;
     }
 
     for (const game of games) {
@@ -2305,11 +2657,23 @@
         meta.result || "*",
         String(stats.plyCount || 0),
         fmtNumber(stats.avgV),
+      ];
+      cells.forEach((value) => {
+        const td = document.createElement("td");
+        td.textContent = value;
+        tr.appendChild(td);
+      });
+      const sparkTd = document.createElement("td");
+      sparkTd.className = "library-spark-cell";
+      const spark = sparklineSvg(stats.sparkline);
+      if (spark) sparkTd.appendChild(spark);
+      else sparkTd.textContent = "—";
+      tr.appendChild(sparkTd);
+      [
         typeof stats.whiteAcc === "number" ? `${stats.whiteAcc.toFixed(1)}%` : "—",
         typeof stats.blackAcc === "number" ? `${stats.blackAcc.toFixed(1)}%` : "—",
         String(stats.blunders || 0),
-      ];
-      cells.forEach((value) => {
+      ].forEach((value) => {
         const td = document.createElement("td");
         td.textContent = value;
         tr.appendChild(td);
@@ -2332,9 +2696,17 @@
       delBtn.textContent = "Delete";
       delBtn.addEventListener("click", async (event) => {
         event.stopPropagation();
-        await window.ChessVolLibrary.deleteGame(game.id);
-        await refreshLibraryTable();
+        try {
+          await window.ChessVolLibrary.deleteGame(game.id);
+          await refreshLibraryTable();
+        } catch (err) {
+          setLibraryProgress(err.message || String(err));
+        }
       });
+      if (game.fromReviewsApi) {
+        delBtn.disabled = true;
+        delBtn.title = "Persisted reviews are kept for Insights";
+      }
       wrap.appendChild(openBtn);
       wrap.appendChild(delBtn);
       actions.appendChild(wrap);
@@ -2633,32 +3005,39 @@
         labels: [],
         datasets: [
           {
+            // Volatility overlay (dataset[0]), kept subtle so the advantage area
+            // dominates. Drawn on top via a lower `order`.
             label: "Volatility",
             data: [],
             yAxisID: "yV",
-            borderColor: "#39ff14",
-            backgroundColor: "rgba(57,255,20,0.08)",
-            pointBackgroundColor: "#39ff14",
-            borderWidth: 2,
-            pointRadius: 2.5,
-            pointHoverRadius: 5,
+            borderColor: "rgba(129, 182, 76, 0.85)",
+            backgroundColor: "transparent",
+            pointBackgroundColor: "rgba(129, 182, 76, 0.9)",
+            borderWidth: 1.5,
+            pointRadius: 0,
+            pointHoverRadius: 4,
             tension: 0.3,
             fill: false,
             spanGaps: true,
+            order: 1,
           },
           {
+            // Chess.com-style advantage area (dataset[1]): white fills the region
+            // where White is ahead (eval > 0); the dark background shows through
+            // below. Drawn behind via a higher `order`.
             label: "Eval (white, cp)",
             data: [],
             yAxisID: "yE",
-            borderColor: "#6aa3ff",
-            backgroundColor: "rgba(106, 163, 255, 0.1)",
-            borderWidth: 1.5,
-            pointRadius: 2,
+            borderColor: "rgba(255, 255, 255, 0.9)",
+            backgroundColor: "rgba(255, 255, 255, 0.92)",
+            borderWidth: 1,
+            pointRadius: 0,
             pointHoverRadius: 4,
-            pointBackgroundColor: "#6aa3ff",
-            tension: 0.3,
-            fill: false,
+            pointHoverBackgroundColor: "#81b64c",
+            tension: 0.25,
+            fill: "start",
             spanGaps: true,
+            order: 2,
           },
         ],
       },
@@ -2671,12 +3050,10 @@
           if (elements && elements.length) jumpToPly(elements[0].index);
         },
         plugins: {
-          legend: {
-            labels: { boxWidth: 12, padding: 14, color: "#a0a0a0" },
-          },
+          legend: { display: false },
           tooltip: {
             backgroundColor: "#141414",
-            borderColor: "#39ff14",
+            borderColor: "#81b64c",
             borderWidth: 1,
             titleColor: "#ececec",
             bodyColor: "#a0a0a0",
@@ -2692,25 +3069,19 @@
             type: "linear",
             position: "left",
             min: 0, max: 100,
-            grid: { color: "rgba(255,255,255,0.04)" },
-            ticks: { color: "#39ff14", stepSize: 25 },
-            title: { display: true, text: "Volatility", color: "#39ff14", font: { size: 10 } },
+            display: false,
+            grid: { display: false },
           },
           yE: {
             type: "linear",
             position: "right",
-            grid: { drawOnChartArea: false },
-            ticks: { color: "#6aa3ff" },
-            title: { display: true, text: "Eval (cp)", color: "#6aa3ff", font: { size: 10 } },
+            min: -900, max: 900,
+            display: false,
+            grid: { display: false },
           },
           x: {
-            grid: { color: "rgba(255,255,255,0.04)" },
-            ticks: {
-              color: "#6a6a6a",
-              maxRotation: 45,
-              autoSkip: true,
-              maxTicksLimit: 20,
-            },
+            display: false,
+            grid: { display: false },
           },
         },
       },

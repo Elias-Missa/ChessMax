@@ -4,7 +4,9 @@ $url = "https://database.lichess.org/standard/lichess_db_standard_rated_2026-04.
 
 # Resumable download. -C - tells curl to continue from wherever the local file left off.
 # --retry 50 / --retry-delay 10 handle transient network drops without giving up.
-Write-Host "[$(Get-Date -Format o)] Resuming download from $((Get-Item $pgn).Length) bytes"
+New-Item -ItemType Directory -Force -Path (Split-Path $pgn) | Out-Null
+$existing = if (Test-Path $pgn) { (Get-Item $pgn).Length } else { 0 }
+Write-Host "[$(Get-Date -Format o)] Resuming download from $existing bytes"
 curl.exe -C - -L --retry 50 --retry-delay 10 --retry-connrefused -o $pgn $url
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[$(Get-Date -Format o)] Download exited with $LASTEXITCODE"

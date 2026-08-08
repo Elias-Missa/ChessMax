@@ -1,8 +1,8 @@
 """Puzzle selection.
 
-Mix:
+Mix (spec §Selection):
 - No openings selected: 50% tactical / 50% quiet.
-- Openings selected:    30% general-tactical / 40% opening-tactical / 30% quiet.
+- Openings selected:    40% general-tactical / 20% opening-tactical / 40% quiet.
 
 Quiet positions are opening-agnostic; opening flavor comes from Lichess's tagged
 puzzle pool only.
@@ -46,9 +46,9 @@ def roll_bucket(rng: random.Random, has_openings: bool) -> Bucket:
     r = rng.random()
     if not has_openings:
         return "tactical_general" if r < 0.5 else "quiet"
-    if r < 0.3:
+    if r < 0.4:
         return "tactical_general"
-    if r < 0.7:
+    if r < 0.6:
         return "tactical_opening"
     return "quiet"
 

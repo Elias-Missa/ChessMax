@@ -62,12 +62,123 @@ Manual smoke test plan:
     };
   }
 
+  function reviewToReport(review) {
+    const moves = review.moves || [];
+    const plies = moves.map((m) => {
+      const d = m.detail || {};
+      return {
+        ply: m.ply,
+        san: m.san,
+        fen_before: d.fen_before || "",
+        fen_after: d.fen_after || "",
+        eval_cp: d.eval_cp,
+        move_uci: d.move_uci || "",
+        volatility: {
+          score: m.volatility,
+          top_lines: d.top_lines || [],
+        },
+        review: m.classification
+          ? { classification: m.classification }
+          : null,
+        findability:
+          m.findability != null
+            ? {
+                score: m.findability,
+                personal: m.findability_personal,
+                r_find: m.r_find,
+              }
+            : null,
+        classification: null,
+      };
+    });
+    const summary =
+      (review.detail && review.detail.summary) ||
+      (typeof review.detail === "object" && review.detail) ||
+      null;
+    return {
+      mode: review.depth_tier || "full",
+      plies,
+      game_review: summary && summary.accuracy ? summary : summary,
+    };
+  }
+
+  function fromReviewSummary(row) {
+    const importedAt = row.created_at
+      ? Date.parse(row.created_at) || Date.now()
+      : Date.now();
+    return {
+      id: `review:${row.review_id}`,
+      reviewId: row.review_id,
+      gameId: row.game_id,
+      depthTier: row.depth_tier,
+      importedAt,
+      sourceName: `review:${row.depth_tier || "full"}`,
+      pgn: row.pgn || "",
+      metadata: {
+        white: row.white_name || "Unknown",
+        black: row.black_name || "Unknown",
+        result: row.result || "*",
+        date: row.played_at || "",
+        whiteElo: row.white_rating != null ? String(row.white_rating) : "",
+        blackElo: row.black_rating != null ? String(row.black_rating) : "",
+        timeControl: row.time_class || "",
+      },
+      derivedStats: {
+        avgV: row.avg_v,
+        whiteAcc: row.user_color === "white" ? row.accuracy : null,
+        blackAcc: row.user_color === "black" ? row.accuracy : null,
+        plyCount: row.ply_count || 0,
+        blunders: row.blunders || 0,
+        classificationCounts: null,
+        fixableLoss: row.fixable_loss,
+        totalLoss: row.total_loss,
+        lossType: row.loss_type,
+        sparkline: row.sparkline || [],
+      },
+      fromReviewsApi: true,
+    };
+  }
+
   async function getAllGames() {
     const data = await apiFetch(API);
-    return (data.games || []).map(fromSummary);
+    const volGames = (data.games || []).map(fromSummary);
+    let reviewGames = [];
+    try {
+      const rev = await apiFetch("/api/reviews?limit=100");
+      // Prefer full-tier rows; fall back to shallow when that's all we have.
+      const byGame = new Map();
+      for (const row of rev.reviews || []) {
+        const key = row.game_id || row.review_id;
+        const prev = byGame.get(key);
+        if (!prev || (row.depth_tier === "full" && prev.depthTier !== "full")) {
+          byGame.set(key, fromReviewSummary(row));
+        }
+      }
+      reviewGames = Array.from(byGame.values());
+    } catch (err) {
+      reviewGames = [];
+    }
+    // Merge: reviews first (durable analysis), then vol_games not already covered.
+    const seenPgn = new Set(
+      reviewGames.map((g) => (g.pgn || "").trim()).filter(Boolean),
+    );
+    const extras = volGames.filter((g) => !seenPgn.has((g.pgn || "").trim()));
+    return [...reviewGames, ...extras];
   }
 
   async function getGame(id) {
+    if (String(id).startsWith("review:")) {
+      const reviewId = String(id).slice("review:".length);
+      const review = await apiFetch(`/api/review/${encodeURIComponent(reviewId)}`);
+      const game = fromReviewSummary(review);
+      game.pgn = review.pgn || game.pgn || "";
+      // pgn lives on games table — fetch via list fields if missing
+      if (!game.pgn && review.game_id) {
+        /* GET /api/review doesn't include pgn today; patch below on server */
+      }
+      game.report = reviewToReport(review);
+      return game;
+    }
     const row = await apiFetch(`${API}/${encodeURIComponent(id)}`);
     const game = fromSummary(row);
     game.pgn = row.pgn || "";
@@ -92,6 +203,9 @@ Manual smoke test plan:
   }
 
   async function deleteGame(id) {
+    if (String(id).startsWith("review:")) {
+      throw new Error("Persisted reviews can't be deleted from Library yet.");
+    }
     await apiFetch(`${API}/${encodeURIComponent(id)}`, { method: "DELETE" });
   }
 
@@ -335,6 +449,7 @@ Manual smoke test plan:
     getGame,
     pgnsFromFiles,
     putGame,
+    reviewToReport,
     splitPgnGames,
   };
 })();

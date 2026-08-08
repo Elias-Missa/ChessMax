@@ -5,9 +5,9 @@ A single local website combining two projects:
 - **Chess Trainer** (puzzles): tactical + quiet-position training, Maia playouts, stats dashboard. Spec: [`chess_trainer_spec.md`](chess_trainer_spec.md) (source of truth for trainer behavior).
 - **Chess Volatility Bar** (vol): PGN game analyzer, position editor, saved-game library, volatility algorithm explainer. Algorithm docs: [`docs/VOL_README.md`](docs/VOL_README.md).
 
-One FastAPI app, one page, eleven tabs in two groups:
+One FastAPI app, one page, twelve tabs in two groups:
 
-- **Train**: `Puzzles | Eval Hold | Defense Gym | Forced Lines | Guess | Play Out | Stats`
+- **Train**: `Puzzles | Eval Hold | Defense Gym | Forced Lines | Guess | Your Mistakes | Play Out | Stats`
 - **Analyze**: `Game Analyzer | Position Editor | Library | Why`
 
 ## Training modes
@@ -40,10 +40,9 @@ pip install -r requirements.txt
 npm install          # chessground + chess.js for the trainer board
 ```
 
-Stockfish is required for grading/analysis:
-
-- Puzzles backend (`server/engine.py`) expects `stockfish` on PATH.
-- Vol backend (`chess_vol/engine.py`) checks `STOCKFISH_PATH` env var, then PATH, then common install locations.
+Stockfish is required for grading/analysis. Both backends resolve the binary
+the same way: `STOCKFISH_PATH` env var, then PATH, then common install
+locations (the trainer additionally accepts a binary dropped into `data/`).
 
 Optional (human-like playouts): lc0 + Maia weights — see env vars below.
 
@@ -72,7 +71,7 @@ Email + password, hashed with the standard library's `scrypt` (no extra dependen
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `CHESS_TRAINER_DB` | `data/trainer.db` | Trainer SQLite path |
-| `STOCKFISH_PATH` | auto-detect | Stockfish binary for vol analysis |
+| `STOCKFISH_PATH` | auto-detect | Stockfish binary (trainer + vol analysis) |
 | `CHESS_TRAINER_LC0` | `lc0` (or `data/lc0.exe`) | lc0 binary for Maia playouts |
 | `CHESS_TRAINER_MAIA_WEIGHTS_DIR` | `data/maia_weights` | Maia weight files |
 | `CHESS_TRAINER_MAIA_NODES` | `800` | lc0 node budget (1900 bucket) |

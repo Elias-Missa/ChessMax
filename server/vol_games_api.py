@@ -79,7 +79,7 @@ def build_vol_games_router(app: FastAPI) -> APIRouter:
         connection: sqlite3.Connection = Depends(get_connection),
         user: sqlite3.Row = Depends(current_user),
     ) -> dict[str, Any]:
-        connection.execute(
+        cur = connection.execute(
             """
             INSERT INTO vol_games (
                 id, user_id, imported_at, source_name, pgn,
@@ -106,6 +106,13 @@ def build_vol_games_router(app: FastAPI) -> APIRouter:
             ),
         )
         connection.commit()
+        if cur.rowcount == 0:
+            # The id exists but belongs to another user: the guarded upsert
+            # touched nothing. Never report a silent no-op as saved.
+            raise HTTPException(
+                status_code=409,
+                detail="A game with this id belongs to another account.",
+            )
         return {"id": body.id, "saved": True}
 
     @router.delete("/{game_id}")

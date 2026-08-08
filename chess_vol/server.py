@@ -53,8 +53,11 @@ from chess_vol.config import (
     DEFAULT_RECURSE_K,
 )
 from chess_vol.engine import Engine, EngineNotFoundError
+from chess_vol.findability_review import attach_findability
 from chess_vol.game_review import build_game_review_summary
-from chess_vol.volatility import EngineLike, compute_volatility
+from core.findability import PolicyFn
+from core.human import best_available_policy
+from core.volatility import EngineLike, compute_volatility
 
 logger = logging.getLogger("chess_vol.server")
 
@@ -76,6 +79,16 @@ def _default_engine_factory() -> Iterator[EngineLike]:
 
 #: Tests monkey-patch this to inject a :class:`FakeEngine` instead of Stockfish.
 ENGINE_FACTORY: EngineFactory = _default_engine_factory
+
+
+# Findability human-model seam (mirrors ``ENGINE_FACTORY``). Returns a policy
+# callable, or ``None`` when no human model is installed → findability is left
+# null. Defaults to the best installed model — Maia-2 (rating-conditioned policy
+# head, Phase 3's validated backend) if present, else ``None`` rather than the
+# near-noise Maia-1 value head. The vol test-suite patches it off so reviews stay
+# deterministic and engine-free.
+PolicyFactory = Callable[[], "PolicyFn | None"]
+POLICY_FACTORY: PolicyFactory = best_available_policy
 
 
 # --------------------------------------------------------------------------- #
@@ -101,6 +114,12 @@ class AnalyzeFenRequest(_CommonOptions):
 class AnalyzePgnRequest(_CommonOptions):
     pgn: str = Field(..., description="PGN text; only the first game is analysed.")
     max_plies: int | None = Field(default=None, ge=1, le=1000)
+    user_rating: int | None = Field(
+        default=None,
+        ge=100,
+        le=3500,
+        description="Rating for the personal findability score / alternate move (spec §7).",
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -144,6 +163,28 @@ class _SseEvent(TypedDict):
 
 def _sse_event(event: str, payload: dict[str, Any]) -> _SseEvent:
     return {"event": event, "data": json.dumps(payload, separators=(",", ":"))}
+
+
+def _attach_findability_if_available(results: list[PlyResult], user_rating: int | None) -> None:
+    """Populate per-ply findability when a human model is installed (spec §3).
+
+    A no-op when the :data:`POLICY_FACTORY` yields ``None`` (no human model
+    installed, or disabled in tests) — the classic review is unaffected. Never
+    raises: a findability failure must not sink an otherwise-complete review.
+    """
+    policy = POLICY_FACTORY()
+    if policy is None:
+        return
+    try:
+        # The Maia backend is a context manager (owns lc0 processes); an injected
+        # fake policy is just a callable. Support both.
+        if hasattr(policy, "__enter__"):
+            with policy as bound:
+                attach_findability(results, bound, user_rating=user_rating)
+        else:
+            attach_findability(results, policy, user_rating=user_rating)
+    except Exception:  # noqa: BLE001 — findability is additive; degrade gracefully
+        logger.exception("findability enrichment failed; returning review without it")
 
 
 # --------------------------------------------------------------------------- #
@@ -242,6 +283,7 @@ async def analyze_pgn_endpoint(req: AnalyzePgnRequest, request: Request) -> Even
                     recurse_k=req.recurse_k,
                     child_depth=req.child_depth,
                 )
+            _attach_findability_if_available(results, req.user_rating)
             total_analyses = sum(r.volatility.analyses for r in results)
             schedule(
                 _sse_event(

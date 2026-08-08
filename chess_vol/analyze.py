@@ -12,7 +12,8 @@ import chess.pgn
 
 from chess_vol.classify import Classification, classify_move
 from chess_vol.game_review import MoveReview, attach_move_reviews
-from chess_vol.volatility import (
+from core.findability import PositionFindability
+from core.volatility import (
     EngineLike,
     VolatilityResult,
     compute_volatility,
@@ -49,6 +50,11 @@ class PlyResult:
 
     review: MoveReview | None = None
     """Expected-points game-review verdict attached after all plies are known."""
+
+    findability: PositionFindability | None = None
+    """Findability verdict (Game Review 2.0 §3). ``None`` when the position is
+    gated out (decided position, book move) or no human model is installed.
+    Attached opt-in by :func:`chess_vol.findability_review.attach_findability`."""
 
 
 ProgressCallback = Callable[[int, int, PlyResult], None]

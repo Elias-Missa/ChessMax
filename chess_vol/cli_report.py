@@ -16,7 +16,8 @@ from chess_vol.classify import Classification, PrimaryLabel, SecondaryTag
 from chess_vol.config import color_for
 from chess_vol.explain import Component, Explanation, explain
 from chess_vol.game_review import MoveReview, ReviewLabel
-from chess_vol.volatility import TopLine, VolatilityResult
+from core.findability import Alternate, PositionFindability
+from core.volatility import TopLine, VolatilityResult
 
 
 class TopLineJson(TypedDict):
@@ -91,6 +92,29 @@ class VolatilityJson(TypedDict):
     explanation: ExplanationJson
 
 
+class AlternateJson(TypedDict):
+    """JSON shape for a findability alternate-move recommendation."""
+
+    uci: str
+    san: str
+    delta_w: float
+    pi: float
+
+
+class FindabilityJson(TypedDict):
+    """JSON shape for a :class:`PositionFindability` (spec §7)."""
+
+    score: int
+    r_find: int | None
+    band: str
+    personal: float | None
+    personal_star: float | None
+    curve: list[list[float]]
+    star_curve: list[list[float]]
+    alternate: AlternateJson | None
+    forced: bool
+
+
 class PlyJson(TypedDict):
     """JSON shape for a single :class:`PlyResult`."""
 
@@ -103,6 +127,7 @@ class PlyJson(TypedDict):
     volatility: VolatilityJson
     classification: ClassificationJson | None
     review: MoveReviewJson | None
+    findability: FindabilityJson | None
 
 
 class ParamsJson(TypedDict, total=False):
@@ -217,6 +242,34 @@ def volatility_to_json(result: VolatilityResult) -> VolatilityJson:
     )
 
 
+def _alternate_to_json(alternate: Alternate) -> AlternateJson:
+    return AlternateJson(
+        uci=alternate.uci,
+        san=alternate.san,
+        delta_w=alternate.delta_w,
+        pi=alternate.pi,
+    )
+
+
+def findability_to_json(findability: PositionFindability) -> FindabilityJson:
+    """Convert a :class:`PositionFindability` to a JSON-serializable dict."""
+    return FindabilityJson(
+        score=findability.score,
+        r_find=findability.r_find,
+        band=findability.band,
+        personal=findability.personal,
+        personal_star=findability.personal_star,
+        curve=[[r, v] for r, v in findability.curve],
+        star_curve=[[r, v] for r, v in findability.star_curve],
+        alternate=(
+            _alternate_to_json(findability.alternate)
+            if findability.alternate is not None
+            else None
+        ),
+        forced=findability.forced,
+    )
+
+
 def ply_to_json(ply: PlyResult) -> PlyJson:
     """Convert a :class:`PlyResult` to a JSON-serializable dict."""
     return PlyJson(
@@ -233,6 +286,9 @@ def ply_to_json(ply: PlyResult) -> PlyJson:
             else None
         ),
         review=move_review_to_json(ply.review) if ply.review is not None else None,
+        findability=(
+            findability_to_json(ply.findability) if ply.findability is not None else None
+        ),
     )
 
 
@@ -289,11 +345,13 @@ def build_fen_report(
 
 
 __all__: list[str] = [
+    "AlternateJson",
     "AnalyzeReportJson",
     "ClassificationJson",
     "ComponentJson",
     "ExplanationJson",
     "FenReportJson",
+    "FindabilityJson",
     "ParamsJson",
     "PlyJson",
     "MoveReviewJson",
@@ -304,6 +362,7 @@ __all__: list[str] = [
     "build_params",
     "classification_to_json",
     "explanation_to_json",
+    "findability_to_json",
     "mode_label",
     "move_review_to_json",
     "ply_to_json",

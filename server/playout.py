@@ -114,10 +114,13 @@ def start_playout(
     # If it's not the user's turn at start, engine plays immediately.
     if status == ACTIVE_STATUS and board.turn != (chess.WHITE if color == "w" else chess.BLACK):
         maia_move, engine_name = move_selector(board.fen(), maia_rating)
-        if maia_move is not None:
-            board.push(chess.Move.from_uci(maia_move))
+        reply = _legal_move_or_none(board, maia_move)
+        if reply is not None:
+            board.push(reply)
             move_list.append(maia_move)
             status, result = terminal_status_for_board(board, color)
+        else:
+            maia_move = None
 
     connection.execute(
         """
@@ -182,13 +185,15 @@ def play_user_move(
 
     if status == ACTIVE_STATUS:
         maia_move, engine_name = move_selector(board.fen(), maia_rating)
-        if maia_move is not None:
-            board.push(chess.Move.from_uci(maia_move))
-            move_list.append(maia_move)
-            status, result = terminal_status_for_board(board, color)
-        else:
-            status = "draw"
-            result = "draw"
+        reply = _legal_move_or_none(board, maia_move)
+        if reply is None:
+            # The game isn't over, so no reply means the engine failed.
+            # Nothing is committed yet — surface it and let the user retry
+            # instead of silently recording a fake draw.
+            raise RuntimeError("Engine reply unavailable — please retry the move")
+        board.push(reply)
+        move_list.append(maia_move)
+        status, result = terminal_status_for_board(board, color)
 
     connection.execute(
         """
@@ -370,6 +375,18 @@ def terminal_status_for_board(board: chess.Board, user_color: str) -> tuple[str,
     return "checkmate", "win" if user_won else "loss"
 
 
+def _legal_move_or_none(board: chess.Board, uci: str | None) -> chess.Move | None:
+    """Parse ``uci`` and return it only if legal in ``board``."""
+
+    if not uci:
+        return None
+    try:
+        move = chess.Move.from_uci(uci)
+    except ValueError:
+        return None
+    return move if move in board.legal_moves else None
+
+
 def _rebuild_board(initial_fen: str, moves: list[str]) -> chess.Board:
     board = chess.Board(initial_fen)
     for uci in moves:
@@ -427,9 +444,12 @@ def _archive_and_close(connection: sqlite3.Connection, playout_id: int) -> dict[
         raise ValueError("Playout session not found")
 
     move_list = _decode_move_list(session["move_list"])
-    pgn = _build_pgn(str(session["initial_fen"]), move_list, str(session["result"] or "draw"))
+    # A session with no recorded result was abandoned mid-game (e.g. the user
+    # started a new playout) — archive it as 'ended', not as a fake draw.
+    result = str(session["result"] or "ended")
+    user_color = str(session["user_color"] or "w")
+    pgn = _build_pgn(str(session["initial_fen"]), move_list, result, user_color)
     engine = str(session["engine"] or "maia")
-    result = str(session["result"] or "draw")
 
     connection.execute(
         """
@@ -452,13 +472,13 @@ def _archive_and_close(connection: sqlite3.Connection, playout_id: int) -> dict[
     return {"pgn": pgn, "result": result, "engine": engine}
 
 
-def _build_pgn(initial_fen: str, moves: list[str], result: str) -> str:
+def _build_pgn(initial_fen: str, moves: list[str], result: str, user_color: str = "w") -> str:
     board = chess.Board(initial_fen)
     game = chess.pgn.Game()
     game.setup(chess.Board(initial_fen))
     game.headers["Event"] = "Chess Trainer Playout"
     game.headers["Site"] = "Local"
-    game.headers["Result"] = pgn_result_token(result)
+    game.headers["Result"] = pgn_result_token(result, user_color)
     node = game
     for move_uci in moves:
         move = chess.Move.from_uci(move_uci)
@@ -470,9 +490,14 @@ def _build_pgn(initial_fen: str, moves: list[str], result: str) -> str:
     return str(game)
 
 
-def pgn_result_token(result: str) -> str:
+def pgn_result_token(result: str, user_color: str = "w") -> str:
+    """PGN Result header: 'win'/'loss' are from the USER's perspective."""
+
+    user_is_white = user_color != "b"
     if result == "win":
-        return "1-0"
+        return "1-0" if user_is_white else "0-1"
     if result == "loss":
-        return "0-1"
-    return "1/2-1/2"
+        return "0-1" if user_is_white else "1-0"
+    if result == "draw":
+        return "1/2-1/2"
+    return "*"  # abandoned / unfinished

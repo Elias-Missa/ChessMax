@@ -539,6 +539,12 @@ function switchTab(tabId) {
 // ChessMax shell hook: the top-level tab bar drives this app's views.
 window.__puzzlesSwitchTab = switchTab;
 
+// Shell hook for leaving the trainer entirely (switching to a vol tab):
+// tear down transient board state so it doesn't stick while we're hidden.
+window.__puzzlesDeactivate = () => {
+  if (state.calc.active) exitCalcMode();
+};
+
 async function loadStats() {
   statsOverall.textContent = "Loading…";
   try {
@@ -809,6 +815,9 @@ function renderModeBoard(view) {
 function resetToPuzzleStart() {
   if (!state.puzzle) return;
   state.locked = false;
+  // The board is back at the puzzle's start position, so the solution index
+  // must restart too — otherwise multi-move tactics send a stale step.
+  state.step = 0;
   state.chess = new Chess(state.puzzle.fen);
   board.set({
     fen: state.puzzle.fen,
@@ -1463,8 +1472,17 @@ const mistakesUi = {
   bucketBadge: document.querySelector("#mistakes-bucket-badge"),
 };
 
-mistakesUi.generate.addEventListener("click", generateMistakes);
+if (mistakesUi.generate) {
+  mistakesUi.generate.addEventListener("click", generateMistakes);
+}
 mistakesUi.next.addEventListener("click", () => loadMistakePuzzle());
+const mistakesToInsights = document.querySelector("#mistakes-to-insights");
+if (mistakesToInsights) {
+  mistakesToInsights.addEventListener("click", () => {
+    if (window.__shellNavigate) window.__shellNavigate("/insights");
+    else if (window.__shellSwitchTab) window.__shellSwitchTab("insights");
+  });
+}
 
 function setMistakeStatus(text) {
   mistakesUi.genStatus.textContent = text;
@@ -1756,6 +1774,9 @@ async function submitGuess() {
   } finally {
     guess.busy = false;
     guessUi.submit.textContent = "Lock in guess";
+    // On failure (engine unavailable, network hiccup) the guess wasn't
+    // consumed — let the user try again instead of leaving the button dead.
+    guessUi.submit.disabled = guess.revealed;
   }
 }
 

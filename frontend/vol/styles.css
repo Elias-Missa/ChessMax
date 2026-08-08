@@ -7,15 +7,15 @@
    Scoped to #vol-root inside the merged ChessMax page. ─────────── */
 #vol-root {
   /* Background layers (match puzzles app) */
-  --bg: #111318;
-  --bg-1: #14171f;
-  --bg-2: #1b1f29;
+  --bg: #0d0f11;
+  --bg-1: #0f1114;
+  --bg-2: #16181d;
 
   /* Surface layers (cards, panels) */
-  --surface: #1b1f29;
-  --surface-1: #232936;
-  --surface-2: #2a3142;
-  --surface-3: #323a4d;
+  --surface: #16181d;
+  --surface-1: #1d2026;
+  --surface-2: #24272f;
+  --surface-3: #2b2f37;
 
   /* Borders */
   --border: rgba(255, 255, 255, 0.08);
@@ -24,18 +24,18 @@
   --border-3: rgba(255, 255, 255, 0.20);
 
   /* Text */
-  --fg: #e7edf5;
-  --fg-2: #9aa6b2;
+  --fg: #eef1f3;
+  --fg-2: #98a0aa;
   --fg-3: #7a8795;
   --fg-4: #5d6877;
 
-  /* UI accent (matches shell + trainer; --green name kept for legacy refs) */
-  --green: #8ab4f8;
-  --green-hi: #a8c7fa;
-  --green-lo: #5b96f5;
-  --green-ink: #07111f;
-  --green-glow: rgba(138, 180, 248, 0.28);
-  --green-soft: rgba(138, 180, 248, 0.12);
+  /* UI accent — Razer green (matches shell + trainer; --green name kept for legacy refs) */
+  --green: #44d62c;
+  --green-hi: #57e83f;
+  --green-lo: #33a821;
+  --green-ink: #06140a;
+  --green-glow: rgba(68, 214, 44, 0.30);
+  --green-soft: rgba(68, 214, 44, 0.10);
 
   /* Classic board green retained for the chessboard surface */
   --board-green: #6a8a3f;
@@ -194,7 +194,7 @@ main.app.app--game-wide {
 }
 
 .board-row.board-row--game-wide .chart-wrap canvas {
-  height: 280px !important;
+  height: 118px !important;
 }
 
 .board-row.board-row--game-wide .heat-band {
@@ -338,14 +338,14 @@ main.app.app--game-wide {
   font-weight: 700;
   letter-spacing: 0.01em;
   text-transform: none;
-  box-shadow: 0 2px 10px rgba(91, 150, 245, 0.25);
+  box-shadow: 0 2px 10px rgba(68, 214, 44, 0.25);
 }
 
 .btn-primary:hover:not(:disabled) {
   background: linear-gradient(180deg, var(--green-hi), var(--green));
   color: var(--green-ink);
   filter: brightness(1.08);
-  box-shadow: 0 2px 14px rgba(91, 150, 245, 0.35);
+  box-shadow: 0 2px 14px rgba(68, 214, 44, 0.35);
 }
 
 .btn-primary:active:not(:disabled) {
@@ -494,9 +494,9 @@ main.app.app--game-wide {
 }
 
 .seg-btn.active {
-  background: linear-gradient(180deg, rgba(138, 180, 248, 0.16), rgba(138, 180, 248, 0.08));
+  background: linear-gradient(180deg, rgba(68, 214, 44, 0.16), rgba(68, 214, 44, 0.08));
   color: #ffffff;
-  box-shadow: 0 0 0 1px rgba(138, 180, 248, 0.45);
+  box-shadow: 0 0 0 1px rgba(68, 214, 44, 0.45);
 }
 
 /* ── Toggle ─────────────────────────────────────────────────── */
@@ -539,7 +539,7 @@ main.app.app--game-wide {
 
 .toggle input:checked~.toggle-track {
   background: var(--green-lo);
-  border-color: rgba(138, 180, 248, 0.45);
+  border-color: rgba(68, 214, 44, 0.45);
   box-shadow: none;
 }
 
@@ -659,7 +659,7 @@ main.app.app--game-wide {
   inset: -1px;
   border-radius: var(--r-lg);
   pointer-events: none;
-  box-shadow: 0 0 0 1px rgba(138, 180, 248, 0.08);
+  box-shadow: 0 0 0 1px rgba(68, 214, 44, 0.08);
 }
 
 /* ── Sidebar bars ───────────────────────────────────────────── */
@@ -815,8 +815,8 @@ main.app.app--game-wide {
 .arrow-layer .arrow-head {
   fill: var(--green);
   stroke: var(--green);
-  filter: drop-shadow(0 0 6px var(--green-glow));
-  opacity: 0.85;
+  filter: drop-shadow(0 0 9px rgba(68, 214, 44, 0.55));
+  opacity: 0.95;
 }
 
 /* ── Game left panel (engine lines) ─────────────────────────── */
@@ -1177,7 +1177,7 @@ main.app.app--game-wide {
 .chart-wrap {
   padding: 14px 14px 10px;
   background:
-    radial-gradient(420px 160px at 50% 0%, rgba(138, 180, 248, 0.04), transparent 60%),
+    radial-gradient(420px 160px at 50% 0%, rgba(68, 214, 44, 0.04), transparent 60%),
     var(--surface);
   border: 1px solid var(--border-1);
   border-radius: var(--r);
@@ -1241,9 +1241,9 @@ main.app.app--game-wide {
 }
 
 .move-cell.active {
-  background: linear-gradient(180deg, rgba(138, 180, 248, 0.16), rgba(138, 180, 248, 0.08));
+  background: linear-gradient(180deg, rgba(68, 214, 44, 0.16), rgba(68, 214, 44, 0.08));
   border-radius: var(--r-xs);
-  box-shadow: 0 0 0 1px rgba(138, 180, 248, 0.45);
+  box-shadow: 0 0 0 1px rgba(68, 214, 44, 0.45);
 }
 
 .move-cell.active .move-san {
@@ -1473,6 +1473,16 @@ main.app.app--game-wide {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.library-spark-cell {
+  color: var(--accent, #44d62c);
+  vertical-align: middle;
+}
+
+.library-sparkline {
+  display: block;
+  opacity: 0.9;
+}
+
 .library-empty {
   color: var(--fg-3);
   text-align: center !important;
@@ -1694,7 +1704,7 @@ main.app.app--game-wide {
   width: 100%;
   aspect-ratio: 1 / 1;
   box-shadow:
-    0 0 0 1px rgba(138, 180, 248, 0.12),
+    0 0 0 1px rgba(68, 214, 44, 0.12),
     0 0 22px rgba(0, 0, 0, 0.6);
   border-radius: 2px;
 }
@@ -1714,7 +1724,7 @@ main.app.app--game-wide {
 
 /* Last-move highlight — matches ChessMax accent. */
 .cg-wrap square.last-move {
-  background-color: rgba(138, 180, 248, 0.28) !important;
+  background-color: rgba(68, 214, 44, 0.28) !important;
 }
 
 .board-frame[data-review-class="brilliant"] .cg-wrap square.last-move { background-color: rgba(27, 172, 166, 0.4) !important; }
@@ -1729,11 +1739,11 @@ main.app.app--game-wide {
 .board-frame[data-review-class="blunder"] .cg-wrap square.last-move { background-color: rgba(179, 52, 48, 0.4) !important; }
 
 .cg-wrap square.move-dest {
-  background-color: rgba(138, 180, 248, 0.18) !important;
+  background-color: rgba(68, 214, 44, 0.18) !important;
 }
 
 .cg-wrap square.selected {
-  background-color: rgba(138, 180, 248, 0.34) !important;
+  background-color: rgba(68, 214, 44, 0.34) !important;
 }
 
 /* Drawable arrows (right-click drag) — green by default. */
@@ -2415,43 +2425,47 @@ button.vol-bar:hover .vol-info-dot {
 
 /* ── Game Review workspace (adapted from the supplied clone) ───────────── */
 body[data-tab="game"] #vol-root {
-  --bg: #0c0d10;
-  --surface: #18191d;
-  --surface-1: #202126;
-  --surface-2: #292a30;
-  --surface-3: #34353d;
+  --bg: #090a0c;
+  --surface: #141519;
+  --surface-1: #1a1c21;
+  --surface-2: #212329;
+  --surface-3: #2c2e36;
   --fg: #f3f4f6;
   --fg-2: #b3b5bd;
   --fg-3: #777b86;
-  --green: #81b64c;
-  --green-hi: #96c45f;
-  --green-lo: #669b36;
-  --green-glow: rgba(129, 182, 76, 0.28);
-  --green-soft: rgba(129, 182, 76, 0.12);
-  --board-size: clamp(420px, calc(100vh - 130px), 620px);
+  --green: #44d62c;
+  --green-hi: #57e83f;
+  --green-lo: #33a821;
+  --green-glow: rgba(68, 214, 44, 0.30);
+  --green-soft: rgba(68, 214, 44, 0.10);
+  --board-size: clamp(360px, calc(100vh - 240px), 600px);
 }
 
 body[data-tab="game"] #vol-root main.app.app--game-wide {
-  max-width: 1280px;
-  min-height: calc(100vh - 42px);
-  padding: 18px 24px 30px;
+  max-width: 1720px;
+  min-height: calc(100vh - 64px);
+  padding: 18px 28px 30px;
   background:
-    radial-gradient(700px 460px at 15% 10%, rgba(129, 182, 76, 0.06), transparent 70%),
-    radial-gradient(560px 420px at 95% 90%, rgba(60, 100, 180, 0.06), transparent 72%);
+    radial-gradient(700px 460px at 15% 10%, rgba(68, 214, 44, 0.06), transparent 70%),
+    radial-gradient(560px 420px at 95% 90%, rgba(68, 214, 44, 0.05), transparent 72%);
 }
 
 body[data-tab="game"] #vol-root .board-row.board-row--game-wide {
-  max-width: 1240px;
-  gap: 24px;
+  max-width: 1700px;
+  gap: 28px;
   align-items: flex-start;
 }
 
 body[data-tab="game"] #vol-root .game-left-panel,
-body[data-tab="game"] #vol-root .volatility-sidebar,
 body[data-tab="game"] #vol-root #volExplainGame,
 body[data-tab="game"] #vol-root .chart-wrap,
 body[data-tab="game"] #vol-root .heat-band {
   display: none !important;
+}
+
+/* …but the review summary's advantage graph is meant to be visible. */
+body[data-tab="game"] #vol-root .review-summary .rs-graph.chart-wrap:not(.hidden) {
+  display: block !important;
 }
 
 body[data-tab="game"] #vol-root .board-wrap {
@@ -2478,10 +2492,16 @@ body[data-tab="game"] #vol-root #volBoard {
 }
 
 body[data-tab="game"] #vol-root .player-strip {
-  width: calc(var(--board-size) + var(--bar-width) + 9px);
+  width: calc(var(--board-size) + var(--bar-width) * 2 + 18px);
   height: 24px;
   margin-left: 0;
   padding-left: calc(var(--bar-width) + 12px);
+}
+
+/* Surface the per-move card (eval / win% / findability) above the long
+   summary so the findability score is visible without deep scrolling. */
+body[data-tab="game"] #vol-root .game-right-panel .review-move-card {
+  order: -1;
 }
 
 body[data-tab="game"] #vol-root .player-label {
@@ -2492,10 +2512,10 @@ body[data-tab="game"] #vol-root .player-label {
 }
 
 body[data-tab="game"] #vol-root .game-right-panel {
-  flex: 0 0 440px;
-  width: 440px;
-  max-width: 440px;
-  max-height: calc(100vh - 78px);
+  flex: 0 0 860px;
+  width: 860px;
+  max-width: 860px;
+  max-height: calc(100vh - 112px);
   gap: 9px;
   overflow-y: auto;
   padding: 0 4px 10px 0;
@@ -2540,49 +2560,337 @@ body[data-tab="game"] #vol-root .pgn-input {
   line-height: 1.5;
 }
 
-body[data-tab="game"] #vol-root .review-player-header,
-body[data-tab="game"] #vol-root .review-donut-card,
-body[data-tab="game"] #vol-root .review-vol-card,
-body[data-tab="game"] #vol-root .review-coach,
 body[data-tab="game"] #vol-root .review-move-card,
-body[data-tab="game"] #vol-root .move-list-wrap,
-body[data-tab="game"] #vol-root #gameClassCard {
+body[data-tab="game"] #vol-root .move-list-wrap {
   border-radius: 10px;
   background: #1a1b20;
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
 }
 
-body[data-tab="game"] #vol-root .review-player-header {
-  padding: 11px 13px;
+/* ═══════════ Chess.com-style review summary card ═══════════ */
+.review-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 13px 14px 15px;
+  border-radius: 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4);
 }
 
-body[data-tab="game"] #vol-root .review-stats {
-  grid-template-columns: 1fr 1fr 0.72fr;
+/* Coach speech bubble */
+.rs-coach {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
 }
 
-body[data-tab="game"] #vol-root .review-donut-card {
-  padding: 9px;
+.rs-coach-avatar {
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #d7c4a8;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 
-body[data-tab="game"] #vol-root .review-donut {
-  width: 38px;
-  height: 38px;
-  flex-basis: 38px;
+.rs-coach-avatar svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
-body[data-tab="game"] #vol-root .review-donut-arc.white {
-  stroke: #81b64c;
+.rs-coach-bubble {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding: 11px 14px;
+  background: #fff;
+  border-radius: 10px;
+  color: #2c2c2c;
+  font-size: 13.5px;
+  line-height: 1.4;
+  font-weight: 500;
 }
 
-body[data-tab="game"] #vol-root .review-donut-arc.black {
-  stroke: #5c8bb0;
+.rs-coach-bubble::before {
+  content: "";
+  position: absolute;
+  top: 15px;
+  left: -7px;
+  width: 0;
+  height: 0;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-right: 8px solid #fff;
 }
 
-body[data-tab="game"] #vol-root .review-coach {
-  padding: 10px 12px;
-  background: linear-gradient(135deg, rgba(129, 182, 76, 0.13), transparent), #1a1b20;
-  border-color: rgba(129, 182, 76, 0.24);
+.rs-coach-bubble p {
+  margin: 0;
+}
+
+/* Eval graph inside the summary */
+.review-summary .rs-graph {
+  padding: 6px 4px 2px;
+  height: 132px;
+  background: #0e0f12;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.review-summary .rs-graph canvas {
+  height: 100% !important;
+}
+
+/* Players + accuracy rows — fixed, centered tracks so the label + the two
+   player columns stay grouped instead of spreading across the wide panel. */
+.rs-row {
+  display: grid;
+  grid-template-columns: 96px 150px 150px;
+  justify-content: center;
+  align-items: center;
+  column-gap: 30px;
+}
+
+.rs-row-label {
+  color: #b9b6b1;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.rs-player {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rs-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  border-radius: 5px;
+  font-size: 24px;
+  line-height: 1;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.rs-avatar--white {
+  background: #eeeeee;
+  color: #3a3a3a;
+}
+
+.rs-avatar--black {
+  background: #4a4a4a;
+  color: #111;
+}
+
+.rs-player[data-side="white"] .rs-avatar {
+  box-shadow: 0 0 0 2px #44d62c;
+}
+
+.rs-names-row {
+  margin-bottom: -4px;
+}
+
+.rs-player-name {
+  overflow: hidden;
+  color: #e5e8ea;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rs-acc-box {
+  justify-self: center;
+  min-width: 74px;
+  padding: 9px 4px;
+  border-radius: 5px;
+  background: #fff;
+  color: #2c2c2c;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.rs-divider {
+  height: 1px;
+  margin: 2px 0;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Classification breakdown table */
+.rs-class-table {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 40px;
+  row-gap: 1px;
+  max-width: 620px;
+  margin-inline: auto;
+  width: 100%;
+}
+
+.rs-class-row {
+  display: grid;
+  grid-template-columns: 1fr 2rem 1.7rem 2rem;
+  align-items: center;
+  padding: 3px 2px;
+}
+
+.rs-class-label {
+  color: #e5e8ea;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rs-cc {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.rs-cc-icon {
+  display: grid;
+  place-items: center;
+}
+
+.rs-class-badge {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.rs-avgvol {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 2px 0;
+  color: #98a0aa;
+  font-size: 12px;
+}
+
+.rs-avgvol strong {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: #e5e8ea;
+}
+
+.rs-avgvol strong[data-color="low"] { color: var(--vol-low); }
+.rs-avgvol strong[data-color="medium"] { color: var(--vol-med); }
+.rs-avgvol strong[data-color="high"] { color: var(--vol-high); }
+
+/* Opening name */
+.rs-opening {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 2px 2px;
+}
+
+.rs-opening-label {
+  color: #98a0aa;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rs-opening-name {
+  color: #e5e8ea;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Key moments (turning-point chips) */
+.rs-key-moments {
+  padding: 8px 2px 2px;
+}
+
+.rs-key-moments-title {
+  color: #98a0aa;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.rs-key-moments-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rs-key-moment {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px 4px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-left: 3px solid var(--km-color, rgba(255, 255, 255, 0.3));
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #e5e8ea;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+
+.rs-key-moment:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-1px);
+}
+
+.rs-key-moment-badge {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.rs-key-moment-move {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.rs-key-moment-swing {
+  color: #98a0aa;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* Start Review button */
+.rs-start-btn {
+  margin-top: 4px;
+  width: 100%;
+  padding: 15px;
+  border: none;
+  border-radius: 8px;
+  background: #81b64c;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow: 0 5px 0 #5c8a34, 0 8px 18px rgba(0, 0, 0, 0.35);
+  transition: background 120ms, transform 90ms, box-shadow 90ms;
+}
+
+.rs-start-btn:hover {
+  background: #8bc34f;
+}
+
+.rs-start-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 #5c8a34, 0 4px 10px rgba(0, 0, 0, 0.35);
 }
 
 .review-move-card {
@@ -2726,9 +3034,24 @@ body[data-tab="game"] #vol-root .move-cell.active {
 
 .review-navigation {
   display: grid;
-  grid-template-columns: 42px 42px 1fr 42px 42px;
+  grid-template-columns: 42px 42px 1fr 42px 42px auto;
   gap: 6px;
   align-items: center;
+}
+
+.review-navigation .review-nav-flip {
+  width: auto;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--green-hi);
+  border-color: rgba(68, 214, 44, 0.35);
+}
+
+.review-navigation .review-nav-flip:hover:not(:disabled) {
+  border-color: rgba(68, 214, 44, 0.6);
+  background: rgba(68, 214, 44, 0.1);
 }
 
 .review-navigation button {
@@ -2786,7 +3109,7 @@ body[data-tab="game"] #vol-root .panel-status {
 
 @media (max-width: 1020px) {
   body[data-tab="game"] #vol-root {
-    --board-size: clamp(400px, calc(100vh - 140px), 520px);
+    --board-size: clamp(340px, calc(100vh - 240px), 520px);
   }
 
   body[data-tab="game"] #vol-root .board-row.board-row--game-wide {
@@ -2943,4 +3266,150 @@ body[data-tab="game"] #vol-root .panel-status {
 .review-class-empty {
   color: var(--fg-3);
   font-size: 11px;
+}
+
+/* Findability panel (Game Review 2.0 §3) — injected into the move card. */
+.review-find {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.review-find.hidden {
+  display: none;
+}
+
+/* Prominent "best move to find" header — the findability below describes how
+   hard THIS move is to find, not the move that was actually played. */
+.review-find-bestmove {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--green-soft);
+  border: 1px solid rgba(68, 214, 44, 0.30);
+  box-shadow: inset 0 0 16px rgba(68, 214, 44, 0.08);
+}
+
+.review-find-bestmove-label {
+  color: var(--fg-2);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.review-find-bestmove-san {
+  font-size: 23px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--green-hi);
+  text-shadow: 0 0 12px rgba(68, 214, 44, 0.4);
+  font-family: var(--font-mono);
+}
+
+.review-find-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.review-find-title {
+  color: var(--fg-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.review-find-band {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+/* Score meter (0–100) */
+.review-find-meter {
+  position: relative;
+  height: 18px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.review-find-meter-fill {
+  height: 100%;
+  border-radius: 9px;
+  transition: width 0.35s ease;
+  min-width: 6px;
+}
+
+.review-find-meter-val {
+  position: absolute;
+  top: 0;
+  right: 8px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+/* Rising-probability sparkline */
+.review-find-spark {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.review-find-spark-svg {
+  width: 100%;
+  height: 46px;
+  display: block;
+}
+
+.review-find-spark-guide {
+  stroke: rgba(255, 255, 255, 0.22);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.review-find-spark-cap {
+  display: flex;
+  justify-content: space-between;
+  color: var(--fg-3);
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+}
+
+.review-find-desc,
+.review-find-alt {
+  font-size: 11.5px;
+  color: var(--fg-3);
+  line-height: 1.35;
+}
+
+.review-find-alt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.review-find-alt strong {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: #fff;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.09);
 }

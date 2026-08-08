@@ -82,6 +82,11 @@ def _resolve_path(explicit: str | os.PathLike[str] | None) -> str:
         p = Path(env_path)
         if p.is_file():
             return str(p)
+        # A set-but-wrong env var is a configuration error; falling through to
+        # PATH lookup would silently run a different binary than the user asked for.
+        raise EngineNotFoundError(
+            f"STOCKFISH_PATH is set but does not point to a file: {env_path!r}\n\n{_INSTALL_HINT}"
+        )
 
     for name in ("stockfish", "stockfish.exe"):
         found = shutil.which(name)

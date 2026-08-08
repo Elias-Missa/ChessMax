@@ -107,10 +107,12 @@ def generate_mistakes(
     on_event: EventFn | None = None,
     is_cancelled: Callable[[], bool] | None = None,
     detect_kwargs: dict[str, Any] | None = None,
+    time_class: str | None = None,
+    max_games: int = chesscom.MAX_GAMES,
 ) -> dict[str, int]:
     """Run the full generate pipeline, inserting puzzles as they're found.
 
-    Returns ``{games_scanned, games_eligible, puzzles_created}``.
+    Returns ``{games_scanned, games_eligible, puzzles_created, games_capped}``.
     """
 
     emit = on_event or (lambda _e, _p: None)
@@ -119,10 +121,31 @@ def generate_mistakes(
 
     run_id = _start_run(connection, user_id, username, since)
     scanned = eligible = created = 0
-    emit("start", {"run_id": run_id, "username": username, "since": since.date().isoformat()})
+    games_capped = False
+    emit("start", {
+        "run_id": run_id,
+        "username": username,
+        "since": since.date().isoformat(),
+        "time_class": time_class,
+    })
 
     try:
-        for pgn, meta in chesscom.iter_games(username, since, fetch_json=fetch_json):
+        games, games_capped = chesscom.collect_games(
+            username,
+            since,
+            time_class=time_class,
+            max_games=max_games,
+            fetch_json=fetch_json,
+        )
+        if games_capped:
+            emit("progress", {
+                "games_scanned": 0,
+                "games_eligible": 0,
+                "puzzles_created": 0,
+                "games_capped": True,
+                "games_total": len(games),
+            })
+        for pgn, meta in games:
             if cancelled():
                 break
             scanned += 1
@@ -153,6 +176,7 @@ def generate_mistakes(
                 "games_scanned": scanned,
                 "games_eligible": eligible,
                 "puzzles_created": created,
+                "games_capped": games_capped,
             })
 
     except Exception as exc:  # noqa: BLE001 — mark the run, re-raise for the worker to report
@@ -167,26 +191,32 @@ def generate_mistakes(
         raise
 
     total_unsolved = _count_unsolved(connection, user_id)
+    # A cancellation noticed at the loop check (rather than via an exception
+    # from `emit`) still means the scan was cut short — never record it 'done'.
+    interrupted = cancelled()
     _update_run(
-        connection, run_id, status="done",
+        connection, run_id, status="interrupted" if interrupted else "done",
         games_scanned=scanned, games_eligible=eligible, puzzles_created=created,
     )
-    # The run is durably 'done' before we emit; a disconnect during this final
-    # event must not downgrade an already-completed run.
-    try:
-        emit("done", {
-            "run_id": run_id,
-            "games_scanned": scanned,
-            "games_eligible": eligible,
-            "puzzles_created": created,
-            "total_unsolved": total_unsolved,
-        })
-    except Exception:  # noqa: BLE001 — status already committed as 'done'
-        pass
+    # The run status is durably committed before we emit; a disconnect during
+    # this final event must not downgrade an already-completed run.
+    if not interrupted:
+        try:
+            emit("done", {
+                "run_id": run_id,
+                "games_scanned": scanned,
+                "games_eligible": eligible,
+                "puzzles_created": created,
+                "total_unsolved": total_unsolved,
+                "games_capped": games_capped,
+            })
+        except Exception:  # noqa: BLE001 — status already committed as 'done'
+            pass
 
     return {
         "games_scanned": scanned,
         "games_eligible": eligible,
         "puzzles_created": created,
         "total_unsolved": total_unsolved,
+        "games_capped": games_capped,
     }

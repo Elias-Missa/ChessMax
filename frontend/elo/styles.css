@@ -1,0 +1,285 @@
+/* Guess the Elo Duels — polished dark theme matching the review UI. */
+
+#elo-root {
+  --elo-bg: #0d0f11;
+  --elo-panel: #16181d;
+  --elo-line: rgba(255, 255, 255, 0.09);
+  --elo-fg: #eef1f3;
+  --elo-fg-dim: #98a0aa;
+  --elo-green: #44d62c;
+  --elo-green-dk: #33a821;
+  --elo-red: #e0443a;
+  --elo-gold: #e8a53d;
+  color: var(--elo-fg);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+#elo-root.hidden { display: none; }
+
+.elo-wrap {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+/* ── Lobby ─────────────────────────────────────────────────────────────── */
+.elo-lobby {
+  max-width: 620px;
+  margin: 4vh auto 0;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.elo-hero { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+
+.elo-badge {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #0f1a0a;
+  background: var(--elo-green);
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.elo-title {
+  font-size: clamp(28px, 5vw, 44px);
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.elo-sub {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--elo-fg-dim);
+  margin: 0;
+  max-width: 520px;
+}
+.elo-sub strong { color: var(--elo-fg); }
+
+.elo-record-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  max-width: 360px;
+}
+.elo-stat {
+  flex: 1;
+  background: var(--elo-panel);
+  border: 1px solid var(--elo-line);
+  border-radius: 12px;
+  padding: 12px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.elo-stat span { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.elo-stat label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--elo-fg-dim); }
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+.elo-primary {
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  background: linear-gradient(180deg, var(--elo-green), var(--elo-green-dk));
+  color: #0f1a0a;
+  font-size: 16px;
+  font-weight: 800;
+  padding: 13px 26px;
+  border-radius: 12px;
+  box-shadow: 0 2px 0 #1f6e12, 0 4px 14px rgba(0, 0, 0, 0.4), 0 0 18px rgba(68, 214, 44, 0.22);
+  transition: transform 0.08s ease, filter 0.12s ease;
+}
+.elo-primary:hover { filter: brightness(1.06); }
+.elo-primary:active { transform: translateY(2px); box-shadow: 0 0 0 #1f6e12; }
+.elo-primary:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
+.elo-find { min-width: 220px; }
+
+.elo-ghost {
+  appearance: none;
+  border: 1px solid var(--elo-line);
+  background: transparent;
+  color: var(--elo-fg-dim);
+  padding: 8px 16px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.elo-ghost:hover { color: var(--elo-fg); border-color: rgba(255, 255, 255, 0.25); }
+
+/* ── Searching ─────────────────────────────────────────────────────────── */
+.elo-searching {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--elo-fg-dim);
+  font-size: 14px;
+}
+.elo-lobby.hidden, .elo-searching.hidden, .elo-duel.hidden, .elo-result.hidden,
+.elo-wait-opp.hidden, .elo-error.hidden, .elo-guessbox.hidden { display: none; }
+
+.elo-spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+  border-top-color: var(--elo-green);
+  animation: elo-spin 0.8s linear infinite;
+}
+.elo-spinner--sm { width: 16px; height: 16px; border-width: 2px; display: inline-block; vertical-align: middle; }
+@keyframes elo-spin { to { transform: rotate(360deg); } }
+
+.elo-error { color: var(--elo-red); font-size: 13px; margin: 0; }
+
+/* ── Duel layout ───────────────────────────────────────────────────────── */
+.elo-duel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 24px;
+  align-items: start;
+}
+
+.elo-duel-board { display: flex; flex-direction: column; gap: 12px; align-items: center; }
+
+.elo-board {
+  width: min(56vh, 520px);
+  height: min(56vh, 520px);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+}
+
+.elo-replay {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.elo-replay button {
+  appearance: none;
+  border: 1px solid var(--elo-line);
+  background: var(--elo-panel);
+  color: var(--elo-fg);
+  width: 38px;
+  height: 34px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.elo-replay button:hover { border-color: var(--elo-green); }
+.elo-replay .elo-play { color: var(--elo-green); font-weight: 700; }
+.elo-move-label {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--elo-fg-dim);
+  font-variant-numeric: tabular-nums;
+  min-width: 120px;
+}
+
+/* ── Right panel ───────────────────────────────────────────────────────── */
+.elo-panel {
+  background: var(--elo-panel);
+  border: 1px solid var(--elo-line);
+  border-radius: 16px;
+  padding: 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.elo-vs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-weight: 700;
+}
+.elo-vs-you { color: var(--elo-green); }
+.elo-vs-x { color: var(--elo-fg-dim); font-size: 12px; font-weight: 500; }
+.elo-vs-opp { color: var(--elo-gold); }
+
+.elo-timer {
+  text-align: center;
+  font-size: 46px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+.elo-timer[data-low="true"] { color: var(--elo-red); animation: elo-pulse 1s ease-in-out infinite; }
+@keyframes elo-pulse { 50% { opacity: 0.55; } }
+
+.elo-guessbox { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.elo-guess-caption { font-size: 13px; color: var(--elo-fg-dim); }
+.elo-guess-val {
+  font-size: 40px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--elo-fg);
+}
+
+.elo-guessbox input[type="range"] {
+  width: 100%;
+  accent-color: var(--elo-green);
+  cursor: pointer;
+}
+.elo-guess-scale {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 10px;
+  color: var(--elo-fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+.elo-guessbox .elo-primary { width: 100%; margin-top: 4px; }
+
+.elo-wait-opp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--elo-fg-dim);
+}
+.elo-wait-opp strong { color: var(--elo-fg); }
+
+/* ── Result ────────────────────────────────────────────────────────────── */
+.elo-result { display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.elo-outcome {
+  font-size: 26px;
+  font-weight: 800;
+  text-align: center;
+}
+.elo-outcome[data-outcome="win"] { color: var(--elo-green); }
+.elo-outcome[data-outcome="loss"] { color: var(--elo-red); }
+.elo-outcome[data-outcome="draw"] { color: var(--elo-gold); }
+
+.elo-reveal-elo { font-size: 15px; color: var(--elo-fg-dim); }
+.elo-reveal-elo strong { color: var(--elo-fg); font-size: 20px; font-variant-numeric: tabular-nums; }
+
+.elo-scoreline { display: flex; gap: 12px; width: 100%; }
+.elo-score-side {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--elo-line);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: center;
+}
+.elo-score-side label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--elo-fg-dim); }
+.elo-score-side span { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.elo-score-side em { font-style: normal; font-size: 12px; color: var(--elo-green); }
+.elo-score-opp em { color: var(--elo-gold); }
+.elo-result .elo-primary { width: 100%; }
+
+@media (max-width: 820px) {
+  .elo-duel { grid-template-columns: 1fr; }
+  .elo-board { width: min(84vw, 460px); height: min(84vw, 460px); }
+  .elo-panel { max-width: 460px; margin: 0 auto; width: 100%; }
+}
