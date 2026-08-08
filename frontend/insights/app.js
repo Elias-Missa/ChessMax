@@ -723,7 +723,10 @@
   async function pollInsightsRun(runId) {
     setStatus("Analyzing games…");
     activeRunId = runId;
-    for (let i = 0; i < 600; i++) {
+    let lastProgress = -1;
+    let stallTicks = 0;
+    // Keep polling while progress advances; only give up after a long stall.
+    for (let i = 0; i < 7200; i++) {
       const resp = await api(`/api/insights/${runId}`);
       const data = await resp.json();
       if (data.games_capped && capNote) capNote.classList.remove("hidden");
@@ -732,6 +735,12 @@
       setStatus(
         `${data.status || "running"} — ${data.games_analyzed || 0} games (${progress}%)`,
       );
+      if (progress > lastProgress || (data.games_analyzed || 0) > 0) {
+        if (progress !== lastProgress) stallTicks = 0;
+        lastProgress = progress;
+      } else {
+        stallTicks += 1;
+      }
       if (data.status === "complete" || data.status === "done") {
         setProgress(100);
         if (data.metrics) renderMetrics(data.metrics, data.games_analyzed);
@@ -746,9 +755,23 @@
       if (data.status === "error") {
         throw new Error(data.detail || data.message || "Insights run failed");
       }
+      // 5 minutes with zero progress change → likely stuck
+      if (stallTicks >= 300 && progress === lastProgress) {
+        setBusy(false);
+        setStatus(
+          `Still running in the background (${progress}% · ${data.games_analyzed || 0} games). ` +
+            `Click the run under Prior runs when it finishes.`,
+        );
+        await loadRuns();
+        return;
+      }
       await new Promise((r) => setTimeout(r, 1000));
     }
-    throw new Error("Insights run timed out");
+    setBusy(false);
+    setStatus(
+      "Analysis is still running on the server. Refresh Prior runs in a few minutes.",
+    );
+    await loadRuns();
   }
 
   async function refreshPracticeButton() {

@@ -22,7 +22,9 @@ from server.findability_features import constants_version, payload_from_ply
 from server.position_cache import CachingEngine, put_features, get_features, params_nodes
 from server.tactic_tags import tag_tactics
 
-SHALLOW_DEPTH = 12
+# Insights / placeholder reviews — keep MultiPV=3 (spec) but a modest depth so
+# 30-day windows finish in a reasonable time on one Stockfish process.
+SHALLOW_DEPTH = 10
 SHALLOW_MULTIPV = 3
 FULL_DEPTH = 18
 FULL_MULTIPV = 6

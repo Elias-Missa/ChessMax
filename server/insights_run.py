@@ -1,16 +1,11 @@
-"""Insights run orchestration: chess.com ingest → shallow reviews → metrics → mistakes."""
+"""Insights run orchestration: ingest → shallow reviews → metrics → practice flags."""
 
 from __future__ import annotations
 
-import io
 import json
 import sqlite3
 import uuid
-from datetime import datetime
 from typing import Any, Callable
-
-import chess
-import chess.pgn
 
 from pipeline import chesscom, lichess
 from server import game_identity
@@ -19,8 +14,7 @@ from server.insights_metrics import (
     compute_tier1_metrics,
     persist_practice_flags,
 )
-from server.mistakes import detect_mistakes
-from server.mistakes_run import _insert_puzzle, _start_run, _update_run
+from server.mistakes_run import _start_run, _update_run
 from server.reviews import analyze_and_store, create_pending_review, find_review, upsert_game
 
 EventFn = Callable[[str, dict[str, Any]], None]
@@ -190,8 +184,9 @@ def run_insights(
         connection.commit()
 
         total = max(1, len(games))
-        if analysis_fn is not None:
-            mistake_run_id = _start_run(connection, user_id, username, since)
+        # Practice puzzles come from persist_practice_flags after metrics — not a
+        # second full Stockfish/Maia pass per game (that made 30-day runs unusable).
+        mistake_run_id = _start_run(connection, user_id, username, since)
 
         for idx, (pgn, meta) in enumerate(games):
             if cancelled():
@@ -243,21 +238,6 @@ def run_insights(
                 review_ids.append(review_id)
                 analyzed += 1
 
-            # Mistakes bridge — mine practice puzzles from this game.
-            if mistake_run_id is not None and analysis_fn is not None:
-                game = chess.pgn.read_game(io.StringIO(pgn))
-                if game is not None:
-                    color = chess.WHITE if user_color == "white" else chess.BLACK
-                    for puzzle in detect_mistakes(
-                        game,
-                        color,
-                        analysis_fn=analysis_fn,
-                        maia_topk_fn=maia_topk_fn,
-                        volatility_fn=volatility_fn,
-                        meta=meta,
-                    ):
-                        _insert_puzzle(connection, user_id, mistake_run_id, puzzle)
-
             progress = (idx + 1) / total
             connection.execute(
                 "UPDATE insight_runs SET progress = ?, games_analyzed = ?, updated_at = CURRENT_TIMESTAMP "
@@ -291,19 +271,10 @@ def run_insights(
             practice=metrics.get("practice_flags") or {},
             mistake_run_id=mistake_run_id,
         )
-        # Queue a small set of flagged games for full-tier upgrade so findability
-        # becomes available when the user opens them / next Insights refresh.
-        full_queued = _queue_full_tier_for_flags(
-            connection,
-            user_id=user_id,
-            practice=metrics.get("practice_flags") or {},
-            engine=engine,
-            policy_fn=policy_fn,
-        )
         metrics["practice_flags"] = {
             **(metrics.get("practice_flags") or {}),
             "persisted": flags_written,
-            "full_tier_queued": full_queued,
+            "full_tier_queued": 0,
         }
         trend = compute_run_trend(
             connection,
@@ -317,6 +288,8 @@ def run_insights(
         )
         if trend is not None:
             metrics["trend"] = trend
+        # Persist complete *before* any full-tier upgrades — those can take many
+        # minutes and used to leave the UI stuck at 100% / status=running.
         status = "interrupted" if cancelled() else "complete"
         connection.execute(
             """
@@ -347,6 +320,31 @@ def run_insights(
         }
         if status == "complete":
             emit("done", payload)
+
+        if status == "complete" and not cancelled():
+            try:
+                full_queued = _queue_full_tier_for_flags(
+                    connection,
+                    user_id=user_id,
+                    practice=metrics.get("practice_flags") or {},
+                    engine=engine,
+                    policy_fn=policy_fn,
+                )
+                if full_queued:
+                    metrics["practice_flags"] = {
+                        **(metrics.get("practice_flags") or {}),
+                        "full_tier_queued": full_queued,
+                    }
+                    connection.execute(
+                        "UPDATE insight_runs SET metrics = ?, updated_at = CURRENT_TIMESTAMP "
+                        "WHERE run_id = ?",
+                        (json.dumps(metrics), run_id),
+                    )
+                    connection.commit()
+                    payload["metrics"] = metrics
+            except Exception:  # noqa: BLE001 — never fail a finished run for upgrades
+                pass
+
         return payload
 
     except Exception as exc:  # noqa: BLE001

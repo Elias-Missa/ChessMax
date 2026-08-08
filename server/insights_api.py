@@ -51,20 +51,11 @@ def _default_run(
     source: str = "chesscom",
 ) -> dict[str, Any]:
     from chess_vol.engine import Engine
-    from chess_vol.volatility import compute_volatility
-    from server.engine import StockfishAnalyzer
-    from server.maia import MaiaPolicyEngine
-    import chess as _chess
-
     from core.human import best_available_policy
 
-    with StockfishAnalyzer() as analyzer, Engine() as vol_engine, MaiaPolicyEngine() as maia:
-        def volatility_fn(fen: str) -> float | None:
-            try:
-                return compute_volatility(_chess.Board(fen), vol_engine).score
-            except Exception:  # noqa: BLE001
-                return None
-
+    # Shallow reviews only need the vol Engine. Mistakes puzzles are created from
+    # practice flags after metrics (no per-game Stockfish/Maia mining here).
+    with Engine() as vol_engine:
         return run_insights(
             connection,
             user_id=user_id,
@@ -72,9 +63,9 @@ def _default_run(
             window_days=window_days,
             time_class=time_class,
             engine=vol_engine,
-            analysis_fn=analyzer.analyze,
-            maia_topk_fn=maia.top_moves if maia.available else None,
-            volatility_fn=volatility_fn,
+            analysis_fn=None,
+            maia_topk_fn=None,
+            volatility_fn=None,
             fetch_json=fetch_json,
             fetch_text=fetch_text,
             on_event=on_event,
