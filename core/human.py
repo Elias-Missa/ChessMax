@@ -312,6 +312,124 @@ class Maia2Policy:
         return {move: float(move_probs.get(move.uci(), 0.0)) for move in moves}
 
 
+# Maia-3 (Chessformer) checkpoints load once and are shared across policy
+# instances (and review requests), keyed by (model_name, device).
+_MAIA3_CACHE: dict[tuple[str, str], object] = {}
+
+
+def _load_maia3(model_name: str, device: str) -> object:
+    key = (model_name, device)
+    cached = _MAIA3_CACHE.get(key)
+    if cached is not None:
+        return cached
+    from maia3.uci import Maia3UCIEngine, parse_args
+
+    cfg = parse_args(["--model", model_name, "--device", device, "--no-use-amp"])
+    engine = Maia3UCIEngine(cfg)
+    engine.ensure_model_loaded()
+    _MAIA3_CACHE[key] = engine
+    return engine
+
+
+class Maia3Policy:
+    """Rating-conditioned **Maia-3** (Chessformer) policy head — the strongest
+    human model available, and the only one that reaches master strength.
+
+    Unlike Maia-2 (whose Elo buckets cap at 2000, collapsing everything above into
+    a single ``>=2000`` bucket), Maia-3 conditions on raw Elo across the **full
+    ~600-2600 Lichess range**, so the findability "chance of finding" curve keeps
+    real signal all the way to 2600 instead of clamping at 2000. Matches the
+    :data:`core.findability.PolicyFn` contract ``(fen, rating, moves) -> {move: P}``
+    and returns the true policy head (move probabilities over legal moves).
+
+    Optional dependency: :attr:`available` is ``False`` when the ``maia3`` package
+    is not installed. The Chessformer checkpoint downloads from Hugging Face on
+    first load and is cached; the engine is loaded once and reused. Elo is clamped
+    to the model's trained ``[elo_min, elo_max]`` range. ``__call__`` serializes on
+    a lock because the underlying engine mutates board/history state per call.
+    """
+
+    def __init__(
+        self,
+        *,
+        model_name: str = "maia3-5m",
+        device: str = "cpu",
+        elo_oppo: int | None = None,
+        elo_min: int = 600,
+        elo_max: int = 2600,
+    ) -> None:
+        import threading
+
+        self._model_name = model_name
+        self._device = device
+        self._elo_oppo = elo_oppo
+        self._elo_min = elo_min
+        self._elo_max = elo_max
+        self._engine: object | None = None
+        self._lock = threading.Lock()
+
+    @property
+    def available(self) -> bool:
+        try:
+            import maia3  # noqa: F401
+        except Exception:  # noqa: BLE001 — treat any import failure as "absent"
+            return False
+        return True
+
+    def _load(self) -> None:
+        self._engine = _load_maia3(self._model_name, self._device)
+
+    def __enter__(self) -> "Maia3Policy":
+        if self._engine is None:
+            self._load()
+        return self
+
+    def __exit__(self, *_exc: object) -> bool:
+        return False
+
+    def _clamp(self, rating: int) -> int:
+        return max(self._elo_min, min(self._elo_max, int(rating)))
+
+    def __call__(
+        self, fen: str, rating: int, moves: list[chess.Move]
+    ) -> dict[chess.Move, float]:
+        if self._engine is None:
+            try:
+                self._load()
+            except Exception:  # noqa: BLE001 — missing backend -> engine-only, never raise
+                return {}
+        import torch
+        from maia3.uci import get_legal_moves_mask
+
+        eng = self._engine
+        elo_self = self._clamp(rating)
+        elo_oppo = self._clamp(self._elo_oppo if self._elo_oppo is not None else rating)
+        try:
+            board = chess.Board(fen)
+            with self._lock:
+                eng.board = board
+                eng._reset_history()
+                eng.self_elo, eng.oppo_elo = elo_self, elo_oppo
+                legal_mask = get_legal_moves_mask(board, eng.all_moves_dict)
+                tokens = eng._tokens_from_history(eng.history).unsqueeze(0).to(eng.cfg.device)
+                se = torch.tensor([elo_self], dtype=torch.long, device=eng.cfg.device)
+                oe = torch.tensor([elo_oppo], dtype=torch.long, device=eng.cfg.device)
+                with torch.no_grad():
+                    logits_move, _value, _ = eng.model(tokens, se, oe)
+                logits = logits_move[0].float().masked_fill(
+                    ~legal_mask.to(eng.cfg.device), float("-inf")
+                )
+                probs = torch.softmax(logits, dim=-1)
+                dist: dict[chess.Move, float] = {}
+                for i in torch.nonzero(legal_mask).flatten().tolist():
+                    mv = eng._move_from_index(i)
+                    if mv is not None:
+                        dist[mv] = float(probs[i])
+        except Exception:  # noqa: BLE001 — degrade to engine-only, never raise
+            return {}
+        return {move: float(dist.get(move, 0.0)) for move in moves}
+
+
 def default_policy(temperature: float = 1.0) -> MaiaPolicy | None:
     """Return a :class:`MaiaPolicy` if Maia assets are installed, else ``None``.
 
@@ -322,16 +440,21 @@ def default_policy(temperature: float = 1.0) -> MaiaPolicy | None:
     return policy if policy.available else None
 
 
-def best_available_policy() -> "Maia2Policy | None":
-    """Best installed human model for findability: Maia-2 if present, else ``None``.
+def best_available_policy() -> "Maia3Policy | Maia2Policy | None":
+    """Best installed human model for findability: Maia-3 > Maia-2 > ``None``.
 
-    Maia-2 is the coherent rating-conditioned policy head (spec §3.2 preference)
-    and, per this repo's Phase 3 calibration, is *strictly* better than the
-    per-rating Maia-1 value-head approximation for findability. When Maia-2 is
-    absent we return ``None`` so the review gates findability off (``null``)
-    rather than surfacing a noisy signal — the honest default. Wire this into
-    ``chess_vol.server.POLICY_FACTORY`` to make the live review use Maia-2.
+    Maia-3 (Chessformer) conditions on the full ~600-2600 Elo range, so it is the
+    only backend whose findability curve keeps real signal to master strength;
+    Maia-2 is the coherent 1100-2000 fallback (spec §3.2 preference), *strictly*
+    better than the per-rating Maia-1 value-head approximation per this repo's
+    Phase 3 calibration. When neither is installed we return ``None`` so the review
+    gates findability off (``null``) rather than surfacing a noisy signal — the
+    honest default. Wire this into ``chess_vol.server.POLICY_FACTORY`` to make the
+    live review use it.
     """
+    maia3 = Maia3Policy()
+    if maia3.available:
+        return maia3
     policy = Maia2Policy()
     return policy if policy.available else None
 
@@ -339,6 +462,7 @@ def best_available_policy() -> "Maia2Policy | None":
 __all__ = [
     "RATING_GRID",
     "Maia2Policy",
+    "Maia3Policy",
     "MaiaPolicy",
     "best_available_policy",
     "default_policy",
