@@ -192,6 +192,26 @@
   // ChessMax shell hook: the top-level tab bar drives this app's panels.
   window.__volSetTab = setTab;
 
+  // Deep-link hook: Insights links straight at one game by its `games.game_id`.
+  // Returns whether the game was found, so the caller can report a miss.
+  window.__volOpenGameById = async (gameId) => {
+    if (!gameId || !window.ChessVolLibrary) return false;
+    try {
+      const games = await window.ChessVolLibrary.getAllGames();
+      const match = games.find((g) => g.gameId === gameId || g.id === gameId);
+      if (!match) {
+        gameStatus.textContent =
+          "That game isn't in your library yet — open it from Library to analyze it.";
+        return false;
+      }
+      await openSavedGame(match);
+      return true;
+    } catch (err) {
+      gameStatus.textContent = `Could not open that game: ${err.message || err}`;
+      return false;
+    }
+  };
+
   // ── About tab demos (lazy-init) ───────────────────────────────────────── //
   // The two mini-boards on the Why tab are static examples. We build them the
   // first time the user visits the tab so chessboard.js sees a non-zero width

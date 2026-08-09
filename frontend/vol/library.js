@@ -64,8 +64,20 @@ Manual smoke test plan:
 
   function reviewToReport(review) {
     const moves = review.moves || [];
-    const plies = moves.map((m) => {
+
+    // Stored `eval_cp` is side-to-move POV. Normalize to white so the eval bar
+    // can show the eval *after* a move — which is the eval before the next one.
+    const whiteEval = moves.map((m) => {
       const d = m.detail || {};
+      if (typeof d.eval_cp !== "number") return null;
+      const turn = (d.fen_before || "").split(/\s+/)[1] || "w";
+      return turn === "b" ? -d.eval_cp : d.eval_cp;
+    });
+
+    const plies = moves.map((m, i) => {
+      const d = m.detail || {};
+      const lines = d.top_lines || [];
+      const afterWhite = i + 1 < whiteEval.length ? whiteEval[i + 1] : null;
       return {
         ply: m.ply,
         san: m.san,
@@ -75,10 +87,22 @@ Manual smoke test plan:
         move_uci: d.move_uci || "",
         volatility: {
           score: m.volatility,
-          top_lines: d.top_lines || [],
+          // The live analysis path carries the engine's best-line eval; without
+          // rebuilding it here the eval bar reads `undefined` on every ply of a
+          // stored review and sits frozen at even.
+          best_eval_cp:
+            lines[0] && typeof lines[0].eval_cp === "number"
+              ? lines[0].eval_cp
+              : (typeof d.eval_cp === "number" ? d.eval_cp : null),
+          top_lines: lines,
         },
         review: m.classification
-          ? { classification: m.classification }
+          ? {
+              classification: m.classification,
+              ...(typeof afterWhite === "number"
+                ? { eval_after_cp_white: afterWhite }
+                : {}),
+            }
           : null,
         findability:
           m.findability != null

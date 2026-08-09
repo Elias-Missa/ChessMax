@@ -1,14 +1,28 @@
-"""Insights metrics over persisted ``review_moves`` rows (Tier 1–3 + advanced)."""
+"""Insights metrics over persisted ``review_moves`` rows (Tier 1–3 + advanced).
+
+The professional layer on top of this catalogue — headline KPIs, move quality,
+critical moments, opening tree, leak board — lives in :mod:`server.insights_pro`.
+The dependency runs one way (this module imports that one) so the row helpers
+below have exactly one definition.
+"""
 
 from __future__ import annotations
 
 import json
-import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-_CASTLE_RE = re.compile(r"^(O-O-O|O-O|0-0-0|0-0)")
+from server.insights_pro import (
+    castle_side as _castle_side,
+    compute_pro_metrics,
+    hour_from_played_at as _hour_from_played_at,
+    parse_detail as _parse_detail,
+    parse_dt as _parse_dt,
+    user_drew as _user_drew,
+    user_won as _user_won,
+)
+
 SESSION_GAP = timedelta(hours=2)
 PRACTICE_DELTA_W = 15.0
 PRACTICE_FINDABILITY_MIN = 60
@@ -34,6 +48,22 @@ def compute_tier1_metrics(
         "volatility_steering": {},
         "practice_flags": {"count": 0, "full_tier_sample": 0, "items": []},
         "missed_tactics": {},
+        "time_scramble_decay": {"buckets": []},
+        "maia_naturalness": {},
+        "game_explorer": [],
+        "ai_coach_takeaways": [],
+        "pro": {
+            "headline": {},
+            "move_quality": {},
+            "critical_moments": {},
+            "timeline": {"points": []},
+            "openings": {"rows": []},
+            "endgame": {},
+            "resilience": {},
+            "blunder_timing": {"buckets": []},
+            "leaks": [],
+            "strengths": [],
+        },
     }
     if not review_ids:
         return empty
@@ -128,7 +158,16 @@ def compute_tier1_metrics(
     missed_tactics = _compute_missed_tactics(moves_by_review)
     scramble_decay = _compute_time_scramble_decay(moves_by_review)
     maia_nat = _compute_maia_naturalness(moves_by_review)
-    explorer_games = _compute_game_explorer_rows(game_rows, moves_by_review)
+
+    pro, game_facts = compute_pro_metrics(
+        game_rows,
+        moves_by_review,
+        total_loss=total_loss,
+        fixable_loss=fixable_loss,
+        scramble=scramble_decay,
+        tier3=tier3,
+        missed_tactics=missed_tactics,
+    )
 
     time_vs_crit = {
         "avg_time_high_vol": _avg(high_vol_times),
@@ -147,6 +186,7 @@ def compute_tier1_metrics(
     }
 
     ai_takeaways = _compute_ai_coach_takeaways(
+        leaks=pro["leaks"],
         total_loss=total_loss,
         fixable_loss=fixable_loss,
         tax_counts=dict(tax_counts),
@@ -171,8 +211,11 @@ def compute_tier1_metrics(
         "missed_tactics": missed_tactics,
         "time_scramble_decay": scramble_decay,
         "maia_naturalness": maia_nat,
-        "game_explorer": explorer_games,
+        # One per-game fact table, used both as the Game Explorer source and as
+        # the client's substrate for re-aggregating the dashboard under filters.
+        "game_explorer": game_facts,
         "ai_coach_takeaways": ai_takeaways,
+        "pro": pro,
     }
 
 
@@ -187,7 +230,9 @@ def _compute_time_scramble_decay(moves_by_review: dict[str, list[Any]]) -> dict[
         for m in moves:
             if not m["is_user_move"]:
                 continue
-            clock = m.get("clock_remaining") if isinstance(m, dict) or hasattr(m, "get") else None
+            # sqlite3.Row has no ``.get`` — indexing is the only accessor, and
+            # probing for one silently emptied every bucket.
+            clock = m["clock_remaining"]
             if clock is None:
                 continue
             try:
@@ -240,54 +285,8 @@ def _compute_maia_naturalness(moves_by_review: dict[str, list[Any]]) -> dict[str
     }
 
 
-def _compute_game_explorer_rows(
-    game_rows: list[Any],
-    moves_by_review: dict[str, list[Any]],
-) -> list[dict[str, Any]]:
-    out = []
-    for row in game_rows:
-        rid = str(row["review_id"])
-        color = row["user_color"] or "white"
-        won = _user_won(row["result"], color)
-        drew = _user_drew(row["result"])
-        outcome = "win" if won else "draw" if drew else "loss"
-        g_moves = moves_by_review.get(rid, [])
-        user_moves = [m for m in g_moves if m["is_user_move"]]
-
-        total_delta_w = sum(float(m["delta_w"] or 0) for m in user_moves)
-
-        # Sparkline evaluation trajectory (subsample to ~15 points)
-        wp_list = [float(m["win_prob"]) for m in g_moves if m["win_prob"] is not None]
-        if len(wp_list) > 20:
-            step = len(wp_list) / 15.0
-            sparkline = [round(wp_list[int(i * step)], 2) for i in range(15)]
-        else:
-            sparkline = [round(v, 2) for v in wp_list]
-
-        opp_name = row["black_name"] if color == "white" else row["white_name"]
-        opp_rating = row["black_rating"] if color == "white" else row["white_rating"]
-
-        out.append({
-            "review_id": rid,
-            "game_id": row["game_id"],
-            "played_at": row["played_at"],
-            "user_color": color,
-            "opponent": opp_name or "Opponent",
-            "opponent_rating": opp_rating,
-            "result": row["result"],
-            "outcome": outcome,
-            "accuracy": float(row["accuracy"]) if row["accuracy"] is not None else None,
-            "total_delta_w": total_delta_w,
-            "eco": row["eco"] or "Unk",
-            "opening_name": row["opening_name"] or "Standard",
-            "ply_count": int(row["ply_count"] or 0),
-            "sparkline": sparkline,
-        })
-    out.sort(key=lambda r: r.get("played_at") or "", reverse=True)
-    return out
-
-
 def _compute_ai_coach_takeaways(
+    leaks: list[dict[str, Any]],
     total_loss: float,
     fixable_loss: float | None,
     tax_counts: dict[str, int],
@@ -296,45 +295,40 @@ def _compute_ai_coach_takeaways(
     time_vs_criticality: dict[str, Any],
     scramble_decay: dict[str, Any],
 ) -> list[str]:
-    takeaways = []
+    """Coach copy, ranked by the leak board rather than by hand-ordered rules.
 
-    # 1. Phase leak
-    phase_attr = tier2.get("phase_attribution") or []
-    if phase_attr:
-        worst_phase = max(phase_attr, key=lambda p: float(p.get("delta_w_per_move") or 0))
-        if float(worst_phase.get("delta_w_per_move") or 0) > 2.0:
-            takeaways.append(
-                f"Your biggest rating leak is in the {worst_phase['phase'].capitalize()} phase, "
-                f"dropping an average of {worst_phase['delta_w_per_move']:.1f} win% points per move."
-            )
+    The leak board already scores every finding in win% lost per game, so the
+    top three leaks *are* the three things worth saying. Older heuristics stay
+    as a fallback for windows too small to score anything.
+    """
 
-    # 2. Time management vs criticality
+    takeaways = [
+        f"{leak['title']}. {leak['detail']} "
+        f"(≈{leak['impact_win_pct_per_game']:.0f} win% per game)"
+        for leak in leaks[:3]
+    ]
+    if takeaways:
+        return takeaways
+
+    top_tax = max(tax_counts.items(), key=lambda kv: kv[1]) if tax_counts else None
+    if top_tax:
+        takeaways.append(
+            f"Primary loss mode: '{top_tax[0].replace('_', ' ').capitalize()}' "
+            f"accounts for {top_tax[1]} of your analyzed games."
+        )
     if time_vs_criticality.get("note"):
         high_t = time_vs_criticality.get("avg_time_high_vol")
         low_t = time_vs_criticality.get("avg_time_low_vol")
         if high_t is not None and low_t is not None:
             takeaways.append(
-                f"You tend to rush critical moves: spending an average of {high_t:.0f}s on sharp positions vs {low_t:.0f}s on quiet positions."
+                f"You rush critical moves: {high_t:.0f}s on sharp positions versus "
+                f"{low_t:.0f}s on quiet ones."
             )
-
-    # 3. Loss taxonomy pattern
-    top_tax = max(tax_counts.items(), key=lambda kv: kv[1]) if tax_counts else None
-    if top_tax:
-        tax_name = top_tax[0].replace("_", " ")
-        takeaways.append(
-            f"Primary loss mode: '{tax_name.capitalize()}' accounts for {top_tax[1]} of your analyzed losses."
-        )
-
-    # 4. Conversion / Comeback
-    conv = tier2.get("conversion") or {}
-    if conv.get("n", 0) >= 3 and conv.get("win_rate", 1.0) < 0.7:
-        takeaways.append(
-            f"Conversion headroom: winning positions (>70% win chance) convert into victories in {int(conv['win_rate'] * 100)}% of games."
-        )
-
     if not takeaways:
-        takeaways.append("Solid overall play across the analyzed window. Focus on maintaining position stability under time pressure.")
-
+        takeaways.append(
+            "No measurable leak stands out in this window — analyze more games "
+            "for a sharper read."
+        )
     return takeaways[:3]
 
 
@@ -603,17 +597,6 @@ def _compute_tier2(
     }
 
 
-def _castle_side(moves: list[Any]) -> str | None:
-    for m in moves:
-        san = (m["san"] or "").replace("0", "O")
-        match = _CASTLE_RE.match(san)
-        if not match:
-            continue
-        token = match.group(1).replace("0", "O")
-        return "queenside" if token == "O-O-O" else "kingside"
-    return None
-
-
 def _rating_band(opp_rating: Any, *, center: int | None = None) -> str:
     try:
         rating = int(opp_rating) if opp_rating is not None else None
@@ -635,60 +618,6 @@ def _rating_band(opp_rating: Any, *, center: int | None = None) -> str:
     if diff >= 100:
         return "higher"
     return "similar"
-
-
-def _hour_from_played_at(played_at: Any, pgn: Any) -> int | None:
-    if played_at:
-        text = str(played_at)
-        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y.%m.%d %H:%M:%S", "%Y-%m-%d %H:%M:%S"):
-            try:
-                return datetime.strptime(text[:19], fmt).hour
-            except ValueError:
-                continue
-    if pgn:
-        match = re.search(r'\[UTCTime\s+"(\d{2}):(\d{2}):(\d{2})"\]', str(pgn))
-        if match:
-            return int(match.group(1))
-        match = re.search(r'\[Time\s+"(\d{2}):(\d{2}):(\d{2})"\]', str(pgn))
-        if match:
-            return int(match.group(1))
-    return None
-
-
-def _user_won(result: str | None, user_color: str) -> bool:
-    if result == "1-0":
-        return user_color == "white"
-    if result == "0-1":
-        return user_color == "black"
-    return False
-
-
-def _user_drew(result: str | None) -> bool:
-    return result == "1/2-1/2"
-
-
-def _parse_dt(played_at: Any, pgn: Any) -> datetime | None:
-    if played_at:
-        text = str(played_at)
-        for fmt in (
-            "%Y-%m-%dT%H:%M:%S",
-            "%Y-%m-%d %H:%M:%S",
-            "%Y.%m.%d %H:%M:%S",
-            "%Y-%m-%d",
-            "%Y.%m.%d",
-        ):
-            try:
-                return datetime.strptime(text[: len(fmt) + 2], fmt).replace(tzinfo=timezone.utc)
-            except ValueError:
-                continue
-    hour = _hour_from_played_at(played_at, pgn)
-    if played_at and hour is not None:
-        try:
-            day = datetime.strptime(str(played_at)[:10].replace(".", "-"), "%Y-%m-%d")
-            return day.replace(hour=hour, tzinfo=timezone.utc)
-        except ValueError:
-            pass
-    return None
 
 
 def _compute_tier3(
@@ -923,18 +852,6 @@ def _compute_practice_flags(
         "findability_min": PRACTICE_FINDABILITY_MIN,
         "items": items,
     }
-
-
-def _parse_detail(raw: Any) -> dict[str, Any]:
-    if not raw:
-        return {}
-    if isinstance(raw, dict):
-        return raw
-    try:
-        data = json.loads(raw)
-    except (TypeError, json.JSONDecodeError):
-        return {}
-    return data if isinstance(data, dict) else {}
 
 
 def _compute_missed_tactics(

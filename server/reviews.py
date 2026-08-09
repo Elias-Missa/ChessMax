@@ -40,6 +40,66 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+_ECO_CODE_RE = re.compile(r"^[A-E]\d{2}$")
+
+
+def eco_code(headers: Any, meta: dict[str, Any] | None = None) -> str | None:
+    """The ECO code (``A00``–``E99``), never a URL.
+
+    Chess.com's API puts its *opening URL* in the game object's ``eco`` field,
+    while the PGN carries the real code in ``[ECO]``. Taking the metadata first
+    without checking the shape wrote URLs into ``games.eco``.
+    """
+
+    meta = meta or {}
+    for candidate in (meta.get("eco"), headers.get("ECO") if headers else None):
+        if isinstance(candidate, str) and _ECO_CODE_RE.match(candidate.strip().upper()):
+            return candidate.strip().upper()
+    return None
+
+
+def opening_name(headers: Any, meta: dict[str, Any] | None = None) -> str | None:
+    """Human opening name for a game, whatever the source calls it.
+
+    Lichess ships an ``[Opening]`` header. Chess.com ships neither that nor a
+    name in the API payload — only ``[ECOUrl]``, e.g.
+    ``.../openings/Sicilian-Defense-Najdorf-Variation-6.Bg5``. Without this the
+    Insights opening tree groups every chess.com game under "Unknown opening".
+    """
+
+    meta = meta or {}
+    for key in ("opening_name", "opening"):
+        value = meta.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, dict):  # lichess nests {"eco": ..., "name": ...}
+            name = value.get("name")
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+
+    direct = headers.get("Opening") if headers else None
+    if direct and direct.strip() and direct.strip() != "?":
+        return direct.strip()
+
+    url = (headers.get("ECOUrl") if headers else None) or meta.get("eco_url")
+    if not url:
+        # Chess.com's API ``eco`` field is the opening URL, not the code.
+        candidate = meta.get("eco")
+        if isinstance(candidate, str) and "/openings/" in candidate:
+            url = candidate
+    if not url:
+        return None
+    slug = str(url).rstrip("/").rsplit("/", 1)[-1]
+    words: list[str] = []
+    for token in slug.split("-"):
+        # The slug tails off into the move continuation ("6.Bg5", "2.dxe5").
+        if not token or token[0].isdigit():
+            break
+        words.append(token)
+    name = " ".join(words).strip()
+    return name or None
+
+
 def upsert_game(
     connection: Any,
     *,
@@ -86,8 +146,8 @@ def upsert_game(
             result,
             meta.get("time_class") or None,
             meta.get("time_control") or headers.get("TimeControl"),
-            meta.get("eco") or headers.get("ECO"),
-            headers.get("Opening"),
+            eco_code(headers, meta),
+            opening_name(headers, meta),
             meta.get("date") or headers.get("Date") or headers.get("UTCDate"),
         ),
     )

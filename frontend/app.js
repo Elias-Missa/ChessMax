@@ -77,6 +77,7 @@ const state = {
     bucket: null,
     plyCount: 0,
     solved: false,
+    lastMove: null,
     busy: false,
     loaded: false,
     generating: false,
@@ -764,6 +765,7 @@ function renderModeBoard(view) {
   let interactive = false;
   let movableColor = "white";
   let orientation = "white";
+  let lastMove;
 
   if (view === "evalhold" || view === "defense") {
     const hold = state.hold[view];
@@ -790,6 +792,8 @@ function renderModeBoard(view) {
     orientation = m.sideToMove === "b" ? "black" : "white";
     movableColor = m.sideToMove === "w" ? "white" : "black";
     interactive = Boolean(chess && m.loaded && !m.solved && !m.busy);
+    // Keep the solved move highlighted so it reads as landed, not reverted.
+    lastMove = m.lastMove || undefined;
   }
 
   if (!chess) {
@@ -802,7 +806,7 @@ function renderModeBoard(view) {
     fen: chess.fen(),
     turnColor,
     orientation,
-    lastMove: undefined,
+    lastMove,
     movable: {
       free: false,
       color: interactive ? movableColor : undefined,
@@ -1534,6 +1538,7 @@ async function loadMistakePuzzle() {
     m.plyCount = puzzle.ply_count;
     m.chess = new Chess(puzzle.fen);
     m.solved = false;
+    m.lastMove = null;
     m.loaded = true;
     mistakesUi.feedback.className = "feedback hidden";
     mistakesUi.feedback.innerHTML = "";
@@ -1579,50 +1584,81 @@ async function submitMistakeMove(source, target) {
   } catch (error) {
     m.busy = false;
     m.chess = new Chess(m.fen);
+    m.lastMove = null;
     mistakesUi.prompt.textContent = error.message;
     syncBoardInteractivity();
     return;
   }
   m.solved = Boolean(result.solved);
   m.busy = false;
-  // Snap back to the position the user actually faced, then overlay both moves.
-  m.chess = new Chess(m.fen);
-  renderMistakeFeedback(result);
+  const attemptUci = moveToUci(move);
+
+  if (m.solved) {
+    // Leave the correct move on the board. Snapping back to the start position
+    // read as a rejection — it looked like the move had been refused.
+    m.lastMove = [move.from, move.to];
+    board.setShapes([]);
+    syncBoardInteractivity();
+  } else {
+    // Wrong: return to the position they faced and lay the moves over it.
+    m.chess = new Chess(m.fen);
+    m.lastMove = null;
+    syncBoardInteractivity();
+    drawMistakeArrows(result.best_move_uci, attemptUci, result.user_actual_uci);
+  }
+  renderMistakeFeedback(result, move);
   playSound("end");
-  syncBoardInteractivity();
-  drawMistakeArrows(result.best_move_uci, result.user_actual_uci);
   mistakesUi.next.disabled = false;
 }
 
-function drawMistakeArrows(bestUci, actualUci) {
+function drawMistakeArrows(bestUci, attemptUci, gameUci) {
   const shapes = [];
-  if (bestUci) {
-    shapes.push({ orig: bestUci.slice(0, 2), dest: bestUci.slice(2, 4), brush: "green" });
-  }
-  if (actualUci && actualUci !== bestUci) {
-    shapes.push({ orig: actualUci.slice(0, 2), dest: actualUci.slice(2, 4), brush: "red" });
-  }
+  const arrow = (uci, brush) =>
+    shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush });
+  if (bestUci) arrow(bestUci, "green");
+  if (attemptUci && attemptUci !== bestUci) arrow(attemptUci, "red");
+  // The move from the original game, when it is neither the answer nor what
+  // they just tried — worth seeing, but it shouldn't compete with those two.
+  if (gameUci && gameUci !== bestUci && gameUci !== attemptUci) arrow(gameUci, "yellow");
   board.setShapes(shapes);
 }
 
-function renderMistakeFeedback(result) {
+function renderMistakeFeedback(result, attempt) {
   const passed = Boolean(result.solved);
   mistakesUi.feedback.className = `feedback ${passed ? "pass" : "fail"}`;
-  const head = passed ? "Found it." : "Not the move.";
   const bucketLabel = result.bucket === "missed_win" ? "Missed win" : "Blunder";
-  const played = `<code>${escapeHtml(result.user_actual_san || "")}</code> <span class="hint">(red — what you played)</span>`;
-  const best = `<code>${escapeHtml(result.best_move_san || "")}</code> <span class="hint">(green — the answer)</span>`;
-  const evalLine = `<p class="hint">After your move: ${formatEval(result.eval_played_cp)} · best: ${formatEval(result.eval_best_cp)}</p>`;
-  const link = result.game_url
-    ? `<p><a href="${escapeHtml(result.game_url)}" target="_blank" rel="noopener">View this game ↗</a></p>`
-    : "";
-  mistakesUi.feedback.innerHTML =
-    `<p><strong>${head}</strong> — ${bucketLabel}</p>` +
-    `<p>You played ${played}.</p>` +
-    `<p>Best was ${best}.</p>` +
-    `<p>${escapeHtml(result.caption || "")}</p>` +
-    evalLine +
-    link;
+  const code = (san) => `<code>${escapeHtml(san || "")}</code>`;
+  const gameSan = result.user_actual_san || "";
+  const attemptSan = attempt ? attempt.san : "";
+  const differsFromGame = attemptSan && gameSan && attemptSan !== gameSan;
+
+  const lines = [`<p><strong>${passed ? "Found it." : "Not the move."}</strong> — ${bucketLabel}</p>`];
+  if (passed) {
+    lines.push(`<p>You played ${code(attemptSan)} — the best move.</p>`);
+    if (differsFromGame) {
+      lines.push(`<p>In the game you played ${code(gameSan)}.</p>`);
+    }
+  } else {
+    lines.push(`<p>You played ${code(attemptSan)} <span class="hint">(red)</span>.</p>`);
+    lines.push(
+      `<p>Best was ${code(result.best_move_san)} <span class="hint">(green)</span>.</p>`,
+    );
+    if (differsFromGame) {
+      lines.push(
+        `<p>In the game you played ${code(gameSan)} <span class="hint">(yellow)</span>.</p>`,
+      );
+    }
+  }
+  lines.push(`<p>${escapeHtml(result.caption || "")}</p>`);
+  lines.push(
+    `<p class="hint">After the game move: ${formatEval(result.eval_played_cp)} · best: ${formatEval(result.eval_best_cp)}</p>`,
+  );
+  if (result.game_url) {
+    lines.push(
+      `<p><a href="${escapeHtml(result.game_url)}" target="_blank" rel="noopener">View this game ↗</a></p>`,
+    );
+  }
+  mistakesUi.feedback.innerHTML = lines.join("");
 }
 
 async function generateMistakes() {
