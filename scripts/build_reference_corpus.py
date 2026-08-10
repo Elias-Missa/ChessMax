@@ -138,6 +138,68 @@ def metrics_for_review(connection: Any, review_id: str) -> dict[str, float]:
 # ── Sources ───────────────────────────────────────────────────────────────────
 
 
+def iter_pgn_games(
+    path: str, time_class: str | None
+) -> Iterator[tuple[int, str, str, Any]]:
+    """Stream ``(rating, time_class, game_id, game)`` from a Lichess dump.
+
+    Handles plain ``.pgn`` and zstd-compressed ``.pgn.zst`` (the format Lichess
+    actually publishes). Rating is the *average* of the two players, since a
+    corpus cell describes a level of play rather than one seat.
+    """
+
+    import chess.pgn
+
+    if path.endswith(".zst"):
+        try:
+            import pyzstd
+        except ImportError as exc:  # pragma: no cover - depends on optional dep
+            raise SystemExit(
+                "Reading .pgn.zst needs pyzstd: pip install pyzstd "
+                "(or decompress the dump first)."
+            ) from exc
+        handle = io.TextIOWrapper(pyzstd.ZstdFile(path, "rb"), encoding="utf-8", errors="replace")
+    else:
+        handle = open(path, "r", encoding="utf-8", errors="replace")
+
+    with handle:
+        index = 0
+        while True:
+            game = chess.pgn.read_game(handle)
+            if game is None:
+                return
+            index += 1
+            headers = game.headers
+            tc = _lichess_time_class(headers.get("TimeControl", ""))
+            if time_class and tc != time_class:
+                continue
+            try:
+                white = int(headers.get("WhiteElo", "") or 0)
+                black = int(headers.get("BlackElo", "") or 0)
+            except ValueError:
+                continue
+            if not white or not black:
+                continue
+            yield (white + black) // 2, tc, headers.get("Site", f"pgn-{index}"), game
+
+
+def _lichess_time_class(time_control: str) -> str:
+    """Lichess encodes the control as ``base+increment``; bucket it like chess.com."""
+
+    try:
+        base, _, inc = time_control.partition("+")
+        total = int(base) + 40 * int(inc or 0)
+    except ValueError:
+        return "unknown"
+    if total < 179:
+        return "bullet"
+    if total < 479:
+        return "blitz"
+    if total < 1499:
+        return "rapid"
+    return "classical"
+
+
 def iter_local_reviews(
     connection: Any, time_class: str | None
 ) -> Iterator[tuple[int, str, str]]:
@@ -214,6 +276,91 @@ def write_corpus(
     return written
 
 
+def _ingest_pgn(
+    connection: Any,
+    path: str,
+    *,
+    time_class: str | None,
+    per_cell: int,
+    samples: dict[tuple[str, int, str], list[float]],
+    per_cell_counts: dict[tuple[int, str], int],
+) -> int:
+    """Analyze dump games with Stockfish and fold them into the corpus.
+
+    Each game is reviewed at shallow tier and stored like any other, so the
+    position cache is shared and a re-run costs nothing for games already seen.
+    This is the slow path — hours for a real corpus — and it is meant to be run
+    once, offline.
+    """
+
+    import io as _io
+
+    import chess.pgn
+
+    from chess_vol.engine import Engine
+    from server import game_identity
+    from server.reviews import analyze_and_store, create_pending_review, upsert_game
+
+    corpus_user = _corpus_user_id(connection)
+    analyzed = 0
+
+    with Engine() as engine:
+        for rating, tc, site, game in iter_pgn_games(path, time_class):
+            band = rating_band(rating)
+            if band is None or per_cell_counts[(band, tc)] >= per_cell:
+                continue
+
+            exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=False)
+            pgn_text = game.accept(exporter)
+            meta = {"time_class": tc, "url": site}
+            game_id = game_identity.resolve_game_id(source="pgn", pgn=pgn_text, meta=meta)
+            upsert_game(connection, game_id=game_id, source="pgn", pgn=pgn_text, meta=meta)
+
+            review_id = create_pending_review(
+                connection, user_id=corpus_user, game_id=game_id,
+                user_color="white", depth_tier="shallow",
+            )
+            try:
+                analyze_and_store(
+                    connection, review_id=review_id, pgn=pgn_text,
+                    user_color="white", depth_tier="shallow", engine=engine,
+                )
+            except Exception:  # noqa: BLE001 — one bad game must not stop a long job
+                continue
+
+            values = metrics_for_review(connection, review_id)
+            if not values:
+                continue
+            per_cell_counts[(band, tc)] += 1
+            analyzed += 1
+            for metric_key, value in values.items():
+                samples[(metric_key, band, tc)].append(float(value))
+
+            if analyzed % 50 == 0:
+                print(f"  … {analyzed} games analyzed", flush=True)
+    return analyzed
+
+
+def _corpus_user_id(connection: Any) -> int:
+    """A dedicated owner row, so corpus reviews never mix with a real account."""
+
+    row = connection.execute(
+        "SELECT id FROM users WHERE username = ?", ("__reference_corpus__",)
+    ).fetchone()
+    if row is not None:
+        return int(row["id"])
+    connection.execute(
+        "INSERT INTO users (username, selected_openings) VALUES (?, '[]')",
+        ("__reference_corpus__",),
+    )
+    connection.commit()
+    return int(
+        connection.execute(
+            "SELECT id FROM users WHERE username = ?", ("__reference_corpus__",)
+        ).fetchone()["id"]
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", default=os.environ.get("CHESS_TRAINER_DB", "data/trainer.db"))
@@ -225,33 +372,34 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    if args.pgn:
-        raise SystemExit(
-            "PGN ingestion is not implemented. It needs a Stockfish pass over a "
-            "Lichess dump — run the shallow pipeline separately and import the "
-            "resulting reviews, then use --from-db."
-        )
-    if not args.from_db:
-        raise SystemExit("Choose a source: --from-db (or --pgn once implemented).")
+    if not args.from_db and not args.pgn:
+        raise SystemExit("Choose a source: --from-db or --pgn <dump>.")
 
     connection = db.connect(args.db)
     samples: dict[tuple[str, int, str], list[float]] = defaultdict(list)
     per_cell: dict[tuple[int, str], int] = defaultdict(int)
     scanned = 0
 
-    for rating, time_class, review_id in iter_local_reviews(connection, args.time_class):
-        band = rating_band(rating)
-        if band is None:
-            continue
-        if per_cell[(band, time_class)] >= args.per_cell:
-            continue
-        values = metrics_for_review(connection, review_id)
-        if not values:
-            continue
-        per_cell[(band, time_class)] += 1
-        scanned += 1
-        for metric_key, value in values.items():
-            samples[(metric_key, band, time_class)].append(float(value))
+    if args.pgn:
+        scanned = _ingest_pgn(
+            connection, args.pgn,
+            time_class=args.time_class, per_cell=args.per_cell, samples=samples,
+            per_cell_counts=per_cell,
+        )
+    else:
+        for rating, time_class, review_id in iter_local_reviews(connection, args.time_class):
+            band = rating_band(rating)
+            if band is None:
+                continue
+            if per_cell[(band, time_class)] >= args.per_cell:
+                continue
+            values = metrics_for_review(connection, review_id)
+            if not values:
+                continue
+            per_cell[(band, time_class)] += 1
+            scanned += 1
+            for metric_key, value in values.items():
+                samples[(metric_key, band, time_class)].append(float(value))
 
     written = write_corpus(connection, samples, version=args.version, dry_run=args.dry_run)
 

@@ -24,6 +24,10 @@ from server.insights_pro import (
     user_drew as _user_drew,
     user_won as _user_won,
 )
+from server.insights_export import greatest_hits
+from server.insights_irt import compute_skill_model
+from server.insights_shapley import compute_attribution
+from server.insights_structure import compute_structure_analysis
 from server.insights_signatures import (
     build_signatures,
     compute_geometry_blind_spots,
@@ -103,7 +107,8 @@ def compute_tier1_metrics(
 
     moves = connection.execute(
         f"SELECT review_id, ply, san, phase, is_book, is_user_move, win_prob, delta_w, "
-        f"volatility, time_spent, clock_remaining, classification, findability, detail, tactic_tags "
+        f"volatility, time_spent, clock_remaining, classification, findability, r_find, "
+        f"detail, tactic_tags "
         f"FROM review_moves WHERE review_id IN ({placeholders}) ORDER BY review_id, ply",
         review_ids,
     ).fetchall()
@@ -266,6 +271,26 @@ def compute_tier1_metrics(
         "ai_coach_takeaways": ai_takeaways,
         "pro": pro,
     }
+
+    # Phase 8: ability per skill category, on the rating scale. Gated on
+    # findability coverage, which is why it reports its own sample size.
+    pro["skill_model"] = compute_skill_model(enriched)
+
+    # Phase 10: structure, endgame material and unsupervised blunder shapes.
+    pro["structure"] = compute_structure_analysis(enriched)
+
+    # Phase 12.3: moments, not categories — the shareable half of "strengths".
+    pro["greatest_hits"] = greatest_hits(enriched)
+
+    # Phase 9: the additive counterpart to the ranked leak board. Needs the
+    # per-game rating bands, so it runs once the facts exist.
+    pro["attribution"] = compute_attribution(
+        enriched,
+        band_by_game={
+            str(f["game_id"]): str(f.get("rating_band") or "unknown")
+            for f in game_facts
+        },
+    )
 
     if evidence_sink is not None:
         evidence_sink["bundles"] = build_bundles(

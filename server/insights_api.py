@@ -9,7 +9,7 @@ import threading
 import uuid
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from pipeline import chesscom
@@ -392,6 +392,84 @@ def build_insights_router(app: FastAPI) -> APIRouter:
             except json.JSONDecodeError:
                 answers = {}
         return {"run_id": run_id, "answers": answers}
+
+    @router.get("/insights/{run_id}/memo")
+    def coach_memo_export(
+        run_id: str,
+        connection: sqlite3.Connection = Depends(get_connection),
+        user: sqlite3.Row = Depends(current_user),
+    ) -> Response:
+        """Phase 12.4: a one-page markdown brief a coach reads in two minutes."""
+
+        from fastapi.responses import PlainTextResponse
+
+        from server.insights_export import coach_memo
+
+        row = connection.execute(
+            "SELECT * FROM insight_runs WHERE run_id = ? AND user_id = ?",
+            (run_id, user["id"]),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Insights run not found")
+        if not row["metrics"]:
+            raise HTTPException(status_code=409, detail="Run has no metrics yet")
+        try:
+            metrics = json.loads(row["metrics"])
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=500, detail="Metrics unreadable") from exc
+
+        handle = row["chesscom_handle"]
+        text = coach_memo(metrics, {
+            "handle": handle,
+            "window_days": row["window_days"],
+            "time_class": row["time_class"],
+        })
+        filename = f"chessmax-{handle}-{row['time_class']}.md"
+        return PlainTextResponse(
+            text,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @router.get("/insights/game/{game_id}/pgn")
+    def annotated_pgn_export(
+        game_id: str,
+        connection: sqlite3.Connection = Depends(get_connection),
+        user: sqlite3.Row = Depends(current_user),
+    ) -> Response:
+        """Phase 12.5: the game with NAGs and per-move Δw / findability / volatility."""
+
+        from fastapi.responses import PlainTextResponse
+
+        from server.insights_export import annotated_pgn
+
+        game = connection.execute(
+            "SELECT pgn FROM games WHERE game_id = ?", (game_id,)
+        ).fetchone()
+        if game is None or not game["pgn"]:
+            raise HTTPException(status_code=404, detail="Game not found")
+
+        review = connection.execute(
+            "SELECT review_id, user_color FROM reviews WHERE user_id = ? AND game_id = ? "
+            "AND status = 'complete' ORDER BY depth_tier = 'full' DESC LIMIT 1",
+            (user["id"], game_id),
+        ).fetchone()
+        moves = []
+        if review is not None:
+            moves = connection.execute(
+                "SELECT ply, classification, delta_w, volatility, findability "
+                "FROM review_moves WHERE review_id = ? ORDER BY ply",
+                (review["review_id"],),
+            ).fetchall()
+
+        text = annotated_pgn(
+            game["pgn"], moves, user_color=review["user_color"] if review else None
+        )
+        return PlainTextResponse(
+            text,
+            media_type="application/x-chess-pgn",
+            headers={"Content-Disposition": f'attachment; filename="{game_id}.pgn"'},
+        )
 
     @router.post("/insights/{run_id}/recompute")
     def recompute_insights(

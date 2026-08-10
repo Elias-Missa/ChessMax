@@ -662,6 +662,13 @@
   }
 
   if (dashPractice) dashPractice.addEventListener("click", () => goPractice("mistakes"));
+
+  const memoBtn = $("dash-memo");
+  if (memoBtn) {
+    memoBtn.addEventListener("click", () => {
+      if (activeRunId) window.open(`/api/insights/${activeRunId}/memo`, "_blank");
+    });
+  }
   const practiceAllBtn = $("dash-practice-all");
   if (practiceAllBtn) practiceAllBtn.addEventListener("click", () => goPractice("mistakes"));
 
@@ -743,10 +750,14 @@
         { value: "accent" })
     );
 
+    renderDiagnosis();
+    renderSelfCheck();
     renderLeaks();
     renderStrengths();
     renderElo(agg);
     renderTimelineChart(agg);
+    renderAttribution();
+    renderGreatestHits();
     renderRecurrence();
     renderTrend();
     renderSimulator(agg);
@@ -1335,6 +1346,9 @@
     $("body-missed-wins").querySelectorAll("[data-missed-game]").forEach((b) => {
       b.addEventListener("click", () => goReview(b.dataset.missedGame));
     });
+
+    renderEndgameTypes();
+    renderStructures();
   }
 
   // ── Section: Time & mind ────────────────────────────────────────────────
@@ -1605,6 +1619,8 @@
       : emptyBlock("No refuted plans to follow."));
 
     renderMoveTimes(m.move_time_shape || {});
+    renderClusters();
+    renderSkillModel();
 
     const tilt = m.tilt_test || {};
     setHtml("body-tilt-test",
@@ -1719,6 +1735,261 @@
       ).join("") +
       `</div></div>` +
       (g.note ? `<p style="margin-top:12px"><strong>${escapeHtml(g.note)}</strong></p>` : ""));
+  }
+
+  // ── Diagnosis, attribution, skill model, structures (phases 8–10, 12) ───
+
+  /** The first thirty seconds: one thing, its evidence, its prescription. */
+  function renderDiagnosis() {
+    const el = $("dash-diagnosis");
+    if (!el) return;
+    const leaks = pro().leaks || [];
+    if (!leaks.length) {
+      el.innerHTML = "";
+      return;
+    }
+    const top = leaks[0];
+    const elo = eloOnTable(facts()) || {};
+    el.innerHTML =
+      `<p class="diag-eyebrow">The one thing costing you the most</p>` +
+      `<h2 class="diag-title">${escapeHtml(top.title)}</h2>` +
+      `<p class="diag-detail">${escapeHtml(top.detail)}</p>` +
+      `<p class="diag-detail">It is worth about <strong>${num(top.impact_win_pct_per_game, 1)} win% per game</strong>` +
+      (isNum(elo.points) ? `, and fixing everything recoverable would be worth roughly <strong>${elo.points} rating points</strong>` : "") +
+      `. ${evidenceChips(`pro.leaks.${top.id}`)}</p>` +
+      `<div class="diag-actions">` +
+      `<button type="button" class="insights-primary" data-diag-practice="${escapeHtml(top.practice || "mistakes")}">Practice this →</button>` +
+      `<button type="button" class="insights-ghost" data-diag-section="${escapeHtml(top.section || "quality")}">Show the working</button>` +
+      `</div>`;
+    bindEvidenceChips(el);
+    const practice = el.querySelector("[data-diag-practice]");
+    if (practice) practice.addEventListener("click", () => goPractice(practice.dataset.diagPractice));
+    const show = el.querySelector("[data-diag-section]");
+    if (show) show.addEventListener("click", () => selectSection(show.dataset.diagSection));
+  }
+
+  function renderAttribution() {
+    const a = pro().attribution || {};
+    if (!a.available) {
+      setHtml("body-attribution", emptyBlock(a.reason || "Not enough moves to decompose."));
+      return;
+    }
+    const rows = (a.features || []).filter((r) => r.added > 0);
+    const max = Math.max(...rows.map((r) => r.added), 1);
+    setHtml("body-attribution",
+      (a.headline ? `<p style="margin-bottom:12px"><strong>${escapeHtml(a.headline)}</strong></p>` : "") +
+      `<div class="attr-rows">` +
+      `<div class="attr-row"><span>Your baseline</span>` +
+      `<div class="attr-bar"><i style="width:100%;background:var(--ins-mute)"></i></div>` +
+      `<b>${num(a.baseline)}</b></div>` +
+      rows.map((r) =>
+        `<div class="attr-row"><span>${escapeHtml(r.label)}</span>` +
+        `<div class="attr-bar"><i style="width:${Math.round(100 * r.added / max)}%"></i></div>` +
+        `<b>${num(r.added)}</b></div>`
+      ).join("") +
+      `</div>` +
+      `<p style="margin-top:12px;font-size:0.82rem;color:var(--ins-mute)">${escapeHtml(a.note || "")}</p>`
+    );
+  }
+
+  function renderGreatestHits() {
+    const hits = pro().greatest_hits || [];
+    if (!hits.length) {
+      setHtml("body-hits", emptyBlock(
+        "No hard-to-find moves scored yet — these need full-tier reviews."
+      ));
+      return;
+    }
+    setHtml("body-hits",
+      hits.slice(0, 5).map((h, i) =>
+        `<button type="button" class="hit" data-hit="${i}">` +
+        `<span class="hit-san">${escapeHtml(h.san || "?")}</span>` +
+        `<span class="hit-meta">findability ${h.findability}${h.opponent ? ` · vs ${escapeHtml(h.opponent)}` : ""}</span>` +
+        `</button>`
+      ).join("") +
+      `<p style="margin-top:10px;font-size:0.82rem;color:var(--ins-mute)">Moves you found that the model says ` +
+      `a player at your rating usually does not.</p>`);
+    $("body-hits").querySelectorAll("[data-hit]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const h = hits[Number(btn.dataset.hit)];
+        if (h) showPositionModal({ ...h, delta_w: 0, best_uci: h.move_uci, san_best: h.san });
+      });
+    });
+  }
+
+  function renderSkillModel() {
+    const s = pro().skill_model || {};
+    const rows = (s.categories || []).filter((c) => c.theta !== null);
+    if (!rows.length) {
+      setHtml("body-skill-model", emptyBlock(
+        s.coverage_note || "Needs full-tier reviews to estimate ability."
+      ));
+      return;
+    }
+    setHtml("body-skill-model",
+      (s.note ? `<p style="margin-bottom:10px"><strong>${escapeHtml(s.note)}</strong></p>` : "") +
+      rows.map((c) =>
+        `<div class="meta-line"><span>${escapeHtml(c.label)}${c.below_floor ? ' <small class="ci">thin</small>' : ""}</span>` +
+        `<b>${c.theta} ± ${c.stderr ?? "?"}</b></div>`
+      ).join("") +
+      (s.coverage_note ? `<p style="margin-top:10px;font-size:0.8rem;color:var(--ins-warn)">${escapeHtml(s.coverage_note)}</p>` : "") +
+      `<p style="margin-top:8px;font-size:0.78rem;color:var(--ins-mute)">${escapeHtml(s.model || "")}</p>`);
+  }
+
+  function renderStructures() {
+    const st = (pro().structure || {}).pawn_structures || {};
+    const rows = (st.rows || []).filter((r) => r.moves >= 20);
+    if (!rows.length) { setHtml("body-structures", emptyBlock("No middlegame structures classified.")); return; }
+    setHtml("body-structures",
+      (st.note ? `<p style="margin-bottom:10px"><strong>${escapeHtml(st.note)}</strong></p>` : "") +
+      rows.slice(0, 7).map((r) =>
+        `<div class="meta-line"><span>${escapeHtml(r.label)}${r.below_floor ? ' <small class="ci">thin</small>' : ""}</span>` +
+        `<b>${num(r.delta_w_per_move, 2)} <small class="ci">${r.moves} moves</small></b></div>`
+      ).join(""));
+  }
+
+  function renderEndgameTypes() {
+    const eg = (pro().structure || {}).endgame_types || {};
+    const rows = eg.rows || [];
+    if (!rows.length) { setHtml("body-endgame-types", emptyBlock("No endgames reached.")); return; }
+    setHtml("body-endgame-types",
+      (eg.note ? `<p style="margin-bottom:12px"><strong>${escapeHtml(eg.note)}</strong></p>` : "") +
+      `<div class="table-scroll"><table class="dash-table">` +
+      `<thead><tr><th>Material</th><th class="num">Moves</th><th class="num">Games</th>` +
+      `<th class="num">Δw / move</th><th class="num">Perfect-play rate</th></tr></thead><tbody>` +
+      rows.map((r) =>
+        `<tr><td class="strong">${escapeHtml(r.label)}${r.below_floor ? ' <small class="ci">thin</small>' : ""}</td>` +
+        `<td class="num">${r.moves}</td><td class="num">${r.games}</td>` +
+        `<td class="num">${num(r.delta_w_per_move, 2)}</td>` +
+        `<td class="num">${isNum(r.dtz_optimal_rate) ? pct(r.dtz_optimal_rate) : "—"}</td></tr>`
+      ).join("") +
+      `</tbody></table></div>` +
+      (eg.tablebase_note ? `<p style="margin-top:10px;font-size:0.82rem;color:var(--ins-mute)">${escapeHtml(eg.tablebase_note)}</p>` : ""));
+  }
+
+  function renderClusters() {
+    const c = (pro().structure || {}).blunder_clusters || {};
+    if (!c.available) {
+      setHtml("body-clusters", emptyBlock(c.reason || "Not enough blunders to cluster."));
+      return;
+    }
+    setHtml("body-clusters",
+      (c.note ? `<p style="margin-bottom:12px"><strong>${escapeHtml(c.note)}</strong></p>` : "") +
+      (c.clusters || []).map((cl) =>
+        `<div class="cluster">` +
+        `<div class="cluster-head"><b>${pct(cl.share)} of your blunders</b>` +
+        `<small>${cl.n} moves · avg ${num(cl.mean_delta_w)} win%</small></div>` +
+        `<p class="cluster-desc">${escapeHtml(cl.description)}</p>` +
+        `<div class="montage">` +
+        (cl.montage || []).map((m, i) =>
+          `<button type="button" class="montage-cell" data-cluster="${cl.cluster}" data-mi="${i}" ` +
+          `title="${escapeHtml(m.san || "")}">${escapeHtml(m.san || "?")}</button>`
+        ).join("") +
+        `</div></div>`
+      ).join("") +
+      `<p style="margin-top:10px;font-size:0.82rem;color:var(--ins-mute)">Clustered in raw feature space, ` +
+      `so these are your own recurring shapes rather than named motifs.</p>`);
+
+    $("body-clusters").querySelectorAll("[data-cluster]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const cl = (c.clusters || []).find((x) => String(x.cluster) === btn.dataset.cluster);
+        const m = cl && cl.montage[Number(btn.dataset.mi)];
+        if (m) showPositionModal({ ...m, fen_before: m.fen, san_best: null });
+      });
+    });
+  }
+
+  // ── Self-assessment (Phase 12.2) ────────────────────────────────────────
+
+  const SELF_QUESTIONS = [
+    { id: "phase", q: "Which phase do you think is your weakest?", options: ["opening", "middlegame", "endgame"] },
+    { id: "state", q: "Do you blunder more when winning or when losing?", options: ["winning", "losing", "no difference"] },
+    { id: "time", q: "Do you spend enough time on critical moves?", options: ["yes", "no"] },
+  ];
+  let selfAnswers = null;
+
+  function renderSelfCheck() {
+    const el = $("dash-selfcheck");
+    if (!el) return;
+    if (selfAnswers === null) { el.classList.add("hidden"); return; }
+    el.classList.remove("hidden");
+
+    if (!Object.keys(selfAnswers).length) {
+      el.innerHTML =
+        `<p class="diag-eyebrow">Before you read on — what do you think?</p>` +
+        SELF_QUESTIONS.map((q) =>
+          `<div class="selfq"><span>${escapeHtml(q.q)}</span>` +
+          q.options.map((o) =>
+            `<button type="button" class="dash-chip" data-sq="${q.id}" data-sa="${escapeHtml(o)}">${escapeHtml(o)}</button>`
+          ).join("") + `</div>`
+        ).join("") +
+        `<button type="button" class="insights-ghost" id="selfcheck-skip">Skip</button>`;
+      el.querySelectorAll("[data-sq]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          selfAnswers[btn.dataset.sq] = btn.dataset.sa;
+          btn.parentElement.querySelectorAll("[data-sq]").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          if (Object.keys(selfAnswers).length === SELF_QUESTIONS.length) saveSelfCheck();
+        });
+      });
+      const skip = $("selfcheck-skip");
+      if (skip) skip.addEventListener("click", () => { selfAnswers = null; renderSelfCheck(); });
+      return;
+    }
+    renderSelfGap(el);
+  }
+
+  /** The gap between self-perception and data is itself the insight. */
+  function renderSelfGap(el) {
+    const weakest = (pro().move_quality || {}).weakest_phase;
+    const risk = ((pro().measures || {}).state_risk || {}).states || {};
+    const crit = (pro().critical_moments || {}).time_note;
+    const worseWhenWinning =
+      (risk.winning || {}).delta_w_per_move > (risk.losing || {}).delta_w_per_move;
+
+    const checks = [
+      { id: "phase", said: selfAnswers.phase, actual: weakest,
+        right: selfAnswers.phase === weakest },
+      { id: "state", said: selfAnswers.state, actual: worseWhenWinning ? "winning" : "losing",
+        right: selfAnswers.state === (worseWhenWinning ? "winning" : "losing") },
+      { id: "time", said: selfAnswers.time, actual: crit ? "no" : "yes",
+        right: selfAnswers.time === (crit ? "no" : "yes") },
+    ].filter((c) => c.said && c.actual);
+
+    const wrong = checks.filter((c) => !c.right);
+    el.innerHTML =
+      `<p class="diag-eyebrow">You said / the data says</p>` +
+      checks.map((c) =>
+        `<div class="selfq selfq--result">` +
+        `<span>${escapeHtml(SELF_QUESTIONS.find((q) => q.id === c.id).q)}</span>` +
+        `<b class="${c.right ? "right" : "wrong"}">you said ${escapeHtml(c.said)} · ` +
+        `data says ${escapeHtml(String(c.actual))}</b></div>`
+      ).join("") +
+      (wrong.length
+        ? `<p class="diag-detail">You were wrong about ${wrong.length} of ${checks.length}. ` +
+          `That gap is worth more than any single number on this page.</p>`
+        : `<p class="diag-detail">You read yourself accurately on all ${checks.length}.</p>`);
+  }
+
+  async function saveSelfCheck() {
+    try {
+      await api(`/api/insights/${activeRunId}/self-assessment`, {
+        method: "POST",
+        body: JSON.stringify({ answers: selfAnswers }),
+      });
+    } catch { /* best effort */ }
+    renderSelfCheck();
+  }
+
+  async function loadSelfCheck(runId) {
+    selfAnswers = null;
+    if (!runId) return;
+    try {
+      const resp = await api(`/api/insights/${runId}/self-assessment`);
+      selfAnswers = (await resp.json()).answers || {};
+    } catch {
+      selfAnswers = {};
+    }
   }
 
   // ── Recurrence (Phase 6) ────────────────────────────────────────────────
@@ -1885,7 +2156,9 @@
         `<td>${miss && miss.san
             ? `<button type="button" class="row-btn" data-game-miss="${escapeHtml(g.game_id)}">${escapeHtml(miss.san)} · −${num(miss.delta_w)}</button>`
             : `<span class="dim">—</span>`}</td>` +
-        `<td><button type="button" class="row-btn" data-review-game="${escapeHtml(g.game_id)}">Review</button></td>` +
+        `<td><button type="button" class="row-btn" data-review-game="${escapeHtml(g.game_id)}">Review</button> ` +
+        `<a class="row-btn" href="/api/insights/game/${escapeHtml(g.game_id)}/pgn" ` +
+        `title="Annotated PGN with per-move Δw, findability and volatility">PGN</a></td>` +
         `</tr>`
       );
     }).join("");
@@ -2160,7 +2433,7 @@
     if (dashboard && !dashboard.classList.contains("hidden")) renderDashboard();
     // Evidence lives in its own table, so it is fetched alongside the payload
     // and re-rendered once it lands.
-    loadEvidence(activeRunId).then(() => {
+    Promise.all([loadEvidence(activeRunId), loadSelfCheck(activeRunId)]).then(() => {
       if (dashboard && !dashboard.classList.contains("hidden")) renderDashboard();
     });
   }

@@ -343,20 +343,61 @@ curve as "rating left on the board".
 
 ---
 
-## 9. Insights 3.0 — what is not built
+## 9. Insights 3.0 — the remaining phases
 
-Stated plainly so nobody assumes otherwise:
+### Latent skill model (Phase 8)
 
-- **Phase 4 corpus.** The schema, percentile lookup, rating-implied profile and
-  `scripts/build_reference_corpus.py` all exist, but no corpus is shipped.
-  Building one needs a Stockfish pass over a multi-player Lichess dump; the
-  builder deliberately refuses to pretend one player's games are a reference.
-  Until then percentile badges and the rating-implied profile stay hidden.
-- **Phase 8 (IRT).** Needs full-tier findability coverage. With ~5 upgraded
-  games per run, θ would carry error bars wide enough to be meaningless.
-- **Phase 9 (Shapley attribution).** Leaks remain *ranked, never summed*, which
-  the spec itself requires until this lands.
-- **Phase 10.1 (pawn-structure families)**, **10.4 (tablebase endgame types)**
-  and **10.5 (unsupervised clustering)**. 10.2 and 10.3 are built.
-- **Phase 12.3–12.5** (greatest hits, coach memo, annotated PGN). 12.1's
-  narrative ordering is partly served by the existing leak board.
+A 2PL item-response model per skill category — tactics, endgame technique,
+defense, calculation, positional judgement. Difficulty is `r_find`, the rating
+at which a position becomes findable, so **θ comes out in rating points with no
+rescaling**. Fitted by Newton–Raphson with the standard error from the Fisher
+information, which is also what makes it a principled adaptive selector for
+Puzzles 2.0: serve items with `b` near θ.
+
+Gated behind a minimum item count and shown with its error bars. On a shallow
+run it correctly reports "not yet" rather than fitting on a handful of items.
+
+### Attribution (Phase 9)
+
+The leak board is a *ranked* list because leaks overlap. This is the additive
+counterpart: exact Shapley values over the conditional-mean model decompose the
+observed loss into `baseline + Σ feature`, and the budget closes to the cent —
+asserted in tests, not assumed. Conditions that travel together, like phase and
+move number, split the shared credit rather than both claiming it.
+
+### Structure and geometry (Phase 10)
+
+| Card | What it adds |
+|---|---|
+| Pawn structures | IQP, hanging pawns, Carlsbad, French/Benoni/KID chains, closed/open centre, opposite-side castling. Structure is what decides which skills a position demands |
+| Endgames by material | Rook, rook+minor, opposite/same-coloured bishops, knight, queen, pawn. "Endgame" alone is far too coarse |
+| Perfect-play rate | With `CHESS_TRAINER_SYZYGY` set, DTZ-optimal move rate at ≤7 pieces — literal optimal play, not an engine approximation |
+| Blunder signatures | k-means over raw position features, with a montage of six similar boards. Finds shapes no hand-written motif list covers |
+
+### Presentation and exports (Phase 12)
+
+- **Narrative diagnosis** opens the report: the one thing costing the most, its
+  evidence inline, and a "Practice this" button. The dashboard becomes the
+  show-your-work underneath.
+- **Self-assessment** asks three questions before the numbers, then shows the
+  gap. Being wrong about yourself is stickier than any statistic.
+- **Greatest hits** — moves you *found* that the model says a player at your
+  level usually misses.
+- **Coach memo** — a one-page markdown brief at `GET /api/insights/{run}/memo`.
+- **Annotated PGN** — NAGs plus per-move Δw, findability and volatility at
+  `GET /api/insights/game/{game_id}/pgn`. Opens in any GUI.
+
+---
+
+## 10. Still outstanding
+
+- **The reference corpus itself.** Every code path exists —
+  `scripts/build_reference_corpus.py` now ingests a Lichess `.pgn`/`.pgn.zst`
+  dump, stratifies by rating band and time control, and analyzes with Stockfish
+  — but no corpus is shipped, because building one is an hours-long offline job.
+  Until it is run, percentile badges and the rating-implied profile stay hidden
+  rather than showing invented numbers.
+- **Tablebase files.** The Syzygy code path is live; the tables are a
+  user-provided download, like Stockfish and the Maia weights.
+- **Discrimination parameters** for the IRT model use documented defaults. They
+  should be fitted across the corpus once one exists.

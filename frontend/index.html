@@ -1538,6 +1538,7 @@
 
           <div class="dash-actions">
             <span class="dash-filter-count" id="dash-filter-count"></span>
+            <button type="button" id="dash-memo" class="insights-ghost" title="One-page markdown brief for a coach">Coach memo</button>
             <button type="button" id="dash-practice" class="insights-primary" disabled>Practice mistakes →</button>
           </div>
         </header>
@@ -1573,6 +1574,8 @@
           <main class="dash-content" id="dash-content">
             <!-- Overview -->
             <section class="dash-section" id="dash-section-overview">
+              <div class="dash-diagnosis" id="dash-diagnosis"></div>
+              <div class="dash-selfcheck hidden" id="dash-selfcheck"></div>
               <div class="dash-kpis" id="dash-kpis"></div>
               <div class="dash-grid">
                 <article class="dash-card dash-card--span2" id="card-leaks">
@@ -1630,6 +1633,25 @@
                     </div>
                   </div>
                   <div id="body-trend"></div>
+                </article>
+                <article class="dash-card dash-card--span2" id="card-attribution">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">Additive — unlike the leak board, these don't overlap</p>
+                      <h3>Where your lost win% goes</h3>
+                    </div>
+                    <span class="dash-badge">All games</span>
+                  </div>
+                  <div id="body-attribution"></div>
+                </article>
+                <article class="dash-card" id="card-hits">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">Moves a player at your level usually misses</p>
+                      <h3>Greatest hits</h3>
+                    </div>
+                  </div>
+                  <div id="body-hits"></div>
                 </article>
                 <article class="dash-card dash-card--span3" id="card-simulator">
                   <div class="dash-card-head">
@@ -1826,6 +1848,26 @@
                     <span class="dash-badge">All games</span>
                   </div>
                   <div id="body-missed-wins"></div>
+                </article>
+                <article class="dash-card dash-card--span2">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">"Endgame" is far too coarse</p>
+                      <h3>Endgames by material</h3>
+                    </div>
+                    <span class="dash-badge">All games</span>
+                  </div>
+                  <div id="body-endgame-types"></div>
+                </article>
+                <article class="dash-card">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">What the position actually demands</p>
+                      <h3>Pawn structures</h3>
+                    </div>
+                    <span class="dash-badge">All games</span>
+                  </div>
+                  <div id="body-structures"></div>
                 </article>
               </div>
             </section>
@@ -2033,6 +2075,26 @@
                     <span class="dash-badge">All games</span>
                   </div>
                   <div id="body-geometry"></div>
+                </article>
+                <article class="dash-card dash-card--span2">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">Found by clustering, not by a hand-written list</p>
+                      <h3>Your blunder signatures</h3>
+                    </div>
+                    <span class="dash-badge">All games</span>
+                  </div>
+                  <div id="body-clusters"></div>
+                </article>
+                <article class="dash-card">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">Ability on the rating scale</p>
+                      <h3>Skill model</h3>
+                    </div>
+                    <span class="dash-badge" title="Needs full-tier findability coverage">Full tier</span>
+                  </div>
+                  <div id="body-skill-model"></div>
                 </article>
               </div>
             </section>

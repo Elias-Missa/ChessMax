@@ -1331,6 +1331,175 @@
   letter-spacing: 0.02em;
 }
 
+/* ── Narrative diagnosis + self-assessment (phase 12) ────────────────────── */
+
+.dash-diagnosis {
+  padding: 22px 26px;
+  border-radius: 16px;
+  border: 1px solid var(--ins-line-green);
+  background:
+    radial-gradient(700px 240px at 100% 0%, rgba(68, 214, 44, 0.12), transparent 60%),
+    linear-gradient(180deg, rgba(68, 214, 44, 0.06), rgba(22, 24, 29, 0.94));
+}
+
+.dash-diagnosis:empty { display: none; }
+
+.diag-eyebrow {
+  margin: 0 0 6px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ins-green);
+}
+
+.diag-title {
+  margin: 0 0 8px;
+  font-size: 1.55rem;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+
+.diag-detail {
+  margin: 0 0 6px;
+  color: var(--ins-dim);
+  line-height: 1.55;
+  max-width: 92ch;
+}
+
+.diag-detail strong { color: var(--ins-fg); }
+
+.diag-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.dash-selfcheck {
+  padding: 18px 22px;
+  border-radius: 14px;
+  border: 1px solid var(--ins-line);
+  background: var(--ins-panel-2);
+}
+
+.dash-selfcheck.hidden { display: none; }
+
+.selfq {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 0;
+  font-size: 0.88rem;
+  color: var(--ins-dim);
+}
+
+.selfq > span { min-width: 280px; }
+
+.selfq--result b { font-weight: 700; }
+.selfq--result b.right { color: var(--ins-green-hi); }
+.selfq--result b.wrong { color: var(--ins-warn); }
+
+/* ── Attribution budget (phase 9) ────────────────────────────────────────── */
+
+.attr-rows { display: flex; flex-direction: column; gap: 8px; }
+
+.attr-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(0, 2fr) auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.85rem;
+  color: var(--ins-dim);
+}
+
+.attr-bar {
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.attr-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--ins-warn), var(--ins-bad));
+}
+
+.attr-row b { color: var(--ins-fg); font-variant-numeric: tabular-nums; }
+
+/* ── Greatest hits (phase 12.3) ──────────────────────────────────────────── */
+
+.hit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  background: rgba(68, 214, 44, 0.06);
+  border: 1px solid rgba(68, 214, 44, 0.22);
+  font: inherit;
+}
+
+.hit + .hit { margin-top: 8px; }
+.hit:hover { border-color: rgba(68, 214, 44, 0.5); background: rgba(68, 214, 44, 0.1); }
+
+.hit-san { font-weight: 800; color: var(--ins-green-hi); font-size: 0.95rem; }
+.hit-meta { font-size: 0.76rem; color: var(--ins-dim); }
+
+/* ── Blunder clusters (phase 10.5) ───────────────────────────────────────── */
+
+.cluster {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--ins-line);
+  background: var(--ins-ink-2);
+}
+
+.cluster + .cluster { margin-top: 10px; }
+
+.cluster-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.cluster-head b { color: var(--ins-fg); font-size: 0.92rem; }
+.cluster-head small { color: var(--ins-mute); font-size: 0.74rem; }
+
+.cluster-desc {
+  margin: 5px 0 9px;
+  font-size: 0.83rem;
+  color: var(--ins-dim);
+}
+
+.montage { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.montage-cell {
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--ins-dim);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--ins-line);
+}
+
+.montage-cell:hover {
+  color: var(--ins-green-hi);
+  border-color: rgba(68, 214, 44, 0.45);
+}
+
+a.row-btn { text-decoration: none; display: inline-block; }
+
 /* ── Recurrence ──────────────────────────────────────────────────────────── */
 
 .recur {

@@ -146,6 +146,18 @@ def _as_float(value: Any) -> float | None:
         return None
 
 
+def _keys(row: Any) -> set[str]:
+    """Column names of a row, whether it is a ``sqlite3.Row`` or a plain dict.
+
+    Tests build rows by hand, and older callers may not select every column.
+    """
+
+    try:
+        return set(row.keys())
+    except AttributeError:
+        return set()
+
+
 def centroid_and_spread(
     rows: Sequence[dict[str, Any]],
 ) -> tuple[list[float | None], list[float]]:
@@ -393,6 +405,9 @@ def enrich_moves(
             "delta_w": _as_float(m["delta_w"]) or 0.0,
             "volatility": _as_float(m["volatility"]),
             "findability": m["findability"],
+            # ``r_find`` is the rating at which the position becomes findable —
+            # the item difficulty for the Phase 8 skill model.
+            "r_find": m["r_find"] if "r_find" in _keys(m) else None,
             "time_spent": _as_float(m["time_spent"]),
             "clock_remaining": _as_float(m["clock_remaining"]),
             "tactic_tags": m["tactic_tags"],
