@@ -460,6 +460,97 @@
 
   const emptyBlock = (msg) => `<p class="dash-empty">${escapeHtml(msg)}</p>`;
 
+  // ── Evidence layer (spec Phase 1) ───────────────────────────────────────
+  // One generic resolver keyed by the dotted metric path, so a new metric never
+  // needs new evidence UI.
+
+  let currentEvidence = {};
+  let currentDisputes = {};
+
+  const evidenceFor = (metricKey) => currentEvidence[metricKey] || null;
+
+  /** Chips rendered inline in the claim sentence, not as a footnote. */
+  function evidenceChips(metricKey) {
+    const bundle = evidenceFor(metricKey);
+    if (!bundle) return "";
+    const exemplars = bundle.exemplar || [];
+    const counters = bundle.counter || [];
+    if (!exemplars.length) return "";
+
+    const chips = exemplars.slice(0, 5).map((e, i) =>
+      `<button type="button" class="ev-chip" data-ev-key="${escapeHtml(metricKey)}" data-ev-idx="${i}" ` +
+      `title="${escapeHtml(e.caption || "")}">` +
+      `${escapeHtml(e.san || e.move_uci || "?")}<b>−${num(e.delta_w)}</b></button>`
+    ).join("");
+
+    // The ratio communicates severity more honestly than any percentage.
+    const ratio = counters.length
+      ? `<span class="ev-ratio">${exemplars.length} like this · ${counters.length} handled well</span>`
+      : "";
+    return `<span class="ev-chips">${chips}${ratio}</span>`;
+  }
+
+  function bindEvidenceChips(container) {
+    if (!container) return;
+    container.querySelectorAll("[data-ev-key]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openEvidence(btn.dataset.evKey, Number(btn.dataset.evIdx) || 0);
+      });
+    });
+  }
+
+  function disputeControl(metricKey) {
+    const state = currentDisputes[metricKey];
+    const on = (value) => (state === value ? " is-set" : "");
+    return (
+      `<span class="ev-dispute" data-dispute-key="${escapeHtml(metricKey)}">` +
+      `<button type="button" class="ev-dispute-btn${on(true)}" data-agreed="1" title="This matches my experience">✓</button>` +
+      `<button type="button" class="ev-dispute-btn${on(false)}" data-agreed="0" title="This doesn't match my experience">✕</button>` +
+      `</span>`
+    );
+  }
+
+  function bindDisputes(container) {
+    if (!container) return;
+    container.querySelectorAll("[data-dispute-key]").forEach((group) => {
+      group.querySelectorAll("[data-agreed]").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const metricKey = group.dataset.disputeKey;
+          const agreed = btn.dataset.agreed === "1";
+          currentDisputes[metricKey] = agreed;
+          group.querySelectorAll("[data-agreed]").forEach((b) =>
+            b.classList.toggle("is-set", (b.dataset.agreed === "1") === agreed));
+          try {
+            await api(`/api/insights/${activeRunId}/dispute`, {
+              method: "POST",
+              body: JSON.stringify({ metric_key: metricKey, agreed }),
+            });
+          } catch {
+            /* the signal is best-effort; the UI already reflects the choice */
+          }
+        });
+      });
+    });
+  }
+
+  async function loadEvidence(runId) {
+    currentEvidence = {};
+    currentDisputes = {};
+    if (!runId) return;
+    try {
+      const [evResp, dispResp] = await Promise.all([
+        api(`/api/insights/${runId}/evidence`),
+        api(`/api/insights/${runId}/disputes`).catch(() => null),
+      ]);
+      currentEvidence = (await evResp.json()).evidence || {};
+      if (dispResp) currentDisputes = (await dispResp.json()).disputes || {};
+    } catch {
+      currentEvidence = {};
+    }
+  }
+
   /** Labelled progress row: "Kingside … 58% n=12" over a filled track. */
   function barRow(label, rate, n, { bad = false } = {}) {
     return (
@@ -599,6 +690,7 @@
     else if (section === "critical") renderCritical(agg);
     else if (section === "openings") renderOpenings(agg);
     else if (section === "time") renderTime(agg);
+    else if (section === "habits") renderHabits();
     else if (section === "games") renderGames();
     else if (section === "practice") renderPractice();
   }
@@ -655,7 +747,9 @@
     renderStrengths();
     renderElo(agg);
     renderTimelineChart(agg);
+    renderRecurrence();
     renderTrend();
+    renderSimulator(agg);
   }
 
   function renderLeaks() {
@@ -671,8 +765,12 @@
       `<div class="leak sev-${escapeHtml(l.severity)}">` +
         `<div class="leak-rank">${i + 1}</div>` +
         `<div>` +
-          `<p class="leak-title">${escapeHtml(l.title)}</p>` +
-          `<p class="leak-detail">${escapeHtml(l.detail)}</p>` +
+          `<p class="leak-title">${escapeHtml(l.title)}` +
+            (l.capped ? `<span class="leak-flag" title="Capped at the win% you actually lost">capped</span>` : "") +
+            (l.recurrence_boost ? `<span class="leak-flag is-good" title="Supported by a repeating error signature">recurring</span>` : "") +
+            disputeControl(`pro.leaks.${l.id}`) +
+          `</p>` +
+          `<p class="leak-detail">${escapeHtml(l.detail)} ${evidenceChips(`pro.leaks.${l.id}`)}</p>` +
         `</div>` +
         `<div class="leak-impact">` +
           `<b>${num(l.impact_win_pct_per_game, 1)}</b>` +
@@ -686,6 +784,9 @@
     `Impact is the excess win% each leak costs per game, capped at the win% you actually lost. ` +
     `Leaks overlap — one blundered move can be a critical endgame move played in a scramble — so they are ` +
     `ranked, not summed.</p>`);
+
+    bindEvidenceChips($("body-leaks"));
+    bindDisputes($("body-leaks"));
 
     $("body-leaks").querySelectorAll("[data-leak-practice]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -1405,6 +1506,329 @@
     );
   }
 
+  // ── Section: Opponents & habits (phases 5 and 11) ───────────────────────
+
+  const measures = () => (pro().measures) || {};
+
+  /** "58% (±6)" — a rate is never shown without its interval. */
+  function rateWithCi(value, ci, digits = 0) {
+    if (!isNum(value)) return "—";
+    const text = pct(value, digits);
+    if (!ci || ci.length !== 2) return text;
+    return `${text} <small class="ci">${pct(ci[0], 0)}–${pct(ci[1], 0)}</small>`;
+  }
+
+  function renderHabits() {
+    const m = measures();
+    const callout = $("habits-callout");
+    if (callout) {
+      const notes = [
+        (m.blindness || {}).note,
+        (m.blunder_tempo || {}).prescription,
+        ...((m.state_risk || {}).notes || []),
+      ].filter(Boolean);
+      callout.textContent = notes[0] || "";
+    }
+
+    // Punish rate — the product's largest blind spot before 3.0.
+    const p = m.punish || {};
+    setHtml("body-punish", p.opportunities
+      ? `<div class="stat-row">` +
+          `<div class="stat"><b class="${(p.punish_rate || 0) < 0.6 ? "bad" : ""}">${rateWithCi(p.punish_rate, p.ci)}</b><span>Punish rate</span></div>` +
+          `<div class="stat"><b class="neutral">${p.opportunities}</b><span>Chances given</span></div>` +
+          `<div class="stat"><b class="neutral">${num(p.swing_available - p.swing_kept)}</b><span>Win% handed back</span></div>` +
+        `</div>` +
+        `<p>Your opponents erred ${p.opportunities} times. You kept the advantage in ` +
+        `<strong>${p.punished}</strong> of them ${evidenceChips("pro.measures.punish")}</p>` +
+        (Object.keys(p.by_phase || {}).length
+          ? Object.entries(p.by_phase).map(([phase, row]) =>
+              barRow(titleCase(phase), row.punish_rate, row.n)).join("")
+          : "") +
+        `<p style="font-size:0.82rem;color:var(--ins-mute)">A chance counts as taken when your reply ` +
+        `stayed clean and gave back less than half the swing.</p>`
+      : emptyBlock("No opponent errors large enough to score in this window."));
+
+    const b = m.blindness || {};
+    setHtml("body-blindness", b.total
+      ? `<div class="stat-row">` +
+          `<div class="stat"><b class="neutral">${b.defensive}</b><span>Didn't see it coming</span></div>` +
+          `<div class="stat"><b class="neutral">${b.offensive}</b><span>Missed own chance</span></div>` +
+          `<div class="stat"><b class="neutral">${b.positional}</b><span>Quiet slips</span></div>` +
+        `</div>` +
+        `<div class="quality-bar" style="height:20px">` +
+          `<i style="width:${(100 * b.defensive / (b.total + b.positional)).toFixed(1)}%;background:var(--ins-bad)"></i>` +
+          `<i style="width:${(100 * b.offensive / (b.total + b.positional)).toFixed(1)}%;background:var(--ins-warn)"></i>` +
+          `<i style="width:${(100 * b.positional / (b.total + b.positional)).toFixed(1)}%;background:var(--ins-mute)"></i>` +
+        `</div>` +
+        `<p>${escapeHtml(b.note || "Your errors split fairly evenly between what you didn't see and what you didn't take.")} ` +
+        `${evidenceChips("pro.measures.blindness.defensive")}</p>`
+      : emptyBlock("Not enough errors to split."));
+
+    const t = m.blunder_tempo || {};
+    setHtml("body-blunder-tempo", t.total
+      ? `<div class="stat-row">` +
+          `<div class="stat"><b class="bad">${t.fast}</b><span>Fast (impulse)</span></div>` +
+          `<div class="stat"><b class="warn">${t.slow}</b><span>Slow (misjudged)</span></div>` +
+          `<div class="stat"><b class="neutral">${t.typical}</b><span>Normal tempo</span></div>` +
+        `</div>` +
+        `<p>${escapeHtml(t.prescription || "Not enough blunders to call it either way.")} ` +
+        `${evidenceChips("pro.measures.blunder_tempo.fast")}</p>` +
+        `<p style="font-size:0.82rem;color:var(--ins-mute)">Split against each game's own median move time.</p>`
+      : emptyBlock("No blunders with clock data."));
+
+    const imp = m.impulsivity || {};
+    setHtml("body-impulsivity", imp.n
+      ? `<div class="stat-row">` +
+          `<div class="stat"><b class="${(imp.impulse_rate || 0) > 0.3 ? "bad" : ""}">${rateWithCi(imp.impulse_rate, imp.ci)}</b><span>Under ${num(imp.threshold_seconds)}s</span></div>` +
+        `</div>` +
+        (isNum(imp.blunder_rate_impulsive)
+          ? `<p>Those moves blunder <strong>${pct(imp.blunder_rate_impulsive, 1)}</strong> of the time versus ` +
+            `<strong>${pct(imp.blunder_rate_deliberate, 1)}</strong> on slow moves of the same difficulty` +
+            (imp.matched_on_volatility ? ` (matched across ${imp.matched_deciles} volatility deciles)` : "") +
+            `. ${evidenceChips("pro.measures.impulsivity")}</p>`
+          : "") +
+        `<p style="font-size:0.82rem;color:var(--ins-mute)">Scramble moves are excluded — playing fast with ` +
+        `seconds left is forced, not a fixable habit.</p>`
+      : emptyBlock("No clock data."));
+
+    renderMetacognition(m.metacognition || {});
+    renderStateRisk(m.state_risk || {});
+
+    const st = m.stubbornness || {};
+    setHtml("body-stubbornness", st.refuted_plans
+      ? `<div class="stat-row">` +
+          `<div class="stat"><b class="${(st.persistence_rate || 0) > 0.4 ? "bad" : ""}">${rateWithCi(st.persistence_rate, st.ci)}</b><span>Persisted</span></div>` +
+          `<div class="stat"><b class="neutral">${num(st.extra_delta_w)}</b><span>Extra win% lost</span></div>` +
+        `</div>` +
+        `<p>${escapeHtml(st.note || "After a refuted plan you generally change direction.")} ` +
+        `${evidenceChips("pro.measures.stubbornness")}</p>`
+      : emptyBlock("No refuted plans to follow."));
+
+    renderMoveTimes(m.move_time_shape || {});
+
+    const tilt = m.tilt_test || {};
+    setHtml("body-tilt-test",
+      `<div class="stat-row">` +
+        `<div class="stat"><b class="neutral">${isNum(tilt.observed) ? pct(tilt.observed) : "—"}</b><span>After a loss</span></div>` +
+        `<div class="stat"><b class="neutral">${isNum(tilt.baseline) ? pct(tilt.baseline) : "—"}</b><span>Baseline</span></div>` +
+        (isNum(tilt.p_value) ? `<div class="stat"><b class="neutral">${num(tilt.p_value, 3)}</b><span>p-value</span></div>` : "") +
+      `</div>` +
+      `<p>${escapeHtml(tilt.verdict || "")}</p>`);
+
+    renderGeometry();
+  }
+
+  function renderMetacognition(mc) {
+    if (!mc.n) {
+      emptyChart("chart-metacognition", "No clock data to correlate.");
+      setHtml("body-metacognition", "");
+      return;
+    }
+    clearEmpty("chart-metacognition");
+    renderChart("chart-metacognition", {
+      type: "scatter",
+      data: {
+        datasets: [{
+          label: "Moves",
+          data: (mc.scatter || []).map((p) => ({ x: p.volatility, y: p.time_spent })),
+          backgroundColor: "rgba(87, 232, 63, 0.35)",
+          pointRadius: 2,
+        }],
+      },
+      options: {
+        ...baseOptions({}),
+        scales: {
+          x: { title: { display: true, text: "Volatility", color: C.mute }, grid: { color: C.grid }, ticks: { color: C.mute, font: { size: 10 } } },
+          y: { title: { display: true, text: "Seconds", color: C.mute }, grid: { color: C.grid }, ticks: { color: C.mute, font: { size: 10 } }, min: 0 },
+        },
+      },
+    });
+    setHtml("body-metacognition",
+      `<div class="stat-row" style="margin-top:12px">` +
+        `<div class="stat"><b class="${(mc.r_volatility || 0) < 0.1 ? "bad" : ""}">${num(mc.r_volatility, 2)}</b><span>r (time vs difficulty)</span></div>` +
+      `</div>` +
+      `<p>${escapeHtml(mc.label || "")}</p>`);
+  }
+
+  function renderStateRisk(risk) {
+    const states = risk.states || {};
+    const keys = ["winning", "level", "losing"].filter((k) => (states[k] || {}).moves);
+    if (!keys.length) { setHtml("body-state-risk", emptyBlock("No win-probability data.")); return; }
+    setHtml("body-state-risk",
+      `<div class="table-scroll"><table class="dash-table">` +
+      `<thead><tr><th>Game state</th><th class="num">Moves</th><th class="num">Mean volatility</th>` +
+      `<th class="num">Δw / move</th><th class="num">Avg time</th></tr></thead><tbody>` +
+      keys.map((k) => {
+        const s = states[k];
+        return `<tr><td class="strong">${escapeHtml(s.label)}</td>` +
+          `<td class="num">${s.moves}</td>` +
+          `<td class="num">${num(s.mean_volatility, 1)}</td>` +
+          `<td class="num">${num(s.delta_w_per_move, 2)}</td>` +
+          `<td class="num">${isNum(s.mean_time) ? `${num(s.mean_time, 1)}s` : "—"}</td></tr>`;
+      }).join("") +
+      `</tbody></table></div>` +
+      (risk.notes || []).map((n) => `<p style="margin-top:10px"><strong>${escapeHtml(n)}</strong></p>`).join(""));
+  }
+
+  function renderMoveTimes(shape) {
+    if (!shape.n) {
+      emptyChart("chart-move-times", "No clock data.");
+      setHtml("body-move-times", "");
+      return;
+    }
+    clearEmpty("chart-move-times");
+    renderChart("chart-move-times", {
+      type: "bar",
+      data: {
+        labels: (shape.histogram || []).map((h) => h.label),
+        datasets: [{
+          data: (shape.histogram || []).map((h) => h.n),
+          backgroundColor: "rgba(61, 184, 197, 0.7)",
+          borderRadius: 4,
+        }],
+      },
+      options: baseOptions({ yMin: 0 }),
+    });
+    setHtml("body-move-times",
+      `<div class="stat-row" style="margin-top:12px">` +
+        `<div class="stat"><b class="neutral">${num(shape.median, 1)}s</b><span>Median</span></div>` +
+        `<div class="stat"><b class="neutral">${escapeHtml(shape.shape || "—")}</b><span>Shape</span></div>` +
+      `</div>` +
+      (shape.note ? `<p>${escapeHtml(shape.note)}</p>` : ""));
+  }
+
+  function renderGeometry() {
+    const g = pro().geometry || {};
+    const pieces = pro().piece_attribution || {};
+    if (!g.n) { setHtml("body-geometry", emptyBlock("Not enough scored positions.")); return; }
+
+    const worstPiece = pieces.most_hung;
+    setHtml("body-geometry",
+      `<div class="dash-split">` +
+      `<div><p class="eyebrow">Miss rate by direction</p>` +
+      (g.directions || []).map((d) => barRow(titleCase(d.direction), d.miss_rate, d.n)).join("") +
+      `<p style="font-size:0.82rem;color:var(--ins-mute)">Computed inside ${escapeHtml(g.control || "difficulty")} ` +
+      `deciles, so this is not just "backward moves are harder".</p></div>` +
+      `<div><p class="eyebrow">Pieces</p>` +
+      (worstPiece
+        ? `<p>You hang your <strong>${escapeHtml(worstPiece.piece)}</strong> most often — ` +
+          `${worstPiece.n} times for ${num(worstPiece.delta_w)} win%.</p>`
+        : `<p>No clear piece pattern.</p>`) +
+      (pieces.hung || []).slice(0, 5).map((p) =>
+        `<div class="meta-line"><span>${escapeHtml(titleCase(p.piece))}</span><b>${p.n} · ${num(p.delta_w)} win%</b></div>`
+      ).join("") +
+      `</div></div>` +
+      (g.note ? `<p style="margin-top:12px"><strong>${escapeHtml(g.note)}</strong></p>` : ""));
+  }
+
+  // ── Recurrence (Phase 6) ────────────────────────────────────────────────
+
+  function renderRecurrence() {
+    const r = pro().recurrence || {};
+    const recurring = r.recurring || [];
+    if (!recurring.length) {
+      setHtml("body-recurrence", emptyBlock(
+        `No mistake repeated ${r.threshold || 3}+ times in this window` +
+        (r.distinct ? ` across ${r.distinct} distinct error shapes.` : ".")
+      ));
+      return;
+    }
+    setHtml("body-recurrence",
+      recurring.slice(0, 5).map((c) => {
+        const key = `pro.recurrence.${c.signature}`;
+        const span = c.first_seen && c.last_seen && c.first_seen !== c.last_seen
+          ? ` between ${escapeHtml(c.first_seen)} and ${escapeHtml(c.last_seen)}`
+          : "";
+        return (
+          `<div class="recur">` +
+          `<div class="recur-count">${c.n}×</div>` +
+          `<div><p class="recur-label">You keep ${escapeHtml(c.label)}</p>` +
+          `<p class="recur-detail">${num(c.total_delta_w)} win% across ${c.games.length} games${span}. ` +
+          `${evidenceChips(key)}</p></div>` +
+          `</div>`
+        );
+      }).join("") +
+      `<p style="margin-top:10px;font-size:0.8rem;color:var(--ins-mute)">Signatures are tracked across every run, ` +
+      `so a pattern that survives a new window is real. ${r.singletons || 0} of ${r.distinct || 0} error shapes ` +
+      `happened only once — those are noise.</p>`
+    );
+    bindEvidenceChips($("body-recurrence"));
+  }
+
+  // ── Counterfactual simulator (Phase 7) ──────────────────────────────────
+
+  const SIM_TOGGLES = [
+    { id: "scramble", label: "Never move under 5 seconds", hint: "removes the loss from scramble moves" },
+    { id: "cliff", label: "Eliminate blunders", hint: "removes 25+ win% single-move drops" },
+    { id: "endgame", label: "Cut endgame loss by 20%", hint: "technique work" },
+    { id: "punish", label: "Punish at the median rate", hint: "capitalize like a typical player" },
+  ];
+  let simState = {};
+
+  function renderSimulator(agg) {
+    const holder = $("body-simulator");
+    if (!holder) return;
+    if (!agg.rows.length) { holder.innerHTML = emptyBlock("No games in this selection."); return; }
+
+    holder.innerHTML =
+      `<div class="sim-toggles">` +
+      SIM_TOGGLES.map((t) =>
+        `<label class="sim-toggle"><input type="checkbox" data-sim="${t.id}"${simState[t.id] ? " checked" : ""} />` +
+        `<span><b>${escapeHtml(t.label)}</b><small>${escapeHtml(t.hint)}</small></span></label>`
+      ).join("") +
+      `</div><div class="sim-result" id="sim-result"></div>`;
+
+    holder.querySelectorAll("[data-sim]").forEach((box) => {
+      box.addEventListener("change", () => {
+        simState[box.dataset.sim] = box.checked;
+        updateSimulation(agg);
+      });
+    });
+    updateSimulation(agg);
+  }
+
+  /** Re-score the user's actual games with the selected losses removed. */
+  function updateSimulation(agg) {
+    const out = $("sim-result");
+    if (!out) return;
+    const punish = (measures().punish || {});
+    const decided = agg.rows.filter((f) => isNum(f.points));
+    if (!decided.length) { out.innerHTML = ""; return; }
+
+    let recovered = 0;
+    for (const f of decided) {
+      const dropped = 1 - f.points;
+      if (dropped <= 0) continue;
+      let pool = 0;
+      if (simState.scramble) pool += f.scramble_delta_w || 0;
+      if (simState.cliff) pool += (f.blunders || 0) * 25;
+      if (simState.endgame) pool += 0.2 * ((f.phase_delta_w || {}).endgame || 0);
+      if (simState.punish && punish.opportunities) {
+        // Share of the un-punished swing that a median converter would have kept.
+        const missed = (punish.swing_available - punish.swing_kept) / decided.length;
+        pool += Math.max(0, missed * (0.6 - (punish.punish_rate || 0)) / 0.6);
+      }
+      recovered += Math.min(dropped, pool / 100);
+    }
+
+    const n = decided.length;
+    const actual = decided.reduce((a, f) => a + f.points, 0) / n;
+    const potential = Math.min(0.999, actual + recovered / n);
+    const gain = Math.round(ratingDifference(potential) - ratingDifference(actual));
+    const any = SIM_TOGGLES.some((t) => simState[t.id]);
+
+    out.innerHTML =
+      `<div class="sim-number"><b>${any ? `+${gain}` : "—"}</b><span>rating points</span></div>` +
+      `<div class="sim-detail">` +
+      (any
+        ? `<p>Score would rise from <strong>${pct(actual, 1)}</strong> to <strong>${pct(potential, 1)}</strong> ` +
+          `across the same ${n} games — <strong>${num(recovered, 1)}</strong> extra game points.</p>`
+        : `<p>Pick a fix to see what it would have been worth across your actual games.</p>`) +
+      `<p style="font-size:0.8rem;color:var(--ins-mute)">Recovered win% is capped by the result actually dropped ` +
+      `in each game, then converted through the FIDE score-to-difference curve — the same model as ` +
+      `"rating left on the board".</p></div>`;
+  }
+
   // ── Section: Games ──────────────────────────────────────────────────────
 
   function renderGames() {
@@ -1554,8 +1978,15 @@
 
   // ── Position modal ──────────────────────────────────────────────────────
 
-  function showPositionModal(item) {
+  function showPositionModal(raw) {
     if (!modalOverlay) return;
+    // Practice flags and evidence rows describe the same thing with different
+    // field names; normalize once rather than branching everywhere below.
+    const item = {
+      ...raw,
+      fen: raw.fen || raw.fen_before,
+      best_san: raw.best_san || raw.san_best,
+    };
     const set = (id, text) => { const el = $(id); if (el) el.textContent = text; };
 
     set("modal-eyebrow", `Flagged miss · move ${Math.ceil((item.ply || 0) / 2)}`);
@@ -1595,10 +2026,96 @@
     }
   }
 
+  /** Open one exemplar, with its siblings navigable and its counters listed. */
+  function openEvidence(metricKey, index) {
+    const bundle = evidenceFor(metricKey);
+    if (!bundle || !(bundle.exemplar || []).length) return;
+    const items = bundle.exemplar;
+    const idx = Math.max(0, Math.min(items.length - 1, index));
+    const item = items[idx];
+
+    // A fresh board each time: the lead-in animation reuses the instance and a
+    // stale one keeps the previous position's shapes.
+    showPositionModal(item);
+
+    const eyebrow = $("modal-eyebrow");
+    if (eyebrow) eyebrow.textContent = `Evidence ${idx + 1} of ${items.length}`;
+    const caption = $("modal-caption");
+    if (caption) caption.textContent = item.caption || "";
+
+    const nav = $("modal-evidence-nav");
+    if (nav) {
+      nav.classList.remove("hidden");
+      nav.innerHTML = items.map((e, i) =>
+        `<button type="button" class="ev-dot${i === idx ? " active" : ""}" data-nav="${i}" ` +
+        `title="${escapeHtml(e.caption || "")}">${i + 1}</button>`
+      ).join("");
+      nav.querySelectorAll("[data-nav]").forEach((b) => {
+        b.addEventListener("click", () => openEvidence(metricKey, Number(b.dataset.nav)));
+      });
+    }
+
+    const counters = $("modal-counters");
+    if (counters) {
+      const list = bundle.counter || [];
+      counters.classList.toggle("hidden", !list.length);
+      counters.innerHTML = list.length
+        ? `<p class="ev-counter-head">You handled the same situation well here:</p>` +
+          list.map((c) => `<p class="ev-counter">${escapeHtml(c.caption || "")}</p>`).join("")
+        : "";
+    }
+
+    animateLeadIn(item);
+  }
+
+  /** Play the two plies before the position — the move before makes it legible. */
+  function animateLeadIn(item) {
+    const boardEl = $("modal-board");
+    if (!boardEl || !window.Chessground || !modalGround) return;
+    const leadIn = (item.lead_in || []).filter((p) => p.fen_before);
+    if (!leadIn.length) return;
+
+    const frames = leadIn.concat([{ fen_before: item.fen_before, move_uci: null }]);
+    let frame = 0;
+    const orientation = item.user_color === "black" ? "black" : "white";
+    const step = () => {
+      const current = frames[frame];
+      if (!current) return;
+      modalGround.set({
+        fen: current.fen_before,
+        orientation,
+        viewOnly: true,
+        lastMove: current.move_uci && current.move_uci.length >= 4
+          ? [current.move_uci.slice(0, 2), current.move_uci.slice(2, 4)]
+          : undefined,
+      });
+      frame += 1;
+      if (frame < frames.length) setTimeout(step, 550);
+      else if (item.best_uci && item.best_uci.length >= 4) {
+        // Land on the position with both moves drawn over it.
+        modalGround.set({
+          drawable: {
+            autoShapes: [
+              { orig: item.best_uci.slice(0, 2), dest: item.best_uci.slice(2, 4), brush: "green" },
+              ...(item.move_uci && item.move_uci !== item.best_uci
+                ? [{ orig: item.move_uci.slice(0, 2), dest: item.move_uci.slice(2, 4), brush: "red" }]
+                : []),
+            ],
+          },
+        });
+      }
+    };
+    step();
+  }
+
   function hideModal() {
     if (!modalOverlay) return;
     modalOverlay.classList.add("hidden");
     modalOverlay.setAttribute("aria-hidden", "true");
+    const nav = $("modal-evidence-nav");
+    if (nav) nav.classList.add("hidden");
+    const counters = $("modal-counters");
+    if (counters) counters.classList.add("hidden");
   }
 
   const modalCloseBtn = $("modal-close");
@@ -1641,6 +2158,11 @@
     currentRunMeta = meta || {};
     updateLauncher(metrics, meta);
     if (dashboard && !dashboard.classList.contains("hidden")) renderDashboard();
+    // Evidence lives in its own table, so it is fetched alongside the payload
+    // and re-rendered once it lands.
+    loadEvidence(activeRunId).then(() => {
+      if (dashboard && !dashboard.classList.contains("hidden")) renderDashboard();
+    });
   }
 
   function updateLauncher(metrics, meta) {

@@ -86,6 +86,46 @@ def _queue_full_tier_for_flags(
     return queued
 
 
+def _persist_insights_3_0(
+    connection: sqlite3.Connection,
+    *,
+    run_id: str,
+    user_id: int,
+    metrics: dict[str, Any],
+    sink: dict[str, Any],
+    time_class: str,
+) -> None:
+    """Store the evidence layer, error signatures and reference percentiles.
+
+    Best-effort: a finished run must never be lost because a supporting table
+    was unavailable, so failures here are swallowed and simply leave the report
+    without evidence chips rather than without a report.
+    """
+
+    from server.insights_evidence import persist_evidence
+    from server.insights_reference import attach_percentiles
+    from server.insights_signatures import persist_signatures
+
+    try:
+        persist_evidence(connection, run_id=run_id, bundles=sink.get("bundles") or {})
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        persist_signatures(connection, user_id=user_id, signed=sink.get("signatures") or [])
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        rating = ((metrics.get("pro") or {}).get("headline") or {}).get("rating") or {}
+        attach_percentiles(
+            metrics,
+            connection=connection,
+            time_class=time_class,
+            user_rating=rating.get("end") or rating.get("mean"),
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _trim_old_runs(connection: sqlite3.Connection, user_id: int) -> None:
     rows = connection.execute(
         "SELECT run_id FROM insight_runs WHERE user_id = ? ORDER BY created_at DESC",
@@ -263,7 +303,18 @@ def run_insights(
                 games_eligible=len(games),
             )
 
-        metrics = compute_tier1_metrics(connection, review_ids=review_ids)
+        evidence_sink: dict[str, Any] = {}
+        metrics = compute_tier1_metrics(
+            connection, review_ids=review_ids, evidence_sink=evidence_sink
+        )
+        _persist_insights_3_0(
+            connection,
+            run_id=run_id,
+            user_id=user_id,
+            metrics=metrics,
+            sink=evidence_sink,
+            time_class=time_class,
+        )
         flags_written = persist_practice_flags(
             connection,
             run_id=run_id,

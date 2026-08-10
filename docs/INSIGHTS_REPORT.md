@@ -287,3 +287,76 @@ should respond to filters has to add its inputs here, not only to the aggregate.
   existed need `python -m scripts.backfill_openings`.
 - **Anonymous use is not supported here.** Runs are per-account, since they are
   stored per user.
+
+---
+
+## 8. Insights 3.0 — what was added
+
+Implemented from [`insights-3.0-spec.md`](../insights-3.0-spec.md). Phases 1, 2, 3,
+5, 6 and 11 are complete, together with Phase 4's plumbing and Phase 7's
+simulator. Phases 8, 9, 10.4/10.5 and 12.3–12.5 are **not** built — see §9.
+
+### Evidence (Phase 1)
+
+Every leak and every new measurement carries **inline evidence chips** in its
+claim sentence. Clicking one opens the position before the move with the played
+move in red and the best move in green, animates the two plies of lead-in, and
+lists up to three moves where the same situation was handled *well* — so the
+report reads as an assessment rather than a prosecution.
+
+Exemplars are chosen by `impact × typicality × √recency`, never more than two
+from one game, because ranking by Δw alone surfaces the most dramatic move
+rather than the most representative one. Each leak also carries a ✓/✕ dispute
+control: a user disagreeing *while looking at the evidence* is the cleanest
+calibration signal available for the thresholds.
+
+### Rigour (Phases 2 and 3)
+
+No bucket reports a bare rate any more. Each carries its **expectation gap**
+(points above or below what the rating differences predicted), a **Wilson
+interval**, and a **shrunk** estimate that pulls small buckets toward the
+player's own baseline. A metric with `n < 8` renders greyed and cannot reach the
+leak board. Aggregates are recency-weighted with a 14-day half-life.
+
+### New measurements (Phases 5, 6, 11)
+
+| Card | Question it answers |
+|---|---|
+| Do you punish your opponents? | Half of rating is capitalizing on mistakes — this was never measured |
+| Offensive or defensive blindness | Tactics you failed to play, versus tactics you failed to see coming |
+| Fast vs slow blunders | Impulse or misjudgement — same Δw, opposite fix |
+| Impulsivity | Moves under 3s *with time on the clock*, blunder-matched within volatility deciles |
+| Metacognition | Do you know which positions are hard? (time vs difficulty correlation) |
+| Risk when winning vs losing | The mechanism behind "converted then lost" |
+| Stubbornness | Do you keep pushing a plan after it is refuted? |
+| Move-time distribution | Bimodal tempo is the fingerprint of the fast/slow split |
+| Tilt significance | Reported even when the answer is "indistinguishable from chance" |
+| Geometric blind spots | Backward/retreating moves, *controlled for difficulty* |
+| Recurring mistakes | Error signatures tracked across runs — once is noise, six times is a leak |
+
+### Simulator (Phase 7)
+
+"What if you fixed it?" re-scores your **actual games** with selected losses
+removed — never move under 5 seconds, eliminate blunders, cut endgame loss,
+punish at the median rate — and converts the lifted score through the same FIDE
+curve as "rating left on the board".
+
+---
+
+## 9. Insights 3.0 — what is not built
+
+Stated plainly so nobody assumes otherwise:
+
+- **Phase 4 corpus.** The schema, percentile lookup, rating-implied profile and
+  `scripts/build_reference_corpus.py` all exist, but no corpus is shipped.
+  Building one needs a Stockfish pass over a multi-player Lichess dump; the
+  builder deliberately refuses to pretend one player's games are a reference.
+  Until then percentile badges and the rating-implied profile stay hidden.
+- **Phase 8 (IRT).** Needs full-tier findability coverage. With ~5 upgraded
+  games per run, θ would carry error bars wide enough to be meaningless.
+- **Phase 9 (Shapley attribution).** Leaks remain *ranked, never summed*, which
+  the spec itself requires until this lands.
+- **Phase 10.1 (pawn-structure families)**, **10.4 (tablebase endgame types)**
+  and **10.5 (unsupervised clustering)**. 10.2 and 10.3 are built.
+- **Phase 12.3–12.5** (greatest hits, coach memo, annotated PGN). 12.1's
+  narrative ordering is partly served by the existing leak board.

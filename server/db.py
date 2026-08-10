@@ -432,6 +432,89 @@ CREATE TABLE IF NOT EXISTS position_cache (
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (zobrist, engine_version, maia_version, nodes)
 );
+
+-- ── Insights 3.0 ────────────────────────────────────────────────────────────
+
+-- Phase 1: provenance for a metric. Full support sets stay out of the metrics
+-- blob; only ranked exemplars land here, and `MetricResult.query` regenerates
+-- the rest on demand.
+CREATE TABLE IF NOT EXISTS metric_evidence (
+    run_id      TEXT NOT NULL REFERENCES insight_runs(run_id) ON DELETE CASCADE,
+    metric_key  TEXT NOT NULL,   -- dotted path into the metrics blob
+    kind        TEXT NOT NULL,   -- 'exemplar' | 'counter'
+    rank        INTEGER NOT NULL,
+    game_id     TEXT NOT NULL,
+    ply         INTEGER NOT NULL,
+    score       REAL,
+    caption     TEXT,
+    detail      TEXT,            -- JSON: fen, ucis, lead-in plies, raw features
+    PRIMARY KEY (run_id, metric_key, kind, rank)
+);
+CREATE INDEX IF NOT EXISTS idx_metric_evidence_lookup
+    ON metric_evidence(run_id, metric_key);
+
+-- Phase 1.7: a user disagreeing while looking at the evidence is the cleanest
+-- calibration signal available for the leak thresholds.
+CREATE TABLE IF NOT EXISTS leak_disputes (
+    user_id    INTEGER NOT NULL,
+    run_id     TEXT NOT NULL,
+    metric_key TEXT NOT NULL,
+    agreed     INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, run_id, metric_key)
+);
+
+-- Phase 6: signatures must outlive immutable runs — recurrence is a cross-run,
+-- cross-window property.
+CREATE TABLE IF NOT EXISTS error_signatures (
+    user_id      INTEGER NOT NULL,
+    signature    TEXT NOT NULL,
+    game_id      TEXT NOT NULL,
+    ply          INTEGER NOT NULL,
+    delta_w      REAL,
+    motif        TEXT,
+    piece_moved  TEXT,
+    piece_lost   TEXT,
+    phase        TEXT,
+    geometry     TEXT,
+    played_at    TIMESTAMP,
+    PRIMARY KEY (user_id, game_id, ply)
+);
+CREATE INDEX IF NOT EXISTS idx_error_sig
+    ON error_signatures(user_id, signature, played_at);
+
+-- Phase 6.4: did solving a practice set actually change the error rate?
+CREATE TABLE IF NOT EXISTS practice_efficacy (
+    user_id        INTEGER NOT NULL,
+    signature      TEXT NOT NULL,
+    solved_at      TIMESTAMP NOT NULL,
+    delta_w_before REAL,      -- rate per 100 moves, 30 days prior
+    delta_w_after  REAL,      -- rate per 100 moves, 30 days following
+    n_before       INTEGER,
+    n_after        INTEGER,
+    PRIMARY KEY (user_id, signature, solved_at)
+);
+
+-- Phase 4: static, versioned, shipped with the app — never recomputed per run.
+CREATE TABLE IF NOT EXISTS reference_distribution (
+    metric_key   TEXT NOT NULL,
+    rating_band  INTEGER NOT NULL,   -- lower bound, e.g. 1500
+    time_class   TEXT NOT NULL,
+    n_games      INTEGER NOT NULL,
+    p10 REAL, p25 REAL, p50 REAL, p75 REAL, p90 REAL,
+    mean REAL, sd REAL,
+    version      TEXT NOT NULL DEFAULT 'v1',
+    PRIMARY KEY (metric_key, rating_band, time_class, version)
+);
+
+-- Phase 12.2: the gap between self-perception and data is itself an insight.
+CREATE TABLE IF NOT EXISTS self_assessments (
+    user_id    INTEGER NOT NULL,
+    run_id     TEXT NOT NULL,
+    answers    TEXT NOT NULL,   -- JSON: question key -> answer
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, run_id)
+);
 """
 
 

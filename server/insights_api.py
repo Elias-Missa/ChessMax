@@ -285,6 +285,114 @@ def build_insights_router(app: FastAPI) -> APIRouter:
         ).fetchall()
         return {"run_id": run_id, "flags": [dict(f) for f in flags]}
 
+    def _owned_run(connection: sqlite3.Connection, run_id: str, user: sqlite3.Row) -> None:
+        row = connection.execute(
+            "SELECT run_id FROM insight_runs WHERE run_id = ? AND user_id = ?",
+            (run_id, user["id"]),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Insights run not found")
+
+    @router.get("/insights/{run_id}/evidence")
+    def get_evidence(
+        run_id: str,
+        metric_key: str | None = None,
+        connection: sqlite3.Connection = Depends(get_connection),
+        user: sqlite3.Row = Depends(current_user),
+    ) -> dict[str, object]:
+        """Phase 1: exemplars and counter-examples backing a metric.
+
+        Keyed by the dotted metric path, so one frontend component resolves any
+        metric and a new metric never needs new evidence UI.
+        """
+
+        from server.insights_evidence import load_evidence
+
+        _owned_run(connection, run_id, user)
+        return {
+            "run_id": run_id,
+            "evidence": load_evidence(connection, run_id=run_id, metric_key=metric_key),
+        }
+
+    class DisputeRequest(BaseModel):
+        metric_key: str = Field(max_length=200)
+        agreed: bool
+
+    @router.post("/insights/{run_id}/dispute")
+    def record_dispute(
+        run_id: str,
+        body: DisputeRequest,
+        connection: sqlite3.Connection = Depends(get_connection),
+        user: sqlite3.Row = Depends(current_user),
+    ) -> dict[str, object]:
+        """Phase 1.7: a user disagreeing *while looking at the evidence*.
+
+        Far cleaner as a calibration signal than raw outcome data, and it is the
+        direct answer to "leak thresholds are reasoned, not calibrated".
+        """
+
+        _owned_run(connection, run_id, user)
+        connection.execute(
+            "INSERT OR REPLACE INTO leak_disputes (user_id, run_id, metric_key, agreed) "
+            "VALUES (?, ?, ?, ?)",
+            (int(user["id"]), run_id, body.metric_key, 1 if body.agreed else 0),
+        )
+        connection.commit()
+        return {"run_id": run_id, "metric_key": body.metric_key, "agreed": body.agreed}
+
+    @router.get("/insights/{run_id}/disputes")
+    def list_disputes(
+        run_id: str,
+        connection: sqlite3.Connection = Depends(get_connection),
+        user: sqlite3.Row = Depends(current_user),
+    ) -> dict[str, object]:
+        _owned_run(connection, run_id, user)
+        rows = connection.execute(
+            "SELECT metric_key, agreed FROM leak_disputes WHERE user_id = ? AND run_id = ?",
+            (int(user["id"]), run_id),
+        ).fetchall()
+        return {"disputes": {r["metric_key"]: bool(r["agreed"]) for r in rows}}
+
+    class SelfAssessmentRequest(BaseModel):
+        answers: dict[str, str]
+
+    @router.post("/insights/{run_id}/self-assessment")
+    def save_self_assessment(
+        run_id: str,
+        body: SelfAssessmentRequest,
+        connection: sqlite3.Connection = Depends(get_connection),
+        user: sqlite3.Row = Depends(current_user),
+    ) -> dict[str, object]:
+        """Phase 12.2: the gap between self-perception and data is the insight."""
+
+        _owned_run(connection, run_id, user)
+        connection.execute(
+            "INSERT OR REPLACE INTO self_assessments (user_id, run_id, answers) "
+            "VALUES (?, ?, ?)",
+            (int(user["id"]), run_id, json.dumps(body.answers)),
+        )
+        connection.commit()
+        return {"run_id": run_id, "answers": body.answers}
+
+    @router.get("/insights/{run_id}/self-assessment")
+    def get_self_assessment(
+        run_id: str,
+        connection: sqlite3.Connection = Depends(get_connection),
+        user: sqlite3.Row = Depends(current_user),
+    ) -> dict[str, object]:
+        _owned_run(connection, run_id, user)
+        row = connection.execute(
+            "SELECT answers FROM self_assessments WHERE user_id = ? AND run_id = ?",
+            (int(user["id"]), run_id),
+        ).fetchone()
+        answers = {}
+        if row is not None:
+            try:
+                answers = json.loads(row["answers"])
+            except json.JSONDecodeError:
+                answers = {}
+        return {"run_id": run_id, "answers": answers}
+
     @router.post("/insights/{run_id}/recompute")
     def recompute_insights(
         run_id: str,

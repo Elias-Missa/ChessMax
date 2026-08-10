@@ -13,6 +13,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from server.insights_evidence import build_bundles, enrich_moves, strip_support
+from server.insights_measures import compute_measures
 from server.insights_pro import (
     castle_side as _castle_side,
     compute_pro_metrics,
@@ -21,6 +23,12 @@ from server.insights_pro import (
     parse_dt as _parse_dt,
     user_drew as _user_drew,
     user_won as _user_won,
+)
+from server.insights_signatures import (
+    build_signatures,
+    compute_geometry_blind_spots,
+    compute_piece_attribution,
+    compute_recurrence,
 )
 
 SESSION_GAP = timedelta(hours=2)
@@ -32,8 +40,14 @@ def compute_tier1_metrics(
     connection: Any,
     *,
     review_ids: list[str],
+    evidence_sink: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Aggregate Tier 1–3 metrics plus steering and practice flags."""
+    """Aggregate Tier 1–3 metrics plus steering, practice flags and Insights 3.0.
+
+    Pass ``evidence_sink`` to receive the Phase 1 evidence bundles and the raw
+    error signatures; the returned payload always has its support sets stripped,
+    since those belong in ``metric_evidence``, not in the metrics blob.
+    """
 
     empty = {
         "total_loss": 0.0,
@@ -159,6 +173,37 @@ def compute_tier1_metrics(
     scramble_decay = _compute_time_scramble_decay(moves_by_review)
     maia_nat = _compute_maia_naturalness(moves_by_review)
 
+    # ── Insights 3.0 ────────────────────────────────────────────────────────
+    # Flatten the moves once, with their game context attached; every new
+    # measurement filters this list instead of re-reading the database.
+    game_meta = {
+        str(r["review_id"]): {
+            "game_id": r["game_id"],
+            "user_color": r["user_color"],
+            "played_at": r["played_at"],
+            "opponent": (
+                r["black_name"] if (r["user_color"] or "white") == "white" else r["white_name"]
+            ),
+            "opponent_rating": (
+                r["black_rating"] if (r["user_color"] or "white") == "white" else r["white_rating"]
+            ),
+        }
+        for r in game_rows
+    }
+    enriched = enrich_moves(moves, game_meta)
+
+    wins = sum(1 for r in game_rows if _user_won(r["result"], r["user_color"] or "white"))
+    overall_win_rate = (wins / len(game_rows)) if game_rows else None
+    measures = compute_measures(
+        enriched,
+        after_loss=tier3.get("after_loss") or {},
+        overall_win_rate=overall_win_rate,
+    )
+    signed = build_signatures(enriched)
+    recurrence = compute_recurrence(signed)
+    geometry = compute_geometry_blind_spots(enriched)
+    piece_attribution = compute_piece_attribution(signed)
+
     pro, game_facts = compute_pro_metrics(
         game_rows,
         moves_by_review,
@@ -167,6 +212,10 @@ def compute_tier1_metrics(
         scramble=scramble_decay,
         tier3=tier3,
         missed_tactics=missed_tactics,
+        measures=measures,
+        recurrence=recurrence,
+        geometry=geometry,
+        piece_attribution=piece_attribution,
     )
 
     time_vs_crit = {
@@ -196,7 +245,7 @@ def compute_tier1_metrics(
         scramble_decay=scramble_decay,
     )
 
-    return {
+    payload = {
         "total_loss": total_loss,
         "fixable_loss": fixable_loss,
         "fixable_sample_size": len(full_reviews),
@@ -217,6 +266,18 @@ def compute_tier1_metrics(
         "ai_coach_takeaways": ai_takeaways,
         "pro": pro,
     }
+
+    if evidence_sink is not None:
+        evidence_sink["bundles"] = build_bundles(
+            enriched,
+            leaks=pro["leaks"],
+            measures=measures,
+            recurrence=recurrence,
+        )
+        evidence_sink["signatures"] = signed
+
+    # Support sets are for evidence selection only — never for the blob.
+    return strip_support(payload)
 
 
 def _compute_time_scramble_decay(moves_by_review: dict[str, list[Any]]) -> dict[str, Any]:
@@ -1153,7 +1214,22 @@ def recompute_run_metrics(connection: Any, run_id: str) -> dict[str, Any] | None
     if not review_ids:
         return None
 
-    metrics = compute_tier1_metrics(connection, review_ids=review_ids)
+    evidence_sink: dict[str, Any] = {}
+    metrics = compute_tier1_metrics(
+        connection, review_ids=review_ids, evidence_sink=evidence_sink
+    )
+    # A recompute regenerates evidence and percentiles too, so an older run
+    # gains the Insights 3.0 layer without re-running the engine.
+    from server.insights_run import _persist_insights_3_0
+
+    _persist_insights_3_0(
+        connection,
+        run_id=run_id,
+        user_id=int(row["user_id"]),
+        metrics=metrics,
+        sink=evidence_sink,
+        time_class=row["time_class"],
+    )
     trend = compute_run_trend(
         connection,
         user_id=row["user_id"],

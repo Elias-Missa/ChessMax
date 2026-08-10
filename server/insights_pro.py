@@ -27,6 +27,15 @@ from statistics import fmean, median, pstdev
 from typing import Any
 
 from chess_vol.game_review import move_accuracy
+from server.insights_stats import (
+    DISPLAY_FLOOR_N,
+    RECENCY_HALF_LIFE_DAYS,
+    performance_gap,
+    recency_weight,
+    shrink_buckets,
+    weighted_mean,
+    wilson_interval,
+)
 
 # ── Thresholds ────────────────────────────────────────────────────────────────
 # One place, so the UI copy and the maths can never drift apart.
@@ -172,6 +181,28 @@ def _score_pct(score: float, decided: int) -> float | None:
     """Score fraction in ``[0, 1]``; ``None`` when nothing was decided."""
 
     return (score / decided) if decided else None
+
+
+def bucket_performance(facts: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """Score for a subset of games, expectation-adjusted (spec Phase 2).
+
+    A raw win rate is partly a statement about who you happened to face, so no
+    bucket in the report reports one alone: every one carries the points gained
+    or lost against what the rating gaps predicted, its Wilson interval, and
+    whether it clears the display floor.
+    """
+
+    decided = [f for f in facts if f.get("points") is not None]
+    n = len(decided)
+    score = sum(float(f["points"]) for f in decided)
+    return {
+        "n": n,
+        "score": score,
+        "score_pct": _score_pct(score, n),
+        "ci": list(wilson_interval(score, n) or ()) or None,
+        "expectation": performance_gap(decided),
+        "below_floor": n < DISPLAY_FLOOR_N,
+    }
 
 
 def _int_or_none(value: Any) -> int | None:
@@ -425,6 +456,21 @@ def build_game_facts(
         })
 
     enriched.sort(key=lambda r: r.get("timestamp") or r.get("played_at") or "", reverse=True)
+
+    # Recency weights (spec Phase 2): a 30-day window is estimating *current*
+    # ability, so day 1 and day 30 should not count equally. Measured against
+    # the newest game in the run rather than wall-clock now, so recomputing an
+    # old run cannot silently reweight it.
+    newest = next((parse_dt(f["played_at"], None) for f in enriched if f["played_at"]), None)
+    for fact in enriched:
+        when = parse_dt(fact["played_at"], None)
+        days = (
+            max(0.0, (newest - when).total_seconds() / 86400.0)
+            if newest is not None and when is not None
+            else 0.0
+        )
+        fact["days_ago"] = days
+        fact["recency_weight"] = recency_weight(days)
     return enriched
 
 
@@ -498,6 +544,13 @@ def compute_headline(
         "expectancy": _expectancy(decided, expected, score),
         "accuracy": {
             "mean": _mean(accuracies),
+            # Recency-weighted alongside the plain mean: the report is estimating
+            # current ability, but the raw number stays available for comparison.
+            "weighted_mean": weighted_mean(
+                [f["accuracy"] for f in facts if f["accuracy"] is not None],
+                [f.get("recency_weight", 1.0) for f in facts if f["accuracy"] is not None],
+            ),
+            "half_life_days": RECENCY_HALF_LIFE_DAYS,
             "median": median(accuracies) if accuracies else None,
             "best": max(accuracies) if accuracies else None,
             "worst": min(accuracies) if accuracies else None,
@@ -865,11 +918,13 @@ def compute_opening_tree(facts: list[dict[str, Any]], *, min_games: int = 2) -> 
         lambda: {
             "n": 0, "score": 0.0, "decided": 0, "acc": [], "loss": [],
             "deviation": [], "blunders": 0, "moves": 0, "eco": "", "games": [],
+            "facts": [],
         }
     )
     for f in facts:
         key = (f["user_color"], f["opening_name"])
         g = groups[key]
+        g["facts"].append(f)
         g["n"] += 1
         g["eco"] = g["eco"] or f["eco"]
         if f["points"] is not None:
@@ -889,6 +944,7 @@ def compute_opening_tree(facts: list[dict[str, Any]], *, min_games: int = 2) -> 
 
     rows = []
     for (color, name), g in groups.items():
+        performance = bucket_performance(g["facts"])
         rows.append({
             "color": color,
             "opening": name,
@@ -900,12 +956,49 @@ def compute_opening_tree(facts: list[dict[str, Any]], *, min_games: int = 2) -> 
             "mean_deviation_ply": _mean([float(d) for d in g["deviation"]]),
             "blunders_per_100": 100 * _rate(g["blunders"], g["moves"]),
             "game_ids": g["games"][:20],
+            # Phase 2/3: never a bare rate.
+            "ci": performance["ci"],
+            "expectation": performance["expectation"],
+            "below_floor": performance["below_floor"],
         })
     rows.sort(key=lambda r: (-r["n"], r["opening"]))
 
-    scored = [r for r in rows if r["n"] >= min_games and r["score_pct"] is not None]
-    best = max(scored, key=lambda r: r["score_pct"]) if scored else None
-    worst = min(scored, key=lambda r: r["score_pct"]) if scored else None
+    # Phase 3.2: partial pooling. A 3-game opening barely moves off the player's
+    # own baseline; a 40-game one speaks for itself. This is what replaces the
+    # hand-tuned ``min_games`` gate for ranking purposes.
+    pooled = shrink_buckets(
+        [
+            {
+                "key": (r["color"], r["opening"]),
+                "value": r["score_pct"],
+                "n": r["n"],
+                # Score is in [0,1]; Bernoulli-ish variance is the right scale.
+                "variance": (r["score_pct"] or 0.5) * (1 - (r["score_pct"] or 0.5)),
+            }
+            for r in rows
+            if r["score_pct"] is not None
+        ],
+        value_key="value",
+    )
+    shrunk_by_key = {b["key"]: b["shrunk"] for b in pooled["buckets"]}
+    for r in rows:
+        r["shrunk_score_pct"] = shrunk_by_key.get((r["color"], r["opening"]))
+
+    # Rank on the shrunk estimate, and only among buckets clearing the floor —
+    # otherwise "worst opening" is reliably whichever one has three games.
+    scored = [
+        r for r in rows
+        if r["n"] >= min_games
+        and r["shrunk_score_pct"] is not None
+        and not r["below_floor"]
+    ]
+    if not scored:  # fall back to the raw gate when nothing clears the floor
+        scored = [r for r in rows if r["n"] >= min_games and r["score_pct"] is not None]
+        rank_key = "score_pct"
+    else:
+        rank_key = "shrunk_score_pct"
+    best = max(scored, key=lambda r: r[rank_key]) if scored else None
+    worst = min(scored, key=lambda r: r[rank_key]) if scored else None
 
     return {
         "rows": rows,
@@ -914,6 +1007,9 @@ def compute_opening_tree(facts: list[dict[str, Any]], *, min_games: int = 2) -> 
         "best": best,
         "worst": worst,
         "min_games": min_games,
+        "pooling_k": pooled["k"],
+        "baseline_score": pooled["global_mean"],
+        "ranked_on": rank_key,
         "distinct_openings": len({r["opening"] for r in rows}),
     }
 
@@ -928,9 +1024,9 @@ def compute_endgame(
     """Do endgames get reached, and are they converted from where they start?"""
 
     entry_buckets = {
-        "winning": {"label": "Entered winning", "n": 0, "score": 0.0, "decided": 0},
-        "equal": {"label": "Entered level", "n": 0, "score": 0.0, "decided": 0},
-        "losing": {"label": "Entered worse", "n": 0, "score": 0.0, "decided": 0},
+        "winning": {"label": "Entered winning", "n": 0, "score": 0.0, "decided": 0, "facts": []},
+        "equal": {"label": "Entered level", "n": 0, "score": 0.0, "decided": 0, "facts": []},
+        "losing": {"label": "Entered worse", "n": 0, "score": 0.0, "decided": 0, "facts": []},
     }
     reached = 0
     loss_sum = 0.0
@@ -957,6 +1053,7 @@ def compute_endgame(
         b["n"] += 1
         b["score"] += f["points"]
         b["decided"] += 1
+        b["facts"].append(f)
 
     rows = [
         {
@@ -964,6 +1061,10 @@ def compute_endgame(
             "label": b["label"],
             "n": b["n"],
             "score_pct": _score_pct(b["score"], b["decided"]),
+            **{
+                k: v for k, v in bucket_performance(b["facts"]).items()
+                if k in ("ci", "expectation", "below_floor")
+            },
         }
         for key, b in entry_buckets.items()
     ]
@@ -992,12 +1093,20 @@ def compute_resilience(facts: list[dict[str, Any]]) -> dict[str, Any]:
             "score_pct": _score_pct(sum(f["points"] for f in winning), len(winning)),
             "points_dropped": dropped,
             "threshold": WINNING_WIN_PROB,
+            **{
+                k: v for k, v in bucket_performance(winning).items()
+                if k in ("ci", "expectation", "below_floor")
+            },
         },
         "comeback": {
             "n": len(losing),
             "score_pct": _score_pct(rescued, len(losing)),
             "points_rescued": rescued,
             "threshold": LOSING_WIN_PROB,
+            **{
+                k: v for k, v in bucket_performance(losing).items()
+                if k in ("ci", "expectation", "below_floor")
+            },
         },
         "missed_wins": {
             "n": sum(1 for f in decisive if f["points"] < 1.0),
@@ -1118,6 +1227,8 @@ def compute_leaks(
     scramble: dict[str, Any],
     tier3: dict[str, Any],
     missed_tactics: dict[str, Any],
+    measures: dict[str, Any] | None = None,
+    recurrence: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Rank every detectable leak by win% lost per game.
 
@@ -1312,6 +1423,119 @@ def compute_leaks(
                     evidence=row,
                 ))
 
+    measures = measures or {}
+
+    # 10. Failing to punish the opponent's errors (spec 5.1). Half of rating is
+    # capitalizing on mistakes, and this was the product's largest blind spot.
+    punish = measures.get("punish") or {}
+    if punish.get("opportunities", 0) >= DISPLAY_FLOOR_N and punish.get("punish_rate") is not None:
+        missed_swing = punish["swing_available"] - punish["swing_kept"]
+        impact = missed_swing / n_games
+        if punish["punish_rate"] < 0.6 and impact >= 1.0:
+            leaks.append(_leak(
+                "punish",
+                "You don't punish your opponents' mistakes",
+                f"They erred {punish['opportunities']} times and you converted "
+                f"{punish['punish_rate'] * 100:.0f}% of it — "
+                f"{missed_swing:.0f} win% handed back.",
+                impact,
+                ceiling=ceiling,
+                practice="mistakes",
+                section="opponents",
+                evidence={"opportunities": punish["opportunities"]},
+            ))
+
+    # 11. Impulse moves with time on the clock (spec 11.1).
+    impulse = measures.get("impulsivity") or {}
+    if (
+        impulse.get("n", 0) >= DISPLAY_FLOOR_N
+        and impulse.get("blunder_rate_impulsive") is not None
+        and impulse.get("blunder_rate_deliberate") is not None
+    ):
+        excess = impulse["blunder_rate_impulsive"] - impulse["blunder_rate_deliberate"]
+        impact = excess * BLUNDER_DELTA_W * (impulse["impulsive"] / n_games)
+        if excess > 0 and impact >= 1.0:
+            leaks.append(_leak(
+                "impulse",
+                "You move before you look",
+                f"{impulse['impulse_rate'] * 100:.0f}% of your unhurried moves go in under "
+                f"{impulse['threshold_seconds']:.0f}s, and they blunder "
+                f"{impulse['blunder_rate_impulsive'] * 100:.1f}% of the time versus "
+                f"{impulse['blunder_rate_deliberate'] * 100:.1f}% on comparable slow moves.",
+                impact,
+                ceiling=ceiling,
+                practice="mistakes",
+                section="mind",
+                evidence={"impulsive": impulse["impulsive"]},
+            ))
+
+    # 12. Sunk-cost persistence after a refuted plan (spec 11.4).
+    stubborn = measures.get("stubbornness") or {}
+    if (
+        stubborn.get("refuted_plans", 0) >= DISPLAY_FLOOR_N
+        and (stubborn.get("persistence_rate") or 0) > 0.4
+    ):
+        impact = stubborn["extra_delta_w"] / n_games
+        leaks.append(_leak(
+            "stubbornness",
+            "You keep pushing plans that have already been refuted",
+            f"In {stubborn['episodes']} of {stubborn['refuted_plans']} refuted plans you "
+            f"moved the same piece again within {stubborn['window']} moves, costing a further "
+            f"{stubborn['extra_delta_w']:.0f} win%.",
+            impact,
+            ceiling=ceiling,
+            practice="defense",
+            section="mind",
+            evidence={"episodes": stubborn["episodes"]},
+        ))
+
+    # 13. Bad trading (spec 5.4).
+    trades = measures.get("trades") or {}
+    if trades.get("captures", 0) >= DISPLAY_FLOOR_N and (trades.get("gap") or 0) > 0.8:
+        impact = trades["gap"] * (trades["captures"] / n_games)
+        leaks.append(_leak(
+            "trades",
+            "Your exchanges leak value",
+            f"Captures cost {trades['capture_delta_w_per_move']:.2f} win% per move versus "
+            f"{trades['other_delta_w_per_move']:.2f} on everything else.",
+            impact,
+            ceiling=ceiling,
+            practice="mistakes",
+            section="opponents",
+            evidence={"captures": trades["captures"]},
+        ))
+
+    # 14. Recurring error signatures (spec 6.3). The strongest available signal:
+    # a mistake made once is noise, the same mistake six times is a leak.
+    for cluster in (recurrence or {}).get("recurring", [])[:3]:
+        impact = cluster["total_delta_w"] / n_games
+        span = (
+            f" since {cluster['first_seen']}" if cluster.get("first_seen") else ""
+        )
+        leaks.append(_leak(
+            f"signature:{cluster['signature']}",
+            f"The same mistake, {cluster['n']} times",
+            f"You keep {cluster['label']} — {cluster['n']} times{span}, "
+            f"costing {cluster['total_delta_w']:.0f} win% in total.",
+            impact,
+            ceiling=ceiling,
+            practice="mistakes",
+            section="recurrence",
+            evidence={"signature": cluster["signature"], "n": cluster["n"]},
+        ))
+
+    # A leak whose supporting moves share a signature is more actionable than one
+    # whose don't, so recurrence boosts the ranking rather than only adding rows.
+    recurring_sections = {
+        c["parts"].get("phase") for c in (recurrence or {}).get("recurring", [])
+    }
+    for leak in leaks:
+        if leak["id"] == "phase" and leak["evidence"].get("phase") in recurring_sections:
+            leak["recurrence_boost"] = True
+            leak["impact_win_pct_per_game"] = round(
+                min(ceiling, leak["impact_win_pct_per_game"] * 1.15), 1
+            )
+
     leaks.sort(key=lambda l: -l["impact_win_pct_per_game"])
     return leaks
 
@@ -1414,11 +1638,19 @@ def compute_pro_metrics(
     scramble: dict[str, Any],
     tier3: dict[str, Any],
     missed_tactics: dict[str, Any],
+    measures: dict[str, Any] | None = None,
+    recurrence: dict[str, Any] | None = None,
+    geometry: dict[str, Any] | None = None,
+    piece_attribution: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Compute the whole professional layer.
 
     Returns ``(pro_metrics, game_facts)``. ``game_facts`` is returned separately
     because it doubles as the client's filtering substrate.
+
+    The Insights 3.0 measurement modules (``insights_measures``,
+    ``insights_signatures``) import constants from here, so they are computed by
+    the caller and passed in — the dependency runs one way only.
     """
 
     facts = build_game_facts(game_rows, moves_by_review)
@@ -1441,6 +1673,8 @@ def compute_pro_metrics(
         scramble=scramble,
         tier3=tier3,
         missed_tactics=missed_tactics,
+        measures=measures,
+        recurrence=recurrence,
     )
     strengths = compute_strengths(
         facts,
@@ -1463,6 +1697,11 @@ def compute_pro_metrics(
             "blunder_timing": blunder_timing,
             "leaks": leaks,
             "strengths": strengths,
+            # Insights 3.0 additions.
+            "measures": measures or {},
+            "recurrence": recurrence or {},
+            "geometry": geometry or {},
+            "piece_attribution": piece_attribution or {},
         },
         facts,
     )

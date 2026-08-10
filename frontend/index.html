@@ -1562,6 +1562,9 @@
             <button type="button" class="dash-rail-btn" data-section="games" role="tab" aria-selected="false">
               <span class="dash-rail-icon">▦</span><span>Games</span>
             </button>
+            <button type="button" class="dash-rail-btn" data-section="habits" role="tab" aria-selected="false">
+              <span class="dash-rail-icon">◑</span><span>Opponents &amp; habits</span>
+            </button>
             <button type="button" class="dash-rail-btn" data-section="practice" role="tab" aria-selected="false">
               <span class="dash-rail-icon">◉</span><span>Practice set</span>
             </button>
@@ -1609,6 +1612,16 @@
                   </div>
                   <div class="chart-container chart-container--tall"><canvas id="chart-timeline"></canvas></div>
                 </article>
+                <article class="dash-card dash-card--span2" id="card-recurrence">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">Once is noise — the same mistake repeatedly is a leak</p>
+                      <h3>Recurring mistakes</h3>
+                    </div>
+                    <span class="dash-badge" title="Tracked across every run, not just this one">All runs</span>
+                  </div>
+                  <div id="body-recurrence"></div>
+                </article>
                 <article class="dash-card" id="card-trend">
                   <div class="dash-card-head">
                     <div>
@@ -1617,6 +1630,15 @@
                     </div>
                   </div>
                   <div id="body-trend"></div>
+                </article>
+                <article class="dash-card dash-card--span3" id="card-simulator">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">Re-scored across your actual games</p>
+                      <h3>What if you fixed it?</h3>
+                    </div>
+                  </div>
+                  <div class="simulator" id="body-simulator"></div>
                 </article>
               </div>
             </section>
@@ -1906,6 +1928,115 @@
               </div>
             </section>
 
+            <!-- Opponents & habits (Insights 3.0, phases 5 and 11) -->
+            <section class="dash-section hidden" id="dash-section-habits">
+              <div class="dash-callout" id="habits-callout"></div>
+              <div class="dash-grid">
+                <article class="dash-card dash-card--span2">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">Roughly half of rating is capitalizing on mistakes</p>
+                      <h3>Do you punish your opponents?</h3>
+                    </div>
+                    <span class="dash-badge">All games</span>
+                  </div>
+                  <div id="body-punish"></div>
+                </article>
+                <article class="dash-card">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">Tactics missed vs tactics unseen</p>
+                      <h3>Offensive or defensive blindness</h3>
+                    </div>
+                    <span class="dash-badge">All games</span>
+                  </div>
+                  <div id="body-blindness"></div>
+                </article>
+                <article class="dash-card">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">Impulse or misjudgement</p>
+                      <h3>Fast vs slow blunders</h3>
+                    </div>
+                    <span class="dash-badge">All games</span>
+                  </div>
+                  <div id="body-blunder-tempo"></div>
+                </article>
+                <article class="dash-card">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">Moves under 3s with time on the clock</p>
+                      <h3>Impulsivity</h3>
+                    </div>
+                    <span class="dash-badge">All games</span>
+                  </div>
+                  <div id="body-impulsivity"></div>
+                </article>
+                <article class="dash-card">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">Do you know which positions are hard?</p>
+                      <h3>Metacognition</h3>
+                    </div>
+                    <span class="dash-badge">All games</span>
+                  </div>
+                  <div class="chart-container"><canvas id="chart-metacognition"></canvas></div>
+                  <div id="body-metacognition"></div>
+                </article>
+                <article class="dash-card dash-card--span2">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">Sharpness and tempo by how the game stands</p>
+                      <h3>Risk when winning vs losing</h3>
+                    </div>
+                    <span class="dash-badge">All games</span>
+                  </div>
+                  <div id="body-state-risk"></div>
+                </article>
+                <article class="dash-card">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">Persisting with a refuted plan</p>
+                      <h3>Stubbornness</h3>
+                    </div>
+                    <span class="dash-badge">All games</span>
+                  </div>
+                  <div id="body-stubbornness"></div>
+                </article>
+                <article class="dash-card dash-card--span2">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">Your tempo fingerprint</p>
+                      <h3>Move-time distribution</h3>
+                    </div>
+                    <span class="dash-badge">All games</span>
+                  </div>
+                  <div class="chart-container"><canvas id="chart-move-times"></canvas></div>
+                  <div id="body-move-times"></div>
+                </article>
+                <article class="dash-card">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">Tested, not assumed</p>
+                      <h3>Tilt significance</h3>
+                    </div>
+                    <span class="dash-badge">All games</span>
+                  </div>
+                  <div id="body-tilt-test"></div>
+                </article>
+                <article class="dash-card dash-card--span3">
+                  <div class="dash-card-head">
+                    <div>
+                      <p class="eyebrow">Controlled for difficulty</p>
+                      <h3>Geometric blind spots &amp; piece attribution</h3>
+                    </div>
+                    <span class="dash-badge">All games</span>
+                  </div>
+                  <div id="body-geometry"></div>
+                </article>
+              </div>
+            </section>
+
             <!-- Practice set -->
             <section class="dash-section hidden" id="dash-section-practice">
               <div class="dash-callout" id="practice-callout"></div>
@@ -1947,6 +2078,8 @@
                 <div class="meta-row"><span>Volatility</span><strong id="modal-volatility">—</strong></div>
               </div>
               <p class="modal-caption" id="modal-caption"></p>
+              <div class="modal-evidence-nav hidden" id="modal-evidence-nav"></div>
+              <div class="modal-counters hidden" id="modal-counters"></div>
               <div class="modal-actions">
                 <button type="button" id="modal-btn-practice" class="insights-primary">Practice in trainer</button>
                 <button type="button" id="modal-btn-review" class="insights-ghost">Open game review</button>
