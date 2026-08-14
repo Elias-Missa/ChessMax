@@ -66,6 +66,43 @@ class TestAnalyzePgn:
         with pytest.raises(ValueError):
             analyze_pgn("", engine)
 
+    def test_engine_pool_matches_the_serial_walk(self) -> None:
+        """Spreading plies over a pool is a scheduling change, not a maths one.
+
+        Every ply is an independent search, so the pooled walk must produce the
+        same rows in the same order — otherwise a review's numbers would depend
+        on how many engine processes happened to be available.
+        """
+        pgn = load_pgn("sample_game")
+        serial = analyze_pgn(pgn, FakeEngine(producer=_flat_producer), max_plies=12)
+        pool = [FakeEngine(producer=_flat_producer) for _ in range(4)]
+        pooled = analyze_pgn(pgn, pool[0], engines=pool, max_plies=12)
+
+        def rows(results: list[PlyResult]) -> list[tuple[int, str, str, int, float | None]]:
+            return [
+                (r.ply, r.san, r.fen_before, r.eval_cp, r.volatility.score)
+                for r in results
+            ]
+
+        assert rows(pooled) == rows(serial)
+        # The whole game was still analysed, once per ply, across the pool.
+        assert sum(e.call_count for e in pool) == 12
+
+    def test_engine_pool_reports_progress_once_per_ply(self) -> None:
+        pgn = load_pgn("sample_game")
+        pool = [FakeEngine(producer=_flat_producer) for _ in range(3)]
+        seen: list[tuple[int, int]] = []
+
+        analyze_pgn(
+            pgn, pool[0], engines=pool, max_plies=6,
+            progress=lambda done, total, _r: seen.append((done, total)),
+        )
+
+        # Completion order is not ply order, but every ply reports exactly once
+        # and the counter still climbs 1..n.
+        assert sorted(done for done, _ in seen) == [1, 2, 3, 4, 5, 6]
+        assert {total for _, total in seen} == {6}
+
     def test_fen_before_and_after_are_consistent(self) -> None:
         pgn = load_pgn("sample_game")
         engine = FakeEngine(producer=_flat_producer)

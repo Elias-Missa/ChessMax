@@ -56,6 +56,10 @@ function matchRoute(pathname) {
   }
   const exact = ROUTES.find((r) => r.path === path);
   if (exact) return exact;
+  if (path.startsWith("/insights")) {
+    const base = ROUTES.find((r) => r.path === "/insights");
+    return { ...base, path };
+  }
   // Prefix match for unknown training/game-review children → hub defaults
   if (path.startsWith("/training")) {
     return ROUTES.find((r) => r.path === "/training");
@@ -140,7 +144,7 @@ function applyRoute(route, { push = false } = {}) {
     if (window.__puzzlesDeactivate) window.__puzzlesDeactivate();
     if (window.__eloSetActive) window.__eloSetActive(false);
     if (window.__evalSetActive) window.__evalSetActive(false);
-    if (window.__insightsSetActive) window.__insightsSetActive(true);
+    if (window.__insightsSetActive) window.__insightsSetActive(true, route.path);
   }
 
   requestAnimationFrame(() => {
@@ -220,6 +224,23 @@ window.__onVolTabChange = (tabId) => {
     navigating = false;
   }
 };
+
+// The sub-nav and the full-screen overlays all sit directly under the header.
+// Hard-coding that offset in CSS left a sliver of scrolling content showing
+// through whenever the header measured taller than the guess, so publish the
+// real height and let everything key off it.
+function publishHeaderHeight() {
+  const header = document.querySelector(".shell-header");
+  if (!header) return;
+  const h = Math.round(header.getBoundingClientRect().height);
+  if (h > 0) document.documentElement.style.setProperty("--shell-header-h", `${h}px`);
+}
+
+publishHeaderHeight();
+window.addEventListener("resize", publishHeaderHeight);
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(publishHeaderHeight).catch(() => {});
+}
 
 window.__shellNavigate = navigateToPath;
 window.__shellSwitchTab = switchShellTab;

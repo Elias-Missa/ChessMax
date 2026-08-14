@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import chess
+import chess.polyglot
 
 from chess_vol.config import (
     DECIDED_ALT_CP,
@@ -460,6 +461,36 @@ def _compute_raw(
     )
 
 
+class _MemoEngine:
+    """Per-call transposition memo in front of an engine.
+
+    Scoped to a single :func:`compute_volatility` call, so nothing leaks
+    between positions. It sits *below* the ``analyses`` counter, which keeps
+    reporting the recursion's logical budget rather than how many searches the
+    memo happened to save.
+    """
+
+    __slots__ = ("_inner", "_seen")
+
+    def __init__(self, inner: EngineLike) -> None:
+        self._inner = inner
+        self._seen: dict[tuple[int, int, int], list[dict[str, Any]]] = {}
+
+    def analyse(
+        self,
+        board: chess.Board,
+        depth: int = DEFAULT_DEPTH,
+        multipv: int = DEFAULT_MULTIPV,
+    ) -> list[dict[str, Any]]:
+        key = (chess.polyglot.zobrist_hash(board), depth, multipv)
+        hit = self._seen.get(key)
+        if hit is not None:
+            return hit
+        infos = self._inner.analyse(board, depth=depth, multipv=multipv)
+        self._seen[key] = infos
+        return infos
+
+
 # --------------------------------------------------------------------------- #
 # Public API                                                                   #
 # --------------------------------------------------------------------------- #
@@ -524,9 +555,15 @@ def compute_volatility(
     s_fn = scale_fn if scale_fn is not None else default_scale_fn
     k_value = k if k is not None else (K_SHALLOW if recurse_depth == 0 else K_DEEP)
 
+    # Deep mode walks the top-k tree, where move orders transpose constantly
+    # (…Nf3 d4 and …d4 Nf3 reach the same position). One analysis per distinct
+    # position per budget is enough — the engine is deterministic for a given
+    # position, so this returns exactly what a re-search would.
+    search_engine = _MemoEngine(engine) if recurse_depth > 0 else engine
+
     raw = _compute_raw(
         board=board,
-        engine=engine,
+        engine=search_engine,
         depth=depth,
         multipv=multipv,
         recurse_depth=recurse_depth,

@@ -6,9 +6,13 @@
   --eval-line: rgba(255, 255, 255, 0.09);
   --eval-fg: #eef1f3;
   --eval-fg-dim: #98a0aa;
+  /* Every other primary action on the site is Razer green; this tab used to
+   * be the one screen with a blue CTA. Blue is kept only where it carries
+   * meaning — marking *your* side against the opponent's. */
   --eval-blue: #38bdf8;
   --eval-green: #44d62c;
   --eval-green-dk: #33a821;
+  --eval-ink: #06140a;
   --eval-red: #e0443a;
   --eval-gold: #e8a53d;
   color: var(--eval-fg);
@@ -40,8 +44,8 @@
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.12em;
-  color: #0c1a24;
-  background: var(--eval-blue);
+  color: var(--eval-ink);
+  background: var(--eval-green);
   padding: 3px 10px;
   border-radius: 999px;
 }
@@ -86,13 +90,13 @@
   appearance: none;
   border: none;
   cursor: pointer;
-  background: linear-gradient(180deg, var(--eval-blue), #0284c7);
-  color: #071722;
+  background: linear-gradient(180deg, var(--eval-green), var(--eval-green-dk));
+  color: var(--eval-ink);
   font-size: 16px;
   font-weight: 800;
   padding: 13px 26px;
   border-radius: 12px;
-  box-shadow: 0 2px 0 #0369a1, 0 4px 14px rgba(0, 0, 0, 0.4), 0 0 18px rgba(56, 189, 248, 0.25);
+  box-shadow: 0 2px 0 #26801a, 0 4px 14px rgba(0, 0, 0, 0.4), 0 0 18px rgba(68, 214, 44, 0.25);
   transition: transform 0.08s ease, filter 0.12s ease;
 }
 .eval-primary:hover { filter: brightness(1.08); }
@@ -129,7 +133,7 @@
   height: 34px;
   border-radius: 50%;
   border: 3px solid rgba(255, 255, 255, 0.12);
-  border-top-color: var(--eval-blue);
+  border-top-color: var(--eval-green);
   animation: eval-spin 0.8s linear infinite;
 }
 .eval-spinner--sm { width: 16px; height: 16px; border-width: 2px; display: inline-block; vertical-align: middle; }
@@ -199,7 +203,7 @@
 
 .eval-guessbox input[type="range"] {
   width: 100%;
-  accent-color: var(--eval-blue);
+  accent-color: var(--eval-green);
   cursor: pointer;
 }
 .eval-guess-scale {

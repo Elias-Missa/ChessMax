@@ -63,7 +63,9 @@
   /* Board shrinks to fit the viewport height so the whole board + tabs
      are visible above the fold. Reserves ~180px for header + tabs + margin;
      floored at 320px so it never collapses awkwardly. */
-  --board-size: clamp(320px, calc(100vh - 180px), 520px);
+  /* Key off the measured header instead of a flat 180px guess, and use dvh so
+     mobile browser chrome counts. */
+  --board-size: clamp(320px, calc(100dvh - var(--shell-header-h, 3.7rem) - 140px), 520px);
   --bar-width: 26px;
   --panel-w: 500px;
 
@@ -200,6 +202,168 @@ main.app.app--game-wide {
 .board-row.board-row--game-wide .heat-band {
   margin-left: 10px;
   margin-right: 10px;
+}
+
+/* The editor stacks a piece palette above *and* below the board plus the
+ * eval readout, so it needs a shorter board than the review tab to keep the
+ * whole editing surface on one screen. */
+body[data-tab="editor"] #vol-root {
+  --board-size: clamp(280px, calc(100dvh - var(--shell-header-h, 3.7rem) - 260px), 520px);
+}
+
+/* ── Game Review landing ─────────────────────────────────────────────────
+ * Before a PGN exists there is nothing to look at: the board showed the
+ * start position, the eval and volatility rails read "—", and the only
+ * control that mattered sat below the fold behind a collapsed drawer. This
+ * replaces the board row until a game is loaded, and hands the drawer back
+ * to the side panel the moment one is.
+ */
+.review-landing {
+  display: none;
+  width: 100%;
+  max-width: 1060px;
+  margin: 0 auto;
+  gap: clamp(24px, 4vw, 56px);
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 420px);
+  align-items: start;
+  /* Sit in the optical centre rather than clinging to the sub-nav with a
+     screenful of nothing underneath. */
+  align-content: center;
+  min-height: calc(100dvh - var(--shell-header-h, 3.7rem) - 12rem);
+}
+
+#vol-root.vol-game-empty .review-landing { display: grid; }
+#vol-root.vol-game-empty .board-row { display: none; }
+
+.review-landing-kicker {
+  margin: 0 0 10px;
+  color: var(--green);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.review-landing-title {
+  margin: 0;
+  font-size: clamp(1.9rem, 3.4vw, 2.7rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+  color: var(--fg);
+}
+
+.review-landing-sub {
+  margin: 14px 0 0;
+  max-width: 44ch;
+  color: var(--fg-2);
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.review-landing-points {
+  list-style: none;
+  margin: 28px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.review-landing-points li {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+}
+
+.review-landing-points li:last-child { border-bottom: 1px solid var(--border); }
+
+.review-landing-points span {
+  color: var(--green);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.review-landing-points b {
+  display: block;
+  color: var(--fg);
+  font-size: 0.95rem;
+  margin-bottom: 2px;
+}
+
+.review-landing-points div {
+  color: var(--fg-3);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.review-landing-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* In the landing the drawer is the whole point — never collapsed, no
+   disclosure chrome, and bigger targets than the docked side-panel version. */
+.review-landing .pgn-drawer { border-radius: 16px; }
+.review-landing .pgn-drawer.collapsed .pgn-drawer-body { display: flex; }
+.review-landing .pgn-drawer-toggle { pointer-events: none; padding: 14px 16px 6px; }
+.review-landing .pgn-drawer-chevron { display: none; }
+
+.review-landing .pgn-drawer-summary {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-4);
+}
+
+.review-landing .pgn-drawer-body { gap: 10px; padding: 0 16px 16px; }
+.review-landing .pgn-drawer .pgn-input { min-height: 128px; font-size: 12px; }
+.review-landing .pgn-drawer .btn { padding: 10px 14px; font-size: 13px; }
+
+/* Board preferences and Stop belong to a game in progress, not to the blank
+   page you are staring at before one exists. */
+.review-landing #btnFlipGame,
+.review-landing #btnStopPgn,
+.review-landing .pgn-drawer-toggles .toggle:not(:first-child) { display: none; }
+
+.review-landing .pgn-drawer-toggles .drawer-select { display: none; }
+
+.review-landing .pgn-drawer-toggles { padding-top: 8px; }
+
+.review-landing-alt {
+  margin: 0;
+  color: var(--fg-4);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.review-landing-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--green-hi);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.review-landing-link:hover { text-decoration: underline; }
+
+@media (max-width: 860px) {
+  .review-landing {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 560px;
+  }
+}
+
+@media (max-width: 620px) {
+  .review-landing-points { display: none; }
 }
 
 /* ── Board row (board + side panel) ─────────────────────────── */
@@ -672,13 +836,19 @@ main.app.app--game-wide {
   flex-shrink: 0;
 }
 
+/* The rail is --bar-width (26px) wide and "EVAL" at 9.5px + 0.07em tracking
+ * measured 26.7px, so the label spilled past its own column and read as a
+ * clipped fragment beside the board. Fit it to the rail. */
 .bar-tag {
-  font-size: 9.5px;
+  font-size: 8.5px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.01em;
   color: var(--fg-3);
   user-select: none;
+  max-width: 100%;
+  text-align: center;
+  line-height: 1.2;
 }
 
 .bar-readout {
@@ -819,6 +989,46 @@ main.app.app--game-wide {
   opacity: 0.95;
 }
 
+/* The review arrow is the engine's move, drawn purple via an inline fill; only
+   the arrow body takes pointer events so the squares under it stay clickable. */
+.arrow-layer .arrow-hit {
+  pointer-events: auto;
+  cursor: help;
+  transition: opacity 0.12s ease;
+}
+
+.arrow-layer .arrow-hit:hover {
+  opacity: 1;
+}
+
+.arrow-tip {
+  position: absolute;
+  z-index: 20;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 220px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(12, 13, 16, 0.96);
+  border: 1px solid rgba(168, 85, 247, 0.45);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.6);
+  color: var(--fg-2);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.arrow-tip.hidden {
+  display: none;
+}
+
+.arrow-tip strong {
+  color: #d8b4fe;
+  font-size: 12px;
+}
+
 /* ── Game left panel (engine lines) ─────────────────────────── */
 .game-left-panel {
   width: 300px;
@@ -909,6 +1119,38 @@ main.app.app--game-wide {
 
 .pgn-drawer-toggles .toggle {
   margin: 0;
+}
+
+/* Labelled <select> living among the drawer's toggles. */
+.drawer-select {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 2px;
+}
+
+.drawer-select-label {
+  color: var(--fg-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.drawer-select select {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--border-1, rgba(255, 255, 255, 0.12));
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 12px;
+}
+
+.drawer-select select:focus {
+  outline: none;
+  border-color: rgba(168, 85, 247, 0.6);
 }
 
 /* ── Stats bar (compact row of 3 cards) ────────────────────── */
@@ -3283,17 +3525,19 @@ body[data-tab="game"] #vol-root .panel-status {
 }
 
 /* Prominent "best move to find" header — the findability below describes how
-   hard THIS move is to find, not the move that was actually played. */
+   hard THIS move is to find, not the move that was actually played. The purple
+   matches the board arrow so the panel and the arrow read as one object. */
 .review-find-bestmove {
+  --best-move: #a855f7;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding: 9px 12px;
   border-radius: 10px;
-  background: var(--green-soft);
-  border: 1px solid rgba(68, 214, 44, 0.30);
-  box-shadow: inset 0 0 16px rgba(68, 214, 44, 0.08);
+  background: rgba(168, 85, 247, 0.10);
+  border: 1px solid rgba(168, 85, 247, 0.38);
+  box-shadow: inset 0 0 18px rgba(168, 85, 247, 0.10);
 }
 
 .review-find-bestmove-label {
@@ -3309,9 +3553,29 @@ body[data-tab="game"] #vol-root .panel-status {
   line-height: 1;
   font-weight: 800;
   letter-spacing: 0.01em;
-  color: var(--green-hi);
-  text-shadow: 0 0 12px rgba(68, 214, 44, 0.4);
+  color: #d8b4fe;
   font-family: var(--font-mono);
+  animation: review-find-glow 2.6s ease-in-out infinite;
+}
+
+@keyframes review-find-glow {
+  0%, 100% { text-shadow: 0 0 8px rgba(168, 85, 247, 0.35); }
+  50%      { text-shadow: 0 0 18px rgba(168, 85, 247, 0.85); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .review-find-bestmove-san {
+    animation: none;
+    text-shadow: 0 0 12px rgba(168, 85, 247, 0.5);
+  }
+}
+
+/* One line of scope so the meter below is never read as "your move". */
+.review-find-scope {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--fg-3);
 }
 
 .review-find-head {

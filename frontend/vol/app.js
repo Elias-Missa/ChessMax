@@ -113,6 +113,8 @@
   const soundsToggle = $("#soundsToggle");
   const soundsToggleEditor = $("#soundsToggleEditor");
   const arrowLayer = $("#arrowLayer");
+  const arrowTip = $("#arrowTip");
+  const findModeSelect = $("#findModeSelect");
   const topLinesList = $("#topLinesList");
   const topLinesListGame = $("#topLinesListGame");
   const boardFrameEl = document.querySelector(".board-frame");
@@ -165,6 +167,7 @@
     if (appMain) appMain.classList.toggle("app--game-wide", name === "game");
     if (boardRow) boardRow.classList.toggle("board-row--game-wide", name === "game");
     document.body.dataset.tab = name;
+    syncReviewLanding();
     if (window.__onVolTabChange) window.__onVolTabChange(name);
     paintLastMoveDecor();
     // Re-show conditional children inside game-panel only if they have data
@@ -192,9 +195,11 @@
   // ChessMax shell hook: the top-level tab bar drives this app's panels.
   window.__volSetTab = setTab;
 
-  // Deep-link hook: Insights links straight at one game by its `games.game_id`.
+  // Deep-link hook: Insights links straight at one game by its `games.game_id`,
+  // optionally at the exact ply the mistake was played on (1-based, as stored
+  // in `review_moves.ply`).
   // Returns whether the game was found, so the caller can report a miss.
-  window.__volOpenGameById = async (gameId) => {
+  window.__volOpenGameById = async (gameId, opts) => {
     if (!gameId || !window.ChessVolLibrary) return false;
     try {
       const games = await window.ChessVolLibrary.getAllGames();
@@ -204,7 +209,7 @@
           "That game isn't in your library yet — open it from Library to analyze it.";
         return false;
       }
-      await openSavedGame(match);
+      await openSavedGame(match, opts);
       return true;
     } catch (err) {
       gameStatus.textContent = `Could not open that game: ${err.message || err}`;
@@ -653,6 +658,50 @@
 
   function arrowEnabled() {
     return !!(arrowToggle && arrowToggle.checked);
+  }
+
+  // ── Findability display rule ──────────────────────────────────────────── //
+  // "always" shows the panel on every ply; a numeric value only shows it when
+  // the best move was worth at least that many win% more than the move played,
+  // so a run of accurate moves doesn't get narrated with a difficulty score for
+  // a move the player already found.
+  const FIND_MODE_KEY = "cvb.findability.mode";
+  function findMode() {
+    return (findModeSelect && findModeSelect.value) || "always";
+  }
+  if (findModeSelect) {
+    try {
+      const saved = window.localStorage.getItem(FIND_MODE_KEY);
+      if (saved) findModeSelect.value = saved;
+    } catch (_) { /* private mode */ }
+    findModeSelect.addEventListener("change", () => {
+      try { window.localStorage.setItem(FIND_MODE_KEY, findModeSelect.value); }
+      catch (_) { /* quota */ }
+      if (currentPlyIdx >= 0 && plyResults[currentPlyIdx]) {
+        renderCurrentMoveReview(
+          currentPlyIdx,
+          plyResults[currentPlyIdx],
+          loadedPlies[currentPlyIdx] || {},
+        );
+      }
+    });
+  }
+
+  /** Win% the best move would have gained over the move actually played. */
+  function movePenaltyPct(review) {
+    if (!review || typeof review.expected_points_loss !== "number") return null;
+    return Math.abs(review.expected_points_loss) * 100;
+  }
+
+  function shouldShowFindability(review) {
+    const mode = findMode();
+    if (mode === "always") return true;
+    const threshold = Number(mode);
+    if (!Number.isFinite(threshold)) return true;
+    const penalty = movePenaltyPct(review);
+    // Unknown penalty (shallow rows, book moves) errs towards showing it.
+    if (penalty == null) return true;
+    return penalty >= threshold;
   }
 
   // ── Sound effects ─────────────────────────────────────────────────────── //
@@ -1356,13 +1405,64 @@
   function clearArrow() {
     if (!arrowLayer) return;
     while (arrowLayer.firstChild) arrowLayer.removeChild(arrowLayer.firstChild);
+    hideArrowTip();
   }
 
-  // The review arrow always points at the BEST move, so it is always drawn in
-  // the accent green ("play this") — never tinted by how the actual move scored,
-  // which previously made the best-move arrow turn red after a blunder.
+  // The review arrow always points at the BEST move, so it is drawn in its own
+  // colour — never tinted by how the actual move scored, which previously made
+  // the best-move arrow turn red after a blunder. Purple reads as "the engine's
+  // move", distinct from both the green accent and the classification badges.
+  const BEST_ARROW_COLOR = "#a855f7";
   function currentReviewArrowColor() {
-    return "#44d62c";
+    return BEST_ARROW_COLOR;
+  }
+
+  // ── Best-move arrow tooltip ───────────────────────────────────────────── //
+  // Hovering the arrow answers the question the findability panel raises:
+  // how hard was *this* move to find?
+  let arrowTipText = "";
+
+  function hideArrowTip() {
+    if (!arrowTip) return;
+    arrowTip.classList.add("hidden");
+    arrowTip.setAttribute("aria-hidden", "true");
+  }
+
+  function showArrowTip(event) {
+    if (!arrowTip || !arrowTipText || !boardFrameEl) return;
+    arrowTip.innerHTML = arrowTipText;
+    arrowTip.classList.remove("hidden");
+    arrowTip.setAttribute("aria-hidden", "false");
+    const rect = boardFrameEl.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    arrowTip.style.left = `${Math.max(4, Math.min(rect.width - 4, x))}px`;
+    arrowTip.style.top = `${Math.max(4, y - 14)}px`;
+  }
+
+  /** Build the hover text from the current ply's best move + findability. */
+  function setArrowTipFrom(review, findability) {
+    const bits = [];
+    const san = review && review.best_move_san;
+    bits.push(`<strong>Best move${san ? `: ${escapeHtml(san)}` : ""}</strong>`);
+    if (findability && typeof findability.score === "number") {
+      const band = findability.band ? ` · ${escapeHtml(findability.band)}` : "";
+      bits.push(`<span>Findability ${findability.score}/100${band}</span>`);
+      if (typeof findability.personal === "number") {
+        bits.push(
+          `<span>You'd find it ${Math.round(findability.personal * 100)}% of the time</span>`,
+        );
+      }
+    } else {
+      bits.push(`<span>Findability not computed for this move</span>`);
+    }
+    arrowTipText = bits.join("");
+  }
+
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, (c) => (
+      { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+    ));
   }
 
   function drawArrow(uci, color) {
@@ -1429,6 +1529,15 @@
     clearArrow();
     arrowLayer.appendChild(shaft);
     arrowLayer.appendChild(headPoly);
+
+    // The layer itself stays click-through; only the arrow body is hoverable,
+    // so the tooltip never blocks a square underneath it.
+    for (const el of [shaft, headPoly]) {
+      el.classList.add("arrow-hit");
+      el.addEventListener("mouseenter", showArrowTip);
+      el.addEventListener("mousemove", showArrowTip);
+      el.addEventListener("mouseleave", hideArrowTip);
+    }
   }
 
   function refreshArrow() {
@@ -2065,10 +2174,12 @@
         ? `${(review.expected_points_loss * 100).toFixed(1)} pts`
         : "—";
     const findability = result.ply.findability;
+    const showFind = shouldShowFindability(review);
     // The findability panel now surfaces the best move prominently, so the small
     // "Top engine move" row is only needed as a fallback when findability is
-    // gated out (book / terminal / decided positions).
-    if (!findability && review.best_move_san && review.best_move_san !== entry.san) {
+    // gated out (book / terminal / decided positions) or muted by the display
+    // rule — the best move must never disappear entirely.
+    if ((!findability || !showFind) && review.best_move_san && review.best_move_san !== entry.san) {
       reviewBestMove.textContent = review.best_move_san;
       reviewBestMoveRow.classList.remove("hidden");
     } else {
@@ -2076,7 +2187,10 @@
     }
     const findPanel = ensureFindabilityPanel();
     if (findPanel && ReviewUI && ReviewUI.renderFindability) {
-      ReviewUI.renderFindability(findPanel, findability, review.best_move_san);
+      ReviewUI.renderFindability(findPanel, showFind ? findability : null, review.best_move_san, {
+        playedSan: entry.san || result.ply.san || "",
+        penaltyPct: movePenaltyPct(review),
+      });
     }
     reviewMoveCard.classList.remove("hidden");
   }
@@ -2167,6 +2281,13 @@
       renderVolBar(r.ply.volatility, r.ply.classification);
       renderTopLines(r.ply.volatility, turn);
       const tl = r.ply.volatility.top_lines;
+      setArrowTipFrom(
+        {
+          best_move_san:
+            (review && review.best_move_san) || (tl && tl[0] ? tl[0].san : null),
+        },
+        r.ply.findability,
+      );
       setTopMove(tl && tl[0] ? tl[0].uci : null);
       if (boardFrameEl) {
         if (review && review.classification) {
@@ -2180,6 +2301,7 @@
       renderCurrentMoveReview(idx, r, entry);
     } else {
       clearTopLinesLists();
+      arrowTipText = "";
       setTopMove(null);
       if (boardFrameEl) delete boardFrameEl.dataset.reviewClass;
       if (reviewMoveCard) reviewMoveCard.classList.add("hidden");
@@ -2244,19 +2366,43 @@
     };
   }
 
+  // ── Landing state ───────────────────────────────────────────────────── //
+  // Until a game exists the board row has nothing to show, so the landing
+  // replaces it. The drawer itself is *moved* between the two hosts rather
+  // than duplicated, so there is one PGN input and one set of listeners.
+  // Elements are looked up per call: setTab can fire before this point in the
+  // file has executed, and module-scope consts would still be in the TDZ.
+  function syncReviewLanding() {
+    const root = document.getElementById("vol-root");
+    const drawer = document.getElementById("pgnDrawer");
+    if (!root || !drawer) return;
+    const empty = document.body.dataset.tab === "game" && !(loadedPlies && loadedPlies.length);
+    root.classList.toggle("vol-game-empty", empty);
+    const host = empty
+      ? document.getElementById("reviewLandingForm")
+      : document.querySelector(".game-right-panel");
+    if (host && drawer.parentElement !== host) host.insertBefore(drawer, host.firstChild);
+  }
+
   function collapsePgnDrawer(pgnText, plyCount) {
     if (!pgnDrawer) return;
     const { white, black } = extractPgnNames(pgnText || "");
     const moves = Math.ceil((plyCount || 0) / 2);
     pgnDrawerSummary.textContent = `${white} vs ${black} · ${moves} move${moves !== 1 ? "s" : ""}`;
     pgnDrawer.classList.add("collapsed");
+    syncReviewLanding();
   }
 
   function expandPgnDrawer() {
     if (!pgnDrawer) return;
     pgnDrawer.classList.remove("collapsed");
     pgnDrawerSummary.textContent = "Load a PGN to begin";
+    syncReviewLanding();
   }
+
+  document.querySelectorAll("[data-vol-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => setTab(btn.dataset.volTab));
+  });
 
   function togglePgnDrawer() {
     if (!pgnDrawer) return;
@@ -2393,8 +2539,15 @@
       });
       renderMoveList();
     }
+    // `onDone` refreshes the move list and heat band but never touches the
+    // chart's datasets, so the durable path drew an empty eval graph. Rebuild
+    // it from the report — also what makes the graph switch from shallow to
+    // full values when the upgrade lands.
+    destroyChart();
     ensureChart();
     chartWrap.classList.remove("hidden");
+    for (const ply of report.plies || []) appendChartPoint(ply, true);
+    chart.update("none");
     onDone({
       mode: upgrading ? `${mode} · placeholder` : mode,
       plies_analysed: (report.plies || []).length,
@@ -2779,7 +2932,7 @@
     }));
   }
 
-  async function openSavedGame(summary) {
+  async function openSavedGame(summary, opts) {
     // The list omits the heavy report; fetch the full record on open.
     let game = summary;
     if (!game.report) {
@@ -2812,15 +2965,71 @@
     ensureChart();
     chartWrap.classList.remove("hidden");
     for (const entry of plyResults) {
-      appendChartPoint(entry.ply);
+      appendChartPoint(entry.ply, true);
       updateMoveVol(entry.ply.ply - 1, entry.ply.volatility && entry.ply.volatility.score);
       updateMoveClassification(entry.ply.ply - 1, entry.ply.review || entry.ply.classification);
     }
+    if (chart) chart.update("none");
     recomputeGameStats();
     gameStatus.textContent = `Opened saved game: ${game.metadata.white} - ${game.metadata.black}`;
     setTab("game");
-    if (loadedPlies.length) jumpToPly(0);
+    const target = plyIndexFromOpts(opts, loadedPlies.length);
+    if (loadedPlies.length) jumpToPly(target);
     if (chart) requestAnimationFrame(() => chart.resize());
+    // Insights ingests at shallow tier, so most games arrive here with no
+    // findability at all — the panel would simply never appear. Upgrade in the
+    // background, exactly like the PGN "Analyze" path does, and re-apply when
+    // the full walk lands.
+    void maybeUpgradeStoredReview(game, target);
+  }
+
+  /** Clamp a 1-based `review_moves.ply` deep link to a `loadedPlies` index. */
+  function plyIndexFromOpts(opts, total) {
+    const raw = opts && Number(opts.ply);
+    if (!Number.isFinite(raw) || raw <= 0 || !total) return 0;
+    return Math.max(0, Math.min(total - 1, Math.round(raw) - 1));
+  }
+
+  async function maybeUpgradeStoredReview(game, targetIdx) {
+    const tier = game.depthTier || (game.report && game.report.mode);
+    if (tier !== "shallow") return;
+    const pgn = (game.pgn || "").trim();
+    if (!pgn) return;
+    // The full walk must be stored under the same side the shallow row used,
+    // or the upgraded review grades the opponent's moves instead.
+    if (game.userColor) document.body.dataset.reviewColor = game.userColor;
+    // Share `pgnController` so the existing Stop button cancels this too.
+    if (pgnController) pgnController.abort();
+    const ctrl = new AbortController();
+    pgnController = ctrl;
+    reviewPollCancelled = false;
+    btnStopPgn.disabled = false;
+    plyStatus.classList.remove("hidden");
+    const base = gameStatus.textContent;
+    gameStatus.textContent = `${base} — upgrading to full analysis for findability…`;
+    try {
+      const full = await startAndPollReview(pgn, "full", { signal: ctrl.signal });
+      if (ctrl.signal.aborted) return;
+      if (!full) {
+        // 401/403 — anonymous session; the shallow row is all there is.
+        gameStatus.textContent = `${base} — sign in to unlock findability.`;
+        return;
+      }
+      applyPersistedReview(full);
+      if (loadedPlies.length) {
+        jumpToPly(Math.min(targetIdx, loadedPlies.length - 1));
+      }
+      gameStatus.textContent = `${base} — full analysis ready.`;
+    } catch (err) {
+      if (err && err.name === "AbortError") {
+        gameStatus.textContent = `${base} — upgrade stopped.`;
+        return;
+      }
+      gameStatus.textContent = `${base} — findability unavailable (${err.message || err}).`;
+    } finally {
+      btnStopPgn.disabled = true;
+      if (pgnController === ctrl) pgnController = null;
+    }
   }
 
   function parseSseChunk(chunk) {
@@ -3144,7 +3353,9 @@
     return chart;
   }
 
-  function appendChartPoint(plyJson) {
+  // `defer` skips the per-point redraw: bulk loads (a stored review) push every
+  // ply and repaint once, instead of running 160 chart updates in a row.
+  function appendChartPoint(plyJson, defer) {
     ensureChart();
     const label = `${plyJson.ply}. ${plyJson.san}`;
     chart.data.labels.push(label);
@@ -3154,7 +3365,7 @@
     const turn = plyJson.fen_before.split(/\s+/)[1] || "w";
     const cpWhite = turn === "b" ? -plyJson.eval_cp : plyJson.eval_cp;
     chart.data.datasets[1].data.push(cpWhite);
-    chart.update("none");
+    if (!defer) chart.update("none");
 
     // D3 — heat band: append a cell
     const hb = document.getElementById("heatBand");

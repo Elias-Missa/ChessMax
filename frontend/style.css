@@ -186,10 +186,305 @@
 .layout {
   display: grid;
   gap: 1.5rem;
-  grid-template-columns: minmax(320px, 640px) minmax(300px, 400px);
+  /* `auto` lets the board column shrink to whatever `--board-size` resolves to.
+     A fixed 640px track left the board floating in a half-empty card whenever
+     the viewport height (not the width) was the binding constraint. */
+  grid-template-columns: auto minmax(300px, 400px);
   justify-content: center;
   padding: 0.5rem clamp(1rem, 4vw, 3rem) 3rem;
 }
+
+/* Stats has nothing to do with a position, so the board was pure decoration
+ * squeezing the numbers into half the page. */
+#puzzles-root[data-view="stats"] .board-panel { display: none; }
+
+#puzzles-root[data-view="stats"] .layout {
+  grid-template-columns: minmax(0, 860px);
+}
+
+/* The opening filter drives puzzle selection and nothing else — it lives in the
+   hero, which is itself puzzle-feed-only, so hiding the hero hides the filter. */
+#puzzles-root:not([data-view="train"]) .puzzle-hero { display: none; }
+
+/* The hero says everything the tagline said, and better. */
+#puzzles-root[data-view="train"] .topbar { display: none; }
+
+/* ── Puzzles home hero ───────────────────────────────────────────────── */
+
+.puzzle-hero {
+  position: relative;
+  overflow: hidden;
+  /* Capped so the hero doesn't span 1800px above a ~1000px board row. */
+  margin: 0.4rem auto 0.9rem;
+  max-width: 1400px;
+  padding: clamp(1.1rem, 2.4vw, 1.9rem) clamp(1.1rem, 2.4vw, 2rem);
+  width: calc(100% - 2 * clamp(1rem, 4vw, 3rem));
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(68, 214, 44, 0.10), transparent 55%),
+    linear-gradient(180deg, var(--panel) 0%, var(--bg) 100%);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+}
+
+/* Soft accent bloom behind the copy; decorative only. */
+.puzzle-hero-glow {
+  position: absolute;
+  top: -45%;
+  right: -10%;
+  width: 46%;
+  height: 190%;
+  pointer-events: none;
+  background: radial-gradient(circle, var(--accent-glow), transparent 62%);
+  filter: blur(26px);
+  opacity: 0.55;
+}
+
+.puzzle-hero-body {
+  position: relative;
+  display: grid;
+  gap: clamp(1rem, 3vw, 2.4rem);
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 1fr);
+  align-items: start;
+  margin-top: 0.6rem;
+}
+
+@media (max-width: 900px) {
+  .puzzle-hero-body { grid-template-columns: minmax(0, 1fr); }
+}
+
+.puzzle-hero-eyebrow {
+  align-items: center;
+  color: var(--accent);
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 800;
+  gap: 0.5rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.puzzle-hero-pulse {
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 var(--accent-glow);
+  height: 7px;
+  width: 7px;
+  animation: puzzlePulse 2.4s ease-out infinite;
+}
+
+@keyframes puzzlePulse {
+  0%   { box-shadow: 0 0 0 0 rgba(68, 214, 44, 0.55); }
+  70%  { box-shadow: 0 0 0 9px rgba(68, 214, 44, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(68, 214, 44, 0); }
+}
+
+.puzzle-hero-title {
+  font-size: clamp(1.5rem, 3.1vw, 2.35rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.puzzle-hero-title em {
+  color: var(--accent);
+  font-style: normal;
+  text-shadow: 0 0 22px rgba(68, 214, 44, 0.35);
+}
+
+.puzzle-hero-sub {
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0.7rem 0 0;
+  max-width: 62ch;
+}
+
+.puzzle-hero-sub strong {
+  color: var(--text);
+}
+
+.puzzle-hero-steps {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  list-style: none;
+  margin: 1.15rem 0 0;
+  padding: 0;
+}
+
+.puzzle-hero-steps li {
+  align-items: flex-start;
+  background: color-mix(in srgb, var(--panel-soft) 85%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.7rem 0.8rem;
+}
+
+.puzzle-step-n {
+  align-items: center;
+  background: rgba(68, 214, 44, 0.14);
+  border: 1px solid rgba(68, 214, 44, 0.35);
+  border-radius: 8px;
+  color: var(--accent);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  height: 22px;
+  justify-content: center;
+  width: 22px;
+}
+
+.puzzle-hero-steps strong {
+  display: block;
+  font-size: 0.86rem;
+}
+
+.puzzle-hero-steps p {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  margin: 0.2rem 0 0;
+}
+
+/* The two outcomes, side by side — the product thesis in one glance. */
+.puzzle-hero-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.puzzle-hero-split {
+  display: grid;
+  gap: 0.4rem;
+  grid-template-rows: 1fr auto 1fr;
+}
+
+.puzzle-hero-face {
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+}
+
+.puzzle-hero-face[data-kind="quiet"] {
+  border-left-color: var(--warn);
+}
+
+.puzzle-hero-face-tag {
+  color: var(--muted);
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.puzzle-hero-face strong {
+  display: block;
+  font-size: 1rem;
+  margin-top: 0.25rem;
+}
+
+.puzzle-hero-face p {
+  color: var(--muted);
+  font-size: 0.79rem;
+  line-height: 1.45;
+  margin: 0.3rem 0 0;
+}
+
+.puzzle-hero-vs {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* Its own row above the two-column body: absolute positioning collided with
+   the step cards at the bottom and with the aside at the top-right. */
+.puzzle-hero-top {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  position: relative;
+}
+
+/* ID-scoped so it beats `#puzzles-root button`, which would otherwise paint
+   this a solid accent-green pill. */
+#puzzles-root .puzzle-hero-toggle {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: none;
+  color: var(--muted);
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.3rem 0.8rem;
+}
+
+#puzzles-root .puzzle-hero-toggle:hover:not(:disabled) {
+  background: rgba(68, 214, 44, 0.10);
+  border-color: rgba(68, 214, 44, 0.5);
+  color: var(--text);
+  filter: none;
+}
+
+/* Collapsed: keep the eyebrow + headline as a slim banner, drop the rest. */
+.puzzle-hero.is-collapsed {
+  padding-bottom: clamp(1.1rem, 2.4vw, 1.6rem);
+}
+
+.puzzle-hero.is-collapsed .puzzle-hero-sub,
+.puzzle-hero.is-collapsed .puzzle-hero-steps,
+.puzzle-hero.is-collapsed .puzzle-hero-split {
+  display: none;
+}
+
+.puzzle-hero.is-collapsed .puzzle-hero-body {
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.puzzle-hero.is-collapsed .puzzle-hero-title {
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
+}
+
+/* Short screens: the intro must not cost the board more room than it has to.
+   Laptops are the common case, so this is the shape most people will see. */
+@media (max-height: 940px) {
+  .puzzle-hero {
+    margin-bottom: 0.55rem;
+    padding-bottom: clamp(0.85rem, 1.7vw, 1.15rem);
+    padding-top: clamp(0.85rem, 1.7vw, 1.15rem);
+  }
+
+  .puzzle-hero-title { font-size: clamp(1.2rem, 2.2vw, 1.65rem); }
+  .puzzle-hero-sub { font-size: 0.86rem; margin-top: 0.5rem; }
+  .puzzle-hero-body { margin-top: 0.45rem; }
+  .puzzle-hero-steps { gap: 0.45rem; margin-top: 0.75rem; }
+  .puzzle-hero-steps li { padding: 0.5rem 0.62rem; }
+  .puzzle-hero-face { padding: 0.55rem 0.78rem; }
+  .puzzle-hero-face strong { font-size: 0.92rem; }
+  .puzzle-hero-aside { gap: 0.55rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .puzzle-hero-pulse { animation: none; }
+}
+
+/* Without this the panel stretches to the board's height and trails a tall
+   empty box under the last card. */
+#puzzles-root .side-panel { align-self: start; }
 
 .board-panel,
 #puzzles-root .side-panel {
@@ -204,7 +499,7 @@
   padding: clamp(0.75rem, 2vw, 1.25rem);
   position: relative;
   position: sticky;
-  top: 76px;
+  top: calc(var(--shell-header-h, 3.7rem) + 1rem);
   transition: box-shadow 0.25s ease;
 }
 
@@ -241,11 +536,26 @@
   border-radius: 999px;
 }
 
+/* The board is square, so capping its width by the leftover viewport height
+ * caps its height too. Without this it is sized purely by column width and a
+ * 760px board pushes the rank you are looking at — and every control — below
+ * the fold on a laptop. */
 .board {
   aspect-ratio: 1;
   border-radius: 12px;
+  /* Chessground rounds itself down to a multiple of 8; centring keeps the
+   * leftover few pixels even on both sides instead of all on one edge. */
+  display: grid;
+  place-items: center;
+  margin-inline: auto;
   overflow: hidden;
-  width: 100%;
+  /* `--puzzle-hero-h` is measured by app.js: the hero sits above this row, so
+   * without subtracting it the board keeps its full-height size and gets pushed
+   * off the bottom of a laptop screen. It is 0 on every view but the feed. */
+  width: clamp(330px, calc(
+    100dvh - var(--shell-header-h, 3.7rem) - var(--puzzle-hero-h, 0px) - 10.5rem
+  ), 640px);
+  max-width: 100%;
 }
 
 #puzzles-root .side-panel {
@@ -327,11 +637,141 @@
   border-color: var(--bad);
 }
 
-.hidden {
+/* `.hidden` is a utility and must outrank layout rules. Plain `.hidden` lost to
+   any later single-class rule that sets `display` — `.playout-start`
+   (`display: grid`, defined further down) is why the "Play it out" control was
+   visible on every puzzle despite the JS adding `.hidden` to it. */
+.hidden,
+#puzzles-root .hidden {
   display: none;
 }
 
 /* ── Train view ──────────────────────────────────────────────────────── */
+
+.puzzle-rating-card {
+  align-items: center;
+  background:
+    radial-gradient(90% 160% at 100% 0%, rgba(68, 214, 44, 0.10), transparent 60%),
+    var(--panel-soft);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.puzzle-rating-label {
+  color: var(--muted);
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.puzzle-rating-row {
+  align-items: baseline;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.puzzle-rating-row strong {
+  font-size: 2.05rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+.puzzle-rating-delta {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.puzzle-rating-delta[data-dir="up"] { color: var(--good); opacity: 1; }
+.puzzle-rating-delta[data-dir="down"] { color: var(--bad); opacity: 1; }
+
+.puzzle-turn {
+  align-items: center;
+  background: var(--panel-softer);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 0.45rem;
+  flex-shrink: 0;
+  padding: 0.4rem 0.8rem;
+}
+
+.puzzle-turn-dot {
+  border-radius: 50%;
+  height: 12px;
+  width: 12px;
+}
+
+.puzzle-turn[data-side="w"] .puzzle-turn-dot {
+  background: #f0f2f5;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+
+/* A near-black dot on a near-black chip is invisible — it needs the ring. */
+.puzzle-turn[data-side="b"] .puzzle-turn-dot {
+  background: #14161a;
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.45);
+}
+
+.puzzle-turn-text {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.puzzle-turn-text strong {
+  color: var(--text);
+}
+
+.puzzle-session {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.puzzle-session > div {
+  background: var(--panel-soft);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 0.55rem 0.7rem;
+  text-align: center;
+}
+
+.puzzle-session .label {
+  color: var(--muted);
+  display: block;
+  font-size: 0.63rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.puzzle-session strong {
+  display: block;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+  margin-top: 0.15rem;
+}
+
+.puzzle-session > div[data-hot="true"] strong {
+  color: var(--accent);
+  text-shadow: 0 0 14px rgba(68, 214, 44, 0.4);
+}
+
+.puzzle-prompt-card #status {
+  font-size: 0.95rem;
+}
+
+.puzzle-prompt-card #next-button {
+  margin-top: 0.7rem;
+  width: 100%;
+}
 
 #puzzles-root .top-lines {
   list-style: none;
@@ -777,7 +1217,10 @@
 
 /* ── Responsive ──────────────────────────────────────────────────────── */
 
-@media (max-width: 900px) {
+/* 900px dropped to one column while both tracks still fit comfortably
+ * (320 + 300 + gap + page padding ≈ 715px), which stacked the controls a
+ * full board-height below the board for no reason. */
+@media (max-width: 820px) {
   .topbar {
     align-items: stretch;
     flex-direction: column;

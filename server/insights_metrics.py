@@ -13,6 +13,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from server.insights_narrative import build_narrative
 from server.insights_pro import (
     castle_side as _castle_side,
     compute_pro_metrics,
@@ -52,6 +53,7 @@ def compute_tier1_metrics(
         "maia_naturalness": {},
         "game_explorer": [],
         "ai_coach_takeaways": [],
+        "narrative": {},
         "pro": {
             "headline": {},
             "move_quality": {},
@@ -66,6 +68,7 @@ def compute_tier1_metrics(
         },
     }
     if not review_ids:
+        empty["narrative"] = build_narrative(empty)
         return empty
 
     placeholders = ",".join("?" for _ in review_ids)
@@ -111,7 +114,7 @@ def compute_tier1_metrics(
 
     game_rows = connection.execute(
         f"""
-        SELECT r.review_id, r.game_id, r.user_color, r.accuracy, g.result,
+        SELECT r.review_id, r.game_id, r.user_color, r.accuracy, r.loss_type, g.result,
                g.white_name, g.black_name, g.white_rating, g.black_rating,
                g.eco, g.opening_name, g.played_at, g.pgn,
                AVG(m.volatility) AS mean_vol,
@@ -196,7 +199,7 @@ def compute_tier1_metrics(
         scramble_decay=scramble_decay,
     )
 
-    return {
+    payload = {
         "total_loss": total_loss,
         "fixable_loss": fixable_loss,
         "fixable_sample_size": len(full_reviews),
@@ -217,6 +220,8 @@ def compute_tier1_metrics(
         "ai_coach_takeaways": ai_takeaways,
         "pro": pro,
     }
+    payload["narrative"] = build_narrative(payload)
+    return payload
 
 
 def _compute_time_scramble_decay(moves_by_review: dict[str, list[Any]]) -> dict[str, Any]:
@@ -1146,10 +1151,26 @@ def recompute_run_metrics(connection: Any, run_id: str) -> dict[str, Any] | None
     game_ids = [g["game_id"] for g in game_rows]
     placeholders = ",".join("?" for _ in game_ids)
     reviews = connection.execute(
-        f"SELECT review_id FROM reviews WHERE user_id = ? AND game_id IN ({placeholders})",
+        f"SELECT review_id, game_id, depth_tier, status FROM reviews "
+        f"WHERE user_id = ? AND game_id IN ({placeholders})",
         [row["user_id"]] + game_ids,
     ).fetchall()
-    review_ids = [r["review_id"] for r in reviews]
+    # A game upgraded to full tier keeps its shallow review as well, so this
+    # used to return more reviews than the run has games — double-counting
+    # every upgraded game and listing the same miss twice in the practice set.
+    # One review per game: complete beats pending, full beats shallow.
+    def _rank(r: Any) -> tuple[int, int]:
+        return (
+            1 if str(r["status"]) == "complete" else 0,
+            1 if str(r["depth_tier"]) == "full" else 0,
+        )
+
+    best: dict[str, Any] = {}
+    for review in reviews:
+        gid = str(review["game_id"])
+        if gid not in best or _rank(review) > _rank(best[gid]):
+            best[gid] = review
+    review_ids = [str(r["review_id"]) for r in best.values()]
     if not review_ids:
         return None
 

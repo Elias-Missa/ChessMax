@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
@@ -11,7 +12,7 @@ import pytest
 
 from server import db
 from server.game_identity import pgn_san_hash, resolve_game_id
-from server.insights_metrics import compute_tier1_metrics
+from server.insights_metrics import compute_tier1_metrics, recompute_run_metrics
 from server.insights_run import run_insights
 from server.reviews import (
     analyze_and_store,
@@ -154,6 +155,62 @@ def test_tier1_metrics_taxonomy(connection: sqlite3.Connection) -> None:
     assert metrics["loss_taxonomy"]["counts"]["cliff"] == 1
     assert metrics["fixable_sample_size"] == 0
     assert metrics["time_vs_criticality"]["avg_time_high_vol"] == 3
+
+
+def test_recompute_counts_an_upgraded_game_once(connection: sqlite3.Connection) -> None:
+    """A full-tier upgrade leaves the shallow review in place — the recompute
+    must pick one review per game or every upgraded game is counted twice."""
+
+    user_id = int(connection.execute("SELECT id FROM users").fetchone()["id"])
+    game_id = "chesscom:upgraded"
+    upsert_game(
+        connection,
+        game_id=game_id,
+        source="chesscom",
+        pgn=SHORT_PGN,
+        meta={"white_result": "win", "black_result": "checkmated", "date": "2026-06-01"},
+    )
+    for review_id, tier in (("r-shallow", "shallow"), ("r-full", "full")):
+        connection.execute(
+            """
+            INSERT INTO reviews (
+                review_id, user_id, game_id, user_color, depth_tier, status,
+                total_loss, loss_type, progress
+            ) VALUES (?, ?, ?, 'white', ?, 'complete', 40, 'cliff', 1)
+            """,
+            (review_id, user_id, game_id, tier),
+        )
+        connection.execute(
+            """
+            INSERT INTO review_moves (
+                review_id, ply, san, is_user_move, phase, win_prob, delta_w,
+                volatility, time_spent
+            ) VALUES (?, 3, 'Nf3', 1, 'middlegame', 0.50, 30, 70, 3)
+            """,
+            (review_id,),
+        )
+    connection.execute(
+        """
+        INSERT INTO insight_runs (run_id, user_id, chesscom_handle, source,
+            window_days, time_class, games_analyzed, status)
+        VALUES ('run-dup', ?, 'alice', 'chesscom', 7, 'blitz', 1, 'complete')
+        """,
+        (user_id,),
+    )
+    connection.execute(
+        "INSERT INTO insight_run_games (run_id, game_id) VALUES ('run-dup', ?)",
+        (game_id,),
+    )
+    connection.commit()
+
+    metrics = recompute_run_metrics(connection, "run-dup")
+    assert metrics is not None
+    assert metrics["games"] == 1
+    assert len(metrics["game_explorer"]) == 1
+    items = metrics["practice_flags"]["items"]
+    assert len(items) == len({(i["game_id"], i["ply"]) for i in items})
+    # The deeper review is the one that survives.
+    assert {i["review_id"] for i in items} == {"r-full"}
 
 
 def test_insights_run_incremental(connection: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -395,3 +452,85 @@ def test_reviews_list_includes_pgn_and_get_has_moves(tmp_path) -> None:
     reviews = listed.json()["reviews"]
     assert any(r["review_id"] == rid for r in reviews)
     assert any(r.get("pgn") for r in reviews)
+
+
+def test_review_get_rebuilds_findability_band_and_curve(tmp_path) -> None:
+    """Only the score is stored; the panel also needs the band and the curve.
+
+    Both are derived on read — the band from the score, the curve from the
+    stored feature vector — so re-opening a review shows the same findability
+    panel the live analysis did instead of a bare meter.
+    """
+
+    from tests.puzzles.test_mistakes_api import make_client
+    import time
+
+    import chess
+
+    from core.features import MoveEval
+    from core.findability import FindabilityConstants
+    from server.findability_features import build_feature_payload
+
+    board = chess.Board()
+    move_evals = [
+        MoveEval(move=chess.Move.from_uci("e2e4"), cp=40, pv=[chess.Move.from_uci("e2e4")]),
+        MoveEval(move=chess.Move.from_uci("d2d4"), cp=25, pv=[chess.Move.from_uci("d2d4")]),
+        MoveEval(move=chess.Move.from_uci("a2a3"), cp=-90, pv=[chess.Move.from_uci("a2a3")]),
+    ]
+    constants = FindabilityConstants.load()
+
+    def policy(fen, rating, moves):
+        # Stronger players pick e4 more often — enough to make C_A rise.
+        weight = min(0.9, 0.3 + (rating - 1000) / 4000)
+        rest = (1.0 - weight) / max(1, len(moves) - 1)
+        return {m: (weight if m.uci() == "e2e4" else rest) for m in moves}
+
+    payload = build_feature_payload(board.fen(), move_evals, policy, constants)
+    detail = {
+        "fen_before": board.fen(),
+        "fen_after": board.fen(),
+        "move_uci": "a2a3",
+        "eval_cp": 40,
+        "findability_features": payload,
+    }
+
+    client = make_client(tmp_path)
+
+    def fake_analyze(connection, **kwargs):
+        rid = kwargs["review_id"]
+        connection.execute(
+            "UPDATE reviews SET status = 'complete', progress = 1 WHERE review_id = ?",
+            (rid,),
+        )
+        connection.execute(
+            "INSERT OR REPLACE INTO review_moves ("
+            "review_id, ply, san, is_user_move, phase, classification, win_prob, "
+            "delta_w, volatility, findability, detail"
+            ") VALUES (?, 1, 'a3', 1, 'opening', 'mistake', 0.55, 12.5, 40, 63, ?)",
+            (rid, json.dumps(detail)),
+        )
+        connection.commit()
+
+    client.app.state.review_analyze_fn = fake_analyze
+    started = client.post(
+        "/api/review",
+        json={"pgn": SHORT_PGN, "source": "pgn", "user_color": "white", "depth_tier": "full"},
+    )
+    rid = started.json()["review_id"]
+    got = None
+    for _ in range(40):
+        got = client.get(f"/api/review/{rid}")
+        if got.json().get("status") == "complete":
+            break
+        time.sleep(0.05)
+    assert got is not None
+    move = got.json()["moves"][0]
+    assert move["findability"] == 63
+    fd = move["findability_detail"]
+    assert fd["band"]
+    assert len(fd["curve"]) == len(constants.rating_grid)
+    # The curve is (rating, C_A) pairs, monotone after PAVA.
+    ratings = [point[0] for point in fd["curve"]]
+    values = [point[1] for point in fd["curve"]]
+    assert ratings == list(constants.rating_grid)
+    assert all(b >= a - 1e-9 for a, b in zip(values, values[1:]))

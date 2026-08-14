@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
+import os
 import sqlite3
 import threading
 from typing import Any, Literal
@@ -11,10 +13,11 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from core.findability import FindabilityConstants, band_for
 from server import db
 from server import game_identity
 from server.deps import current_user, get_connection
-from server.findability_features import ensure_fresh_findability
+from server.findability_features import ensure_fresh_findability, score_from_payload
 from server.reviews import (
     analyze_and_store,
     create_pending_review,
@@ -26,6 +29,59 @@ from server.reviews import (
 )
 
 logger = logging.getLogger("server.reviews")
+
+
+def review_engine_count() -> int:
+    """How many Stockfish processes a single review may walk the game on.
+
+    Defaults to half the cores, capped at 6 so a review never starves the rest
+    of the app. Every engine is single-threaded and each position is analysed
+    from a clean transposition table, so the pool size changes wall-clock time
+    and nothing else. ``CHESS_REVIEW_ENGINES=1`` walks the game serially.
+    """
+    raw = os.environ.get("CHESS_REVIEW_ENGINES")
+    if raw:
+        try:
+            return max(1, min(16, int(raw)))
+        except ValueError:
+            pass
+    return max(1, min(6, (os.cpu_count() or 2) // 2))
+
+
+def _findability_detail(
+    detail: Any,
+    score: int,
+    constants: FindabilityConstants,
+    user_rating: int | None = None,
+) -> dict[str, Any]:
+    """Rebuild band / curve / alternate for one stored move.
+
+    The band always comes back (it is a pure function of the score). The curve
+    and the alternate move need the stored feature vector, which only full-tier
+    reviews carry — shallow rows get the band alone.
+    """
+    out: dict[str, Any] = {"band": band_for(score, constants)}
+    payload = detail.get("findability_features") if isinstance(detail, dict) else None
+    if not isinstance(payload, dict) or not payload.get("moves"):
+        return out
+    try:
+        result = score_from_payload(payload, constants, user_rating=user_rating)
+    except Exception:  # noqa: BLE001 — display extra, never fail the read
+        logger.exception("findability detail rebuild failed")
+        return out
+    if result is None:
+        return out
+    out["band"] = result.band
+    out["curve"] = [[int(r), float(v)] for r, v in result.curve]
+    out["forced"] = bool(result.forced)
+    if result.alternate is not None:
+        out["alternate"] = {
+            "uci": result.alternate.uci,
+            "san": result.alternate.san,
+            "delta_w": float(result.alternate.delta_w),
+            "pi": float(result.alternate.pi),
+        }
+    return out
 
 
 class ReviewStartRequest(BaseModel):
@@ -62,7 +118,14 @@ def build_reviews_router(app: FastAPI) -> APIRouter:
             from chess_vol.findability_review import attach_findability
             from core.human import best_available_policy
 
-            with Engine() as engine:
+            # Every ply is an independent search, so the game is walked on a
+            # small pool of single-threaded engines rather than one. Fixed-depth
+            # MultiPV barely benefits from Stockfish's own SMP (more threads
+            # searches more nodes for the same depth), but N processes on N
+            # positions scales almost linearly and leaves each position's
+            # numbers untouched.
+            with contextlib.ExitStack() as stack:
+                pool = [stack.enter_context(Engine()) for _ in range(review_engine_count())]
                 policy = best_available_policy()
                 attach_fn = None
                 if depth_tier == "full" and policy is not None:
@@ -75,7 +138,8 @@ def build_reviews_router(app: FastAPI) -> APIRouter:
                     pgn=pgn,
                     user_color=user_color,
                     depth_tier=depth_tier,
-                    engine=engine,
+                    engine=pool[0],
+                    engines=pool if len(pool) > 1 else None,
                     attach_findability_fn=attach_fn,
                     policy_fn=policy,
                     user_rating=user_rating,
@@ -225,6 +289,16 @@ def build_reviews_router(app: FastAPI) -> APIRouter:
             "clock_remaining, detail FROM review_moves WHERE review_id = ? ORDER BY ply",
             (review_id,),
         ).fetchall()
+        # The three findability columns are the *score*; the band, the C_A curve
+        # and the realistic alternate move live only in the stored feature
+        # vector. Rebuilding them here (pure math over cached `pi_r`, no engine)
+        # is what lets a re-opened review show the same panel the live SSE run
+        # did — otherwise the panel renders a bare meter with no band.
+        constants = FindabilityConstants.load()
+        try:
+            row_rating = int(row["user_rating"]) if row["user_rating"] is not None else None
+        except (TypeError, ValueError):
+            row_rating = None
         move_list = []
         for m in moves:
             d = dict(m)
@@ -233,6 +307,10 @@ def build_reviews_router(app: FastAPI) -> APIRouter:
                     d["detail"] = json.loads(d["detail"])
                 except json.JSONDecodeError:
                     pass
+            if d.get("findability") is not None:
+                d["findability_detail"] = _findability_detail(
+                    d.get("detail"), int(d["findability"]), constants, row_rating
+                )
             move_list.append(d)
         detail = None
         if row["detail_json"]:

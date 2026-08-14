@@ -422,6 +422,11 @@ def build_game_facts(
             "first_error_move": first_error_move,
             "biggest_miss": worst,
             "sparkline": sparkline,
+            "loss_type": (
+                str(row["loss_type"])
+                if "loss_type" in row.keys() and row["loss_type"]
+                else None
+            ),
         })
 
     enriched.sort(key=lambda r: r.get("timestamp") or r.get("played_at") or "", reverse=True)

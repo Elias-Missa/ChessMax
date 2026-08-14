@@ -159,6 +159,15 @@
   text-shadow: 0 0 20px rgba(68, 214, 44, 0.35);
 }
 
+/* A bare "190" tells nobody what 190 is. */
+.insights-hero-stat .hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--ins-mute);
+}
+
 /* ── Command panel (form) ─────────────────────────────────────────────── */
 
 .insights-form {
@@ -460,7 +469,37 @@
   box-shadow: 0 16px 38px rgba(68, 214, 44, 0.4), 0 0 34px rgba(68, 214, 44, 0.28);
 }
 
-.insights-open-btn:active { transform: translateY(0); }
+.insights-deep-btn {
+  appearance: none;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.7rem 1rem;
+  border-radius: 11px;
+  cursor: pointer;
+  color: var(--ins-dim);
+  background: transparent;
+  border: 1px solid var(--ins-line);
+}
+
+.insights-deep-btn:hover {
+  color: var(--ins-fg);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+#insights-root > .pm-overlay {
+  position: fixed;
+  top: var(--shell-header-h, 3.7rem);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: auto;
+  height: auto;
+  max-width: none;
+  z-index: 80;
+}
 
 .insights-open-btn svg { transition: transform 0.15s ease; }
 .insights-open-btn:hover svg { transform: translateX(3px); }
@@ -561,6 +600,23 @@
   font-size: 0.82rem;
   line-height: 1.4;
   margin-top: 3px;
+}
+
+.insights-run-list li.is-error {
+  border-color: rgba(224, 68, 58, 0.4);
+}
+
+.insights-run-list li.is-error:hover {
+  border-color: rgba(224, 68, 58, 0.7);
+  background: rgba(224, 68, 58, 0.07);
+}
+
+.insights-run-list .run-error {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #ff8a83;
+  overflow-wrap: anywhere;
 }
 
 .insights-pill {

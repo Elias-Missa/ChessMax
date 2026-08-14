@@ -30,6 +30,7 @@
   const progressBar = $("insights-progress-bar");
   const statGames = $("insights-stat-games");
   const statFixable = $("insights-stat-fixable");
+  const statFixableHint = $("insights-stat-fixable-hint");
   const statPractice = $("insights-stat-practice");
 
   const readyCard = $("insights-ready");
@@ -38,6 +39,7 @@
   const readyStats = $("insights-ready-stats");
   const readyLeak = $("insights-ready-leak");
   const openBtn = $("insights-open");
+  const deepBtn = $("insights-open-deep");
 
   const dashboard = $("insights-dashboard");
   const dashClose = $("dash-close");
@@ -120,12 +122,19 @@
     else if (window.__shellSwitchTab) window.__shellSwitchTab("train");
   }
 
-  function goReview(gameId) {
+  /**
+   * Open a game in Game Review. `ply` (1-based, as stored in `review_moves`)
+   * lands the review on the exact move instead of the start of the game — a
+   * flagged miss is useless if the user has to hunt for it.
+   */
+  function goReview(gameId, ply) {
     if (!gameId) return;
     closeDashboard();
     if (window.__shellNavigate) window.__shellNavigate("/game-review");
     // The vol app owns game loading; it reports its own miss into the status line.
-    if (window.__volOpenGameById) window.__volOpenGameById(gameId);
+    if (window.__volOpenGameById) {
+      window.__volOpenGameById(gameId, isNum(ply) ? { ply: Number(ply) } : undefined);
+    }
   }
 
   // ── Launcher status ─────────────────────────────────────────────────────
@@ -143,7 +152,7 @@
   function setBusy(busy) {
     generating = busy;
     if (generateBtn) generateBtn.disabled = busy;
-    if (refreshBtn) refreshBtn.disabled = busy;
+    if (refreshBtn) refreshBtn.disabled = busy || !activeRunId;
     root.classList.toggle("is-busy", !!busy);
     setProgress(busy ? 8 : 100);
   }
@@ -479,6 +488,7 @@
   function openDashboard() {
     if (!dashboard || !currentMetrics) return;
     if (isStale(currentMetrics)) { rebuildRun(); return; }
+    if (window.__postmortemClose) window.__postmortemClose({ silent: true });
     dashboard.classList.remove("hidden");
     document.body.style.overflow = "hidden";
     // Force layout so Chart.js measures real container boxes, then render
@@ -486,6 +496,14 @@
     // the report blank until the next interaction.
     void dashboard.offsetWidth;
     renderDashboard();
+  }
+
+  function openStory(tab) {
+    if (!currentMetrics) return;
+    if (isStale(currentMetrics)) { rebuildRun(); return; }
+    closeDashboard();
+    if (window.__postmortemAdopt) window.__postmortemAdopt(currentMetrics, currentRunMeta);
+    if (window.__postmortemOpen) window.__postmortemOpen(tab || "verdict");
   }
 
   function closeDashboard() {
@@ -516,7 +534,8 @@
   }
 
   // The handler is assigned per-run (open vs rebuild) in updateLauncher.
-  if (openBtn) openBtn.onclick = openDashboard;
+  if (openBtn) openBtn.onclick = () => openStory("verdict");
+  if (deepBtn) deepBtn.onclick = openDashboard;
   if (dashClose) dashClose.addEventListener("click", closeDashboard);
 
   document.addEventListener("keydown", (e) => {
@@ -607,6 +626,15 @@
 
   // ── Section: Overview ───────────────────────────────────────────────────
 
+  // `basis` is the server's enum for which model produced the number. Shown
+  // raw it read "recoverable via mixed", which means nothing to a player.
+  function eloBasisSub(basis) {
+    if (basis === "findability") return "from misses you could realistically have found";
+    if (basis === "blunders") return "from outright blunders";
+    if (basis === "mixed") return "from your blunders and findable misses";
+    return "needs a completed run";
+  }
+
   function kpi(label, value, sub, cls) {
     return (
       `<div class="kpi${cls ? ` ${cls.card || ""}` : ""}">` +
@@ -643,12 +671,11 @@
         isNum(agg.accuracy.stdev)
           ? `±${num(agg.accuracy.stdev, 1)} · ${escapeHtml(consistencyLabel(agg.accuracy.stdev))}`
           : "") +
-      kpi("Blunders / 100", num(100 * (agg.blunders / (agg.userMoves || 1)), 1),
+      kpi("Blunders per 100 moves", num(100 * (agg.blunders / (agg.userMoves || 1)), 1),
         `${agg.blunders} across ${agg.userMoves} moves`,
         { value: "bad", card: "is-bad" }) +
       kpi("Rating on the table", isNum(elo.points) ? `+${elo.points}` : "—",
-        elo.basis ? `recoverable via ${escapeHtml(elo.basis)}` : "needs a completed run",
-        { value: "accent" })
+        eloBasisSub(elo.basis), { value: "accent" })
     );
 
     renderLeaks();
@@ -916,8 +943,11 @@
       `</div>` +
       `<p>One blunder every <strong>${perBlunder ? num(perBlunder) : "—"}</strong> moves. ` +
       `<strong>${pct(agg.games ? agg.cleanGames / agg.games : null)}</strong> of games contain no blunder at all.</p>` +
-      `<p>Total win% surrendered: <strong>${num(agg.totalDeltaW)}</strong> ` +
-      `(${num(agg.games ? agg.totalDeltaW / agg.games : null, 1)} per game).</p>`
+      // It is a sum over moves, so it runs past 100 per game — say so, or it
+      // reads as an impossible percentage.
+      `<p>Win% given away, summed over every move you played: ` +
+      `<strong>${num(agg.totalDeltaW)}</strong> ` +
+      `(${num(agg.games ? agg.totalDeltaW / agg.games : null, 1)} per game, across all its moves).</p>`
     );
 
     const timing = (pro().blunder_timing || {}).buckets || [];
@@ -1030,10 +1060,16 @@
           `</tr>`
         )).join("") +
         `</tbody></table></div>` +
+        // The filtered restatement is only worth a sentence when a filter is
+        // actually on; unfiltered it just repeated the same number back.
         (isNum(crit.criticality_gap)
           ? `<p style="margin-top:12px">Criticality gap: <strong>${num(crit.criticality_gap, 1)} accuracy points</strong> ` +
-            `between quiet and critical positions. Under the current filter that gap is ` +
-            `<strong>${isNum(agg.criticalityGap) ? num(agg.criticalityGap, 1) : "—"}</strong>.</p>`
+            `between quiet and critical positions.` +
+            (filtersActive()
+              ? ` Under the current filter that gap is ` +
+                `<strong>${isNum(agg.criticalityGap) ? num(agg.criticalityGap, 1) : "—"}</strong>.`
+              : "") +
+            `</p>`
           : "")
       );
     }
@@ -1232,7 +1268,10 @@
         : emptyBlock("No wins slipped away in this window.")
     );
     $("body-missed-wins").querySelectorAll("[data-missed-game]").forEach((b) => {
-      b.addEventListener("click", () => goReview(b.dataset.missedGame));
+      b.addEventListener("click", () => {
+        const g = (missed.games || []).find((x) => x.game_id === b.dataset.missedGame);
+        goReview(b.dataset.missedGame, g && g.biggest_miss && g.biggest_miss.ply);
+      });
     });
   }
 
@@ -1511,10 +1550,17 @@
     const items = flags.items || [];
     const callout = $("practice-callout");
     if (callout) {
+      // Most cards say "findability pending", so claiming the whole set is
+      // findable contradicts the cards right underneath it.
+      const known = items.filter((i) => isNum(i.findability)).length;
       callout.textContent = items.length
-        ? `${items.length} positions from your own games where the miss was both expensive ` +
-          `(Δw ≥ ${flags.delta_w_threshold || 15}) and findable. This is the set worth drilling — ` +
-          `not engine-move trivia.`
+        ? `${items.length} positions from your own games where the miss was expensive ` +
+          `(Δw ≥ ${flags.delta_w_threshold || 15}). ` +
+          (known
+            ? `${known} of them are confirmed findable at your level; the rest are still on the ` +
+              `shallow pass. `
+            : "Findability needs the deeper pass, which is still pending on this snapshot. ") +
+          `This is the set worth drilling — not engine-move trivia.`
         : "";
     }
 
@@ -1572,7 +1618,7 @@
     const practiceBtn = $("modal-btn-practice");
     if (practiceBtn) practiceBtn.onclick = () => { hideModal(); goPractice("mistakes"); };
     const reviewBtn = $("modal-btn-review");
-    if (reviewBtn) reviewBtn.onclick = () => { hideModal(); goReview(item.game_id); };
+    if (reviewBtn) reviewBtn.onclick = () => { hideModal(); goReview(item.game_id, item.ply); };
 
     modalOverlay.classList.remove("hidden");
     modalOverlay.setAttribute("aria-hidden", "false");
@@ -1639,22 +1685,51 @@
   function adoptMetrics(metrics, meta) {
     currentMetrics = metrics;
     currentRunMeta = meta || {};
+    syncFormToRun(currentRunMeta);
     updateLauncher(metrics, meta);
+    if (window.__postmortemAdopt) window.__postmortemAdopt(metrics, currentRunMeta);
     if (dashboard && !dashboard.classList.contains("hidden")) renderDashboard();
+  }
+
+  // The form is also the controls for the report on screen: "Refresh" reruns
+  // whatever the fields say. Leaving it on the defaults while a 7-day rapid
+  // report is loaded means Refresh quietly produces a different report.
+  function syncFormToRun(meta) {
+    if (!meta) return;
+    const handle = meta.handle || meta.chesscom_handle || "";
+    if (usernameEl && handle) usernameEl.value = handle;
+    if (sourceEl && meta.source) sourceEl.value = meta.source;
+    const days = String(meta.window_days ?? "");
+    if (windowEl && days && [...windowEl.options].some((o) => o.value === days)) {
+      windowEl.value = days;
+    }
+    const tc = String(meta.time_class || "").toLowerCase();
+    if (timeClassEl && tc && [...timeClassEl.options].some((o) => o.value === tc)) {
+      timeClassEl.value = tc;
+    }
   }
 
   function updateLauncher(metrics, meta) {
     const agg = aggregate(facts());
-    const games = meta && isNum(meta.games_analyzed) ? meta.games_analyzed : agg.games;
+    // Prefer the fact table: it is what every panel, and the story, counts.
+    // `games_analyzed` is the ingest tally and can lag it after a refresh,
+    // which used to put "99 games analyzed" next to a 105-game W–D–L.
+    const games = agg.games || (meta && isNum(meta.games_analyzed) ? meta.games_analyzed : 0);
 
     if (statGames) statGames.textContent = games ? String(games) : "—";
     if (statFixable) {
       statFixable.textContent = isNum(metrics.fixable_loss)
         ? String(Math.round(metrics.fixable_loss)) : "—";
     }
+    if (statFixableHint) {
+      statFixableHint.textContent = isNum(metrics.fixable_loss) && games
+        ? `win% you could have kept · ${num(metrics.fixable_loss / games, 1)} per game`
+        : "win% you could have kept";
+    }
     const flagCount = (metrics.practice_flags && metrics.practice_flags.count) || 0;
     if (statPractice) statPractice.textContent = flagCount ? String(flagCount) : "—";
     if (dashPractice) dashPractice.disabled = flagCount <= 0;
+    if (refreshBtn) refreshBtn.disabled = generating || !activeRunId;
 
     if (!readyCard) return;
     if (!games) { readyCard.classList.add("hidden"); return; }
@@ -1681,17 +1756,31 @@
         openBtn.querySelector("span").textContent = "Rebuild report";
         openBtn.onclick = rebuildRun;
       }
+      if (deepBtn) deepBtn.classList.add("hidden");
       return;
     }
 
     if (openBtn) {
-      openBtn.querySelector("span").textContent = "Open Insights";
-      openBtn.onclick = openDashboard;
+      openBtn.querySelector("span").textContent = "Why you lose";
+      openBtn.onclick = () => openStory("verdict");
+    }
+    if (deepBtn) {
+      deepBtn.classList.remove("hidden");
+      deepBtn.onclick = openDashboard;
     }
     if (readySub) {
       readySub.textContent =
         `${sourceLabel(meta && meta.source)} · last ${meta && meta.window_days ? meta.window_days : "?"} days · ` +
         `${meta && meta.time_class ? meta.time_class : "—"} · ${games} games analyzed`;
+    }
+    // Say what the buttons above will do now, instead of leaving the initial
+    // "pick a source and handle" prompt sitting under a finished report.
+    if (!generating) {
+      setStatus(
+        "Generate runs the settings above. Refresh re-runs this report " +
+        `(${handle} · last ${(meta && meta.window_days) || "?"} days · ` +
+        `${(meta && meta.time_class) || "—"}), analyzing only new games.`,
+      );
     }
 
     const head = (metrics.pro && metrics.pro.headline) || {};
@@ -1704,44 +1793,86 @@
         `<div class="rs"><b style="color:var(--ins-green-hi)">${isNum(elo.points) ? `+${elo.points}` : "—"}</b><span>Elo on table</span></div>`;
     }
 
+    const diagnosis = metrics.narrative && metrics.narrative.verdict
+      && metrics.narrative.verdict.diagnosis;
     const leaks = (metrics.pro && metrics.pro.leaks) || [];
     if (readyLeak) {
-      readyLeak.innerHTML = leaks.length
-        ? `<strong>Top leak:</strong> ${escapeHtml(leaks[0].title)} — ` +
-          `${escapeHtml(leaks[0].detail)}`
-        : "";
+      if (diagnosis) {
+        readyLeak.innerHTML = `<strong>The pattern:</strong> ${escapeHtml(diagnosis)}`;
+      } else if (leaks.length) {
+        readyLeak.innerHTML = `<strong>Top leak:</strong> ${escapeHtml(leaks[0].title)} — ` +
+          `${escapeHtml(leaks[0].detail)}`;
+      } else {
+        readyLeak.innerHTML = "";
+      }
     }
   }
 
   // ── Runs list ───────────────────────────────────────────────────────────
+
+  // Failures are stored as whatever the worker raised. A raw Python repr is
+  // not a message to a player — keep it on hover, show a sentence.
+  function runErrorText(detail) {
+    const raw = String(detail || "").trim();
+    if (!raw) return "This run failed before it finished.";
+    if (/^[A-Za-z_.]*(Error|Exception)\b/.test(raw) || raw.includes("Traceback")) {
+      return "This run failed before it finished — press Generate to try again.";
+    }
+    return raw.length > 160 ? `${raw.slice(0, 157)}…` : raw;
+  }
 
   async function loadRuns() {
     try {
       const resp = await api("/api/insights?limit=10");
       const data = await resp.json();
       const runs = data.runs || [];
-      if (runCountEl) runCountEl.textContent = String(runs.length);
+      // A bare "4" in the panel corner reads as a badge for nothing.
+      if (runCountEl) {
+        runCountEl.textContent = runs.length === 1 ? "1 snapshot" : `${runs.length} snapshots`;
+        runCountEl.title = "The ten most recent runs are kept";
+      }
       if (!runList) return;
       if (!runs.length) {
         runList.innerHTML = '<li class="insights-empty">No runs yet — generate your first snapshot.</li>';
         return;
       }
+      const byId = new Map(runs.map((r) => [r.run_id, r]));
       runList.innerHTML = runs.map((r) => {
         const handle = r.handle || r.chesscom_handle || "—";
+        const failed = String(r.status || "").toLowerCase() === "error";
         const fixable = r.metrics && isNum(r.metrics.fixable_loss)
           ? ` · fixable ${Math.round(r.metrics.fixable_loss)}` : "";
         const active = activeRunId === r.run_id ? " is-active" : "";
+        // A failed run used to be a dead row: no reason, and clicking it only
+        // said "no metrics yet". Show why it failed and offer the rerun.
+        const why = failed && r.detail
+          ? `<div class="run-error" title="${escapeHtml(String(r.detail))}">` +
+            `${escapeHtml(runErrorText(r.detail))}</div>` : "";
         return (
-          `<li class="${active.trim()}" data-run-id="${escapeHtml(r.run_id || "")}">` +
+          `<li class="${(active + (failed ? " is-error" : "")).trim()}" ` +
+          `data-run-id="${escapeHtml(r.run_id || "")}" ` +
+          `title="${escapeHtml(failed ? "Load these settings into the form" : "Open this report")}">` +
           `<div><div class="run-title">${escapeHtml(handle)}</div>` +
           `<div class="meta">${escapeHtml(sourceLabel(r.source))} · ${escapeHtml(String(r.window_days ?? "—"))}d ` +
-          `${escapeHtml(r.time_class || "—")} · ${r.games_analyzed ?? 0} games${fixable}</div></div>` +
+          `${escapeHtml(r.time_class || "—")} · ${r.games_analyzed ?? 0} games${fixable}</div>${why}</div>` +
           statusPill(r.status) + `</li>`
         );
       }).join("");
 
       runList.querySelectorAll("li[data-run-id]").forEach((li) => {
-        li.addEventListener("click", () => loadRun(li.dataset.runId));
+        li.addEventListener("click", () => {
+          const run = byId.get(li.dataset.runId);
+          if (run && String(run.status || "").toLowerCase() === "error") {
+            syncFormToRun(run);
+            setStatus(
+              `${runErrorText(run.detail)} Its settings are now in the form above — ` +
+              "press Generate to try again.",
+            );
+            if (usernameEl) usernameEl.focus();
+            return;
+          }
+          loadRun(li.dataset.runId);
+        });
       });
     } catch (err) {
       if (runList) runList.innerHTML = `<li class="insights-empty">${escapeHtml(err.message)}</li>`;
@@ -1749,22 +1880,24 @@
   }
 
   async function loadRun(runId) {
-    if (!runId) return;
+    if (!runId) return null;
     try {
       const resp = await api(`/api/insights/${runId}`);
       const data = await resp.json();
       if (!data.metrics) {
         setStatus(`Run is ${data.status || "pending"} — no metrics yet.`);
-        return;
+        return data;
       }
       activeRunId = runId;
       runList.querySelectorAll("li").forEach((el) =>
         el.classList.toggle("is-active", el.dataset.runId === runId));
       adoptMetrics(data.metrics, data);
       setDashHeader(data);
-      setStatus(`Loaded ${data.games_analyzed || 0} games. Open the report to explore.`);
+      setStatus(`Loaded ${data.games_analyzed || 0} games.`);
+      return data;
     } catch (err) {
       setStatus(err.message);
+      return null;
     }
   }
 
@@ -1775,7 +1908,8 @@
         sourceLabel(meta && meta.source),
         `${(meta && meta.window_days) || "?"} days`,
         (meta && meta.time_class) || "—",
-        `${(meta && meta.games_analyzed) || 0} games`,
+        // Same count the KPI row and the story use — see updateLauncher.
+        `${facts().length || (meta && meta.games_analyzed) || 0} games`,
       ].map((c) => `<span>${escapeHtml(c)}</span>`).join("");
     }
   }
@@ -1800,16 +1934,17 @@
 
   // ── Generating ──────────────────────────────────────────────────────────
 
-  async function generate({ refresh = false } = {}) {
+  async function generate() {
     if (generating) return;
     const username = (usernameEl && usernameEl.value.trim()) || "";
     if (!username) {
       setStatus("Enter a username first.");
+      if (usernameEl) usernameEl.focus();
       return;
     }
     setBusy(true);
     if (capNote) capNote.classList.add("hidden");
-    setStatus(refresh ? "Refreshing…" : "Starting…");
+    setStatus("Starting…");
     try {
       const runId = await startRun(
         username,
@@ -1819,6 +1954,33 @@
       );
       if (runId) {
         await pollRun(runId);
+        await loadRuns();
+      }
+    } catch (err) {
+      setStatus(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Refresh used to be Generate with a different status string — two buttons,
+  // one behaviour. It now re-runs the *loaded report's* settings through the
+  // endpoint built for exactly that, so editing the form no longer changes
+  // what "refresh this report" means.
+  async function refreshRun() {
+    if (generating) return;
+    if (!activeRunId) {
+      setStatus("Open a report first — Refresh re-runs the one you are looking at.");
+      return;
+    }
+    setBusy(true);
+    if (capNote) capNote.classList.add("hidden");
+    setStatus("Refreshing this report — only new games are analyzed…");
+    try {
+      const resp = await api(`/api/insights/${activeRunId}/refresh`, { method: "POST" });
+      const data = await resp.json();
+      if (data.run_id) {
+        await pollRun(data.run_id);
         await loadRuns();
       }
     } catch (err) {
@@ -1898,14 +2060,26 @@
       generate();
     });
   }
-  if (refreshBtn) refreshBtn.addEventListener("click", () => generate({ refresh: true }));
+  if (refreshBtn) refreshBtn.addEventListener("click", refreshRun);
 
   // The shell calls this on every route change; closing the overlay on exit
   // keeps the body scroll lock from leaking into the other tabs.
-  window.__insightsSetActive = (active) => {
-    if (active) loadRuns();
-    else closeDashboard();
+  window.__insightsSetActive = (active, path) => {
+    if (active) {
+      loadRuns();
+      if (window.__postmortemRoute) window.__postmortemRoute(path || window.location.pathname);
+    } else {
+      closeDashboard();
+      if (window.__postmortemClose) window.__postmortemClose({ silent: true });
+    }
   };
+
+  window.__insightsCloseDeepDive = closeDashboard;
+  window.__insightsLoadRun = loadRun;
+  window.__insightsActiveRunId = () => activeRunId;
+  window.__insightsOpenDeepDive = openDashboard;
+  window.__insightsGoPractice = goPractice;
+  window.__insightsGoReview = goReview;
 
   loadRuns();
   loadLatest();

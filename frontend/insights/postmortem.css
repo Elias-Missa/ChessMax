@@ -1,0 +1,968 @@
+/* Insights post-mortem — Verdict / Why you lose / How to fix it.
+ *
+ * Site tokens (chess.com dark + Razer green). One live accent per screen.
+ * Signature pieces are custom SVG. Boards are the luxury material.
+ */
+
+.pm-overlay,
+.pm-sheet {
+  --pm-fg: #eef1f3;
+  --pm-dim: #98a0aa;
+  --pm-mute: #5d6877;
+  --pm-green: #44d62c;
+  --pm-green-hi: #57e83f;
+  --pm-red: #e0443a;
+  --pm-red-hi: #ff6b63;
+  --pm-cool: #3e86c4;
+  --pm-ink: #0b0d10;
+  --pm-panel: #16181d;
+  --pm-line: rgba(255, 255, 255, 0.08);
+  --pm-accent: var(--pm-green);
+  --pm-accent-hi: var(--pm-green-hi);
+  --pm-spine-w: 52px;
+  color: var(--pm-fg);
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+}
+
+.pm-overlay[data-pm-screen="why"] {
+  --pm-accent: var(--pm-red);
+  --pm-accent-hi: var(--pm-red-hi);
+}
+
+.pm-overlay[data-pm-screen="how"],
+.pm-overlay[data-pm-screen="verdict"] {
+  --pm-accent: var(--pm-green);
+  --pm-accent-hi: var(--pm-green-hi);
+}
+
+/* ID specificity trap: #insights-root > * { position: relative }. */
+#insights-root > .pm-overlay {
+  position: fixed;
+  top: var(--shell-header-h, 3.7rem);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: auto;
+  height: auto;
+  max-width: none;
+  z-index: 80;
+}
+
+.pm-overlay {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  background: var(--pm-ink);
+  animation: pm-in 0.22s ease both;
+  overflow: hidden;
+  min-width: 0;
+  max-width: 100vw;
+}
+
+.pm-overlay.hidden { display: none; }
+
+@keyframes pm-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────── */
+
+.pm-top {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 0 clamp(14px, 2vw, 28px);
+  border-bottom: 1px solid var(--pm-line);
+  background: #101216;
+  min-height: 56px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pm-back {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  align-self: center;
+  border-radius: 9px;
+  cursor: pointer;
+  color: var(--pm-dim);
+  background: transparent;
+  border: 1px solid var(--pm-line);
+}
+
+.pm-back:hover {
+  color: var(--pm-accent-hi);
+  border-color: color-mix(in srgb, var(--pm-accent) 45%, transparent);
+}
+
+.pm-tabs {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pm-tabs::-webkit-scrollbar { display: none; }
+
+.pm-tab {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--pm-mute);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0 0.9rem;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: none;
+  display: flex;
+  align-items: center;
+  margin-bottom: -1px;
+}
+
+.pm-tab:hover { color: var(--pm-fg); }
+
+.pm-tab.is-on {
+  color: var(--pm-accent-hi);
+  border-bottom-color: var(--pm-accent);
+}
+
+.pm-identity {
+  margin-left: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--pm-mute);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  align-self: center;
+}
+
+.pm-deep {
+  appearance: none;
+  flex: none;
+  align-self: center;
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--pm-line);
+  color: var(--pm-dim);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pm-deep:hover {
+  color: var(--pm-fg);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+/* ── Section rail ────────────────────────────────────────────────────────
+ * "Why you lose" is eight sections and several thousand pixels. Without a
+ * map of what is below, the only way to find "Openings" is to scroll and
+ * hope. The rail is that map, and it doubles as a you-are-here marker.
+ */
+
+.pm-secnav {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 8px clamp(14px, 2vw, 28px);
+  border-bottom: 1px solid var(--pm-line);
+  background: #0d0f13;
+  overflow-x: auto;
+  scrollbar-width: none;
+  min-width: 0;
+}
+
+.pm-secnav::-webkit-scrollbar { display: none; }
+.pm-secnav.hidden { display: none; }
+
+.pm-secnav button {
+  appearance: none;
+  flex: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pm-mute);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.34rem 0.72rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pm-secnav button:hover {
+  color: var(--pm-fg);
+  border-color: var(--pm-line);
+}
+
+.pm-secnav button.is-on {
+  color: var(--pm-accent-hi);
+  border-color: color-mix(in srgb, var(--pm-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--pm-accent) 12%, transparent);
+}
+
+/* ── Footer: the way forward ─────────────────────────────────────────────
+ * Lives outside the scroller on purpose. The old in-content sticky dock
+ * floated over the moments it was sitting on top of.
+ */
+
+.pm-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px clamp(14px, 2vw, 28px);
+  border-top: 1px solid var(--pm-line);
+  background: #101216;
+  min-width: 0;
+}
+
+.pm-foot:empty { display: none; }
+
+.pm-foot-step {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pm-mute);
+  white-space: nowrap;
+}
+
+.pm-foot-spacer { flex: 1 1 auto; min-width: 0; }
+
+.pm-foot .pm-cta {
+  padding: 0.62rem 1.15rem;
+  font-size: 0.76rem;
+}
+
+/* ── Body: spine + scroll ────────────────────────────────────────────── */
+
+.pm-body {
+  display: grid;
+  grid-template-columns: var(--pm-spine-w) minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+}
+
+.pm-overlay.pm-no-spine .pm-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pm-overlay.pm-no-spine .pm-spine { display: none; }
+
+.pm-spine {
+  position: relative;
+  border-right: 1px solid var(--pm-line);
+  background: #0e1014;
+}
+
+.pm-spine svg {
+  position: sticky;
+  top: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+}
+
+.pm-scroll {
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-height: 0;
+  min-width: 0;
+  padding: 0 clamp(16px, 3.5vw, 64px) 56px;
+  scroll-behavior: smooth;
+}
+
+.pm-screen { padding-top: 36px; }
+.pm-screen.hidden { display: none; }
+
+.pm-kicker {
+  margin: 0 0 10px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--pm-accent);
+}
+
+/* One measure for every screen, so the left edge never jumps between tabs
+ * and a 1920px monitor does not leave the report stranded in its left third. */
+.pm-prose,
+.pm-wide {
+  min-width: 0;
+  width: 100%;
+  max-width: 1080px;
+  margin-inline: auto;
+}
+
+.pm-wide > .pm-diagnosis {
+  max-width: min(42em, 100%);
+}
+
+/* ── Verdict ─────────────────────────────────────────────────────────── */
+
+.pm-verdict-num {
+  margin: 0;
+  font-size: clamp(3.4rem, 9vw, 6.2rem);
+  font-weight: 900;
+  letter-spacing: -0.06em;
+  line-height: 0.9;
+  color: var(--pm-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.pm-verdict-sub {
+  margin: 12px 0 0;
+  font-size: 1.05rem;
+  font-weight: 650;
+  color: var(--pm-dim);
+  letter-spacing: -0.01em;
+}
+
+.pm-diagnosis {
+  margin: 28px 0 0;
+  font-size: 1.35rem;
+  font-weight: 650;
+  line-height: 1.45;
+  letter-spacing: -0.02em;
+  max-width: min(36em, 100%);
+  overflow-wrap: break-word;
+}
+
+.pm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 28px;
+}
+
+.pm-chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 1px solid var(--pm-line);
+  border-radius: 10px;
+  background: var(--pm-panel);
+  flex: 0 1 220px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pm-chip b {
+  font-size: 0.92rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.pm-chip span {
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pm-mute);
+}
+
+.pm-not {
+  margin-top: 36px;
+  padding-top: 22px;
+  border-top: 1px solid var(--pm-line);
+  max-width: 38em;
+}
+
+.pm-not h3 {
+  margin: 0 0 10px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pm-mute);
+}
+
+.pm-not ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pm-not li {
+  color: var(--pm-dim);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.pm-not li::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 2px;
+  margin-right: 10px;
+  vertical-align: middle;
+  background: var(--pm-mute);
+}
+
+.pm-elo-left {
+  margin: 28px 0 0;
+  font-size: 0.92rem;
+  color: var(--pm-dim);
+}
+
+.pm-elo-left strong {
+  color: var(--pm-green-hi);
+  font-weight: 800;
+}
+
+.pm-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 36px;
+}
+
+.pm-cta-note {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--pm-dim);
+}
+
+.pm-cta {
+  appearance: none;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.85rem 1.4rem;
+  border-radius: 11px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.pm-cta--primary {
+  color: #071108;
+  background: var(--pm-accent);
+  border-color: color-mix(in srgb, var(--pm-accent) 70%, #000);
+}
+
+.pm-cta--ghost {
+  color: var(--pm-fg);
+  background: transparent;
+  border-color: var(--pm-line);
+}
+
+.pm-cta--ghost:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.pm-cta--primary:hover { filter: brightness(1.08); }
+
+.pm-empty {
+  padding: 48px 0;
+  max-width: 32em;
+  color: var(--pm-dim);
+  line-height: 1.5;
+}
+
+/* ── Why: funnel ─────────────────────────────────────────────────────── */
+
+.pm-section {
+  margin-top: 48px;
+}
+
+.pm-section > h2 {
+  margin: 0 0 6px;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.pm-lede {
+  margin: 0 0 22px;
+  color: var(--pm-dim);
+  font-size: 0.98rem;
+  line-height: 1.5;
+  max-width: min(40em, 100%);
+  overflow-wrap: break-word;
+}
+
+.pm-funnel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  max-width: 720px;
+}
+
+/* The narrowing is the point, but the last stage carries the payoff line —
+ * it must never be the one that gets ellipsised away. */
+.pm-funnel-row {
+  display: block;
+  width: var(--pm-w, 100%);
+  max-width: 100%;
+  min-width: min(100%, 340px);
+}
+
+.pm-funnel-stage {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  padding: 12px 18px;
+  border: 1px solid var(--pm-line);
+  border-radius: 10px;
+  background: var(--pm-panel);
+  color: inherit;
+  font: inherit;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  flex: none;
+}
+
+.pm-funnel-stage b {
+  font-size: 1.55rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+.pm-funnel-stage span {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--pm-dim);
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.pm-funnel-chip {
+  appearance: none;
+  flex: none;
+  align-self: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--pm-line);
+  background: transparent;
+  color: var(--pm-mute);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pm-funnel-cap {
+  margin: 4px 0 0 18px;
+  font-size: 0.85rem;
+  color: var(--pm-dim);
+  max-width: 42em;
+}
+
+/* ── Trajectories ────────────────────────────────────────────────────── */
+
+.pm-traj {
+  width: 100%;
+  height: 220px;
+  display: block;
+}
+
+.pm-traj-legend {
+  display: flex;
+  gap: 18px;
+  margin-top: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pm-mute);
+}
+
+.pm-traj-legend i {
+  display: inline-block;
+  width: 18px;
+  height: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+  background: currentColor;
+}
+
+.pm-shapes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 640px;
+}
+
+.pm-shape {
+  display: grid;
+  grid-template-columns: minmax(0, 160px) minmax(0, 1fr) 48px;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.pm-shape-label {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.pm-shape-track {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.pm-shape-bar {
+  display: block;
+  height: 100%;
+  background: var(--pm-accent);
+  border-radius: 99px;
+}
+
+.pm-shape b {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.88rem;
+  text-align: right;
+}
+
+/* ── Opening matrix ──────────────────────────────────────────────────── */
+
+.pm-open-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+}
+
+.pm-open-col h3 {
+  margin: 0 0 12px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pm-mute);
+}
+
+.pm-open-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.pm-open-table th {
+  text-align: left;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pm-mute);
+  padding: 0 8px 8px 0;
+}
+
+/* Fixed layout splits the columns evenly and the old ellipsis then hid which
+ * repertoire line is actually bleeding. Give the name the leftover room. */
+.pm-open-table th:not(:first-child),
+.pm-open-table td:not(:first-child) {
+  text-align: right;
+  width: 5.5em;
+}
+
+.pm-open-table td {
+  padding: 8px 8px 8px 0;
+  border-top: 1px solid var(--pm-line);
+}
+
+.pm-open-table td:first-child {
+  overflow-wrap: anywhere;
+}
+
+.pm-open-table tr.is-hot td:first-child {
+  box-shadow: inset 3px 0 0 var(--pm-red);
+  padding-left: 10px;
+}
+
+.pm-heat {
+  display: inline-block;
+  min-width: 3.2em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ── Moments / boards ────────────────────────────────────────────────── */
+
+.pm-moments {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.pm-moment {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+/* Until the board mounts this is a placeholder, so it must not read as a
+ * real, empty board — a bare green grid looks like a position that failed
+ * to load. Neutral panel, faint grid, no chess colours. */
+.pm-board {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--pm-line);
+  background:
+    repeating-conic-gradient(
+      rgba(255, 255, 255, 0.03) 0% 25%,
+      rgba(255, 255, 255, 0.01) 0% 50%
+    ) 0 0 / 25% 25%,
+    var(--pm-panel);
+}
+
+.pm-board.cg-wrap,
+.pm-board .cg-wrap,
+.pm-board cg-container,
+.pm-board cg-board {
+  position: absolute !important;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.pm-moment figcaption {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pm-moment figcaption p {
+  margin: 0;
+  font-size: 1.02rem;
+  line-height: 1.45;
+  max-width: 36em;
+}
+
+.pm-moment-meta {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pm-mute);
+}
+
+.pm-moment-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pm-link {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--pm-accent-hi);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pm-twins {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.pm-twin h3 {
+  margin: 0 0 10px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.pm-twin--win h3 { color: var(--pm-green); }
+.pm-twin--loss h3 { color: var(--pm-red); }
+
+/* ── Habits / phase ──────────────────────────────────────────────────── */
+
+.pm-habits {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-width: 640px;
+}
+
+.pm-habit {
+  padding: 16px 0;
+  border-top: 1px solid var(--pm-line);
+}
+
+.pm-habit:last-child { border-bottom: 1px solid var(--pm-line); }
+
+.pm-habit b {
+  display: block;
+  font-size: 1rem;
+  margin-bottom: 4px;
+}
+
+.pm-habit p {
+  margin: 0;
+  color: var(--pm-dim);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.pm-phase-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 520px;
+}
+
+.pm-phase-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) 48px;
+  gap: 12px;
+  align-items: center;
+}
+
+.pm-phase-track {
+  height: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 99px;
+  position: relative;
+}
+
+.pm-phase-bar {
+  display: block;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--pm-cool);
+  border-radius: 99px;
+}
+
+.pm-phase-row.is-worst .pm-phase-bar { background: var(--pm-red); }
+
+/* ── How to fix ──────────────────────────────────────────────────────── */
+
+.pm-fix {
+  padding: 28px 0;
+  border-top: 1px solid var(--pm-line);
+}
+
+.pm-fix:first-of-type { border-top: 0; padding-top: 30px; }
+
+/* Two example positions per fix; stacked they pushed the "Train this" button
+ * a screen and a half below the claim it belongs to. */
+.pm-fix-moments {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 18px;
+}
+
+@media (max-width: 900px) {
+  .pm-fix-moments { grid-template-columns: 1fr; }
+}
+
+.pm-fix h3 {
+  margin: 0 0 8px;
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.pm-fix .pm-lede { margin-bottom: 12px; }
+
+.pm-promise {
+  margin: 0 0 16px;
+  font-size: 0.95rem;
+  color: var(--pm-fg);
+  max-width: 40em;
+}
+
+.pm-keep {
+  margin-top: 40px;
+}
+
+.pm-keep ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pm-keep li {
+  padding: 12px 0;
+  border-top: 1px solid var(--pm-line);
+  color: var(--pm-dim);
+}
+
+.pm-keep li b {
+  display: block;
+  color: var(--pm-fg);
+  margin-bottom: 2px;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────── */
+
+@media (max-width: 1100px) {
+  .pm-identity { display: none; }
+}
+
+@media (max-width: 860px) {
+  .pm-body { grid-template-columns: minmax(0, 1fr); }
+  .pm-spine { display: none; }
+  .pm-open-grid,
+  .pm-twins { grid-template-columns: 1fr; }
+  .pm-moment { grid-template-columns: 1fr; }
+  .pm-board { max-width: 280px; }
+}
+
+@media (max-width: 520px) {
+  .pm-verdict-num { font-size: 4rem; }
+  .pm-diagnosis { font-size: 1.12rem; }
+  .pm-shape { grid-template-columns: 1fr 40px; }
+  .pm-shape-label { grid-column: 1 / -1; }
+  .pm-chip { flex: 1 1 100%; }
+  .pm-tab { padding: 0 0.55rem; font-size: 0.7rem; }
+  .pm-screen .pm-cta { width: 100%; text-align: center; }
+  .pm-foot-step { display: none; }
+  .pm-foot { gap: 8px; }
+  .pm-foot .pm-cta { flex: 1 1 auto; text-align: center; }
+}

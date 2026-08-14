@@ -78,6 +78,7 @@ Manual smoke test plan:
       const d = m.detail || {};
       const lines = d.top_lines || [];
       const afterWhite = i + 1 < whiteEval.length ? whiteEval[i + 1] : null;
+      const fd = m.findability_detail || {};
       return {
         ply: m.ply,
         san: m.san,
@@ -102,14 +103,31 @@ Manual smoke test plan:
               ...(typeof afterWhite === "number"
                 ? { eval_after_cp_white: afterWhite }
                 : {}),
+              // `delta_w` is stored in win% points; the live analysis path
+              // carries the same quantity as a 0-1 fraction, and the review
+              // card + the findability display rule both read that form.
+              ...(typeof m.delta_w === "number"
+                ? { expected_points_loss: m.delta_w / 100 }
+                : {}),
+              ...(lines[0] && lines[0].san
+                ? { best_move_san: lines[0].san, best_move_uci: lines[0].uci }
+                : {}),
+              is_user_move: !!m.is_user_move,
             }
           : null,
+        // Band / curve / alternate are rebuilt server-side from the stored
+        // feature vector (GET /api/review), so a re-opened review renders the
+        // same panel the live run did instead of a bare meter.
         findability:
           m.findability != null
             ? {
                 score: m.findability,
                 personal: m.findability_personal,
                 r_find: m.r_find,
+                band: fd.band || "",
+                curve: Array.isArray(fd.curve) ? fd.curve : [],
+                alternate: fd.alternate || null,
+                forced: !!fd.forced,
               }
             : null,
         classification: null,
@@ -135,6 +153,7 @@ Manual smoke test plan:
       reviewId: row.review_id,
       gameId: row.game_id,
       depthTier: row.depth_tier,
+      userColor: row.user_color === "black" ? "black" : "white",
       importedAt,
       sourceName: `review:${row.depth_tier || "full"}`,
       pgn: row.pgn || "",

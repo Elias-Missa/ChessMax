@@ -162,6 +162,15 @@ class Engine:
 
         Returns the per-line info dictionaries from ``python-chess``, sorted
         best-first (``multipv=1`` first).
+
+        Each call starts from a cleared transposition table. A depth-limited
+        search is *not* deterministic when the table carries over: the same
+        position analysed after a different predecessor returns a different
+        line, so reviews were reproducible only if every position was visited
+        in exactly the same order on one process. Clearing it costs ~12% on a
+        serial walk and buys two things — the same position always scores the
+        same, and a game can be walked on several engines at once without the
+        numbers depending on which engine happened to take which ply.
         """
         if self._engine is None:
             raise RuntimeError("Engine is not started; use it as a context manager.")
@@ -173,6 +182,8 @@ class Engine:
             board,
             chess.engine.Limit(depth=depth),
             multipv=multipv,
+            # A fresh marker each call makes python-chess emit `ucinewgame`.
+            game=object(),
         )
         info_list: list[dict[str, Any]] = (
             [dict(item) for item in raw] if isinstance(raw, list) else [dict(raw)]

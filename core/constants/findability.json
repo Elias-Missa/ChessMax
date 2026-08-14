@@ -31,6 +31,7 @@
     "nodes": 2500000
   },
 
+  "_rating_grid_comment": "MEASURED, do not widen. Maia-3 conditions on raw Elo 600-2600 and the obvious move was to widen the grid to match. Against 72 stratified Lichess puzzles (seed 7, line mode, Maia-3) the shipped score_mode='mean_ca' gets *worse* as the grid widens: |r(score,puzzle rating)| = 0.603 at 1100-2000, 0.594 at 1000-2200, 0.591 at 900-2300, 0.577 at 600-2600, and 0.602 at 1200-1950. Widening only helps the unused r_find-crossing scoring (0.484 -> 0.508), because averaging C_A over ratings nobody in the sample plays at compresses easy and hard positions together.",
   "rating_grid": [1100, 1250, 1400, 1550, 1700, 1850, 2000],
 
   "gate_win_prob_high": 0.97,

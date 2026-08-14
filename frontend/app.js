@@ -139,6 +139,75 @@ const statsOpenings = document.querySelector("#stats-openings");
 const statsPlayoutGames = document.querySelector("#stats-playout-games");
 const statsChart = document.querySelector("#stats-chart");
 
+// ── Puzzles home chrome ──────────────────────────────────────────────────
+const puzzleHero = document.querySelector("#puzzleHero");
+const puzzleHeroToggle = document.querySelector("#puzzleHeroToggle");
+const ratingDeltaEl = document.querySelector("#rating-delta");
+const turnChip = document.querySelector("#turn-chip");
+const sessionSeenEl = document.querySelector("#session-seen");
+const sessionSolvedEl = document.querySelector("#session-solved");
+const sessionStreakEl = document.querySelector("#session-streak");
+
+const HERO_KEY = "chessmax.puzzles.heroCollapsed";
+const session = { seen: 0, solved: 0, streak: 0 };
+
+/* The board sizes itself off the viewport height (see `.board` in style.css),
+ * so it has to know how much of that the hero above it is eating — otherwise
+ * an expanded intro pushes the board off the bottom of a laptop screen. */
+function publishHeroHeight() {
+  const root = document.getElementById("puzzles-root");
+  if (!root) return;
+  const visible = puzzleHero && root.dataset.view === "train";
+  const h = visible ? Math.round(puzzleHero.getBoundingClientRect().height) : 0;
+  root.style.setProperty("--puzzle-hero-h", `${h}px`);
+}
+
+if (puzzleHero && typeof ResizeObserver === "function") {
+  new ResizeObserver(publishHeroHeight).observe(puzzleHero);
+}
+window.addEventListener("resize", publishHeroHeight);
+
+function setHeroCollapsed(collapsed) {
+  if (!puzzleHero) return;
+  puzzleHero.classList.toggle("is-collapsed", collapsed);
+  if (puzzleHeroToggle) {
+    puzzleHeroToggle.textContent = collapsed ? "What is this?" : "Hide intro";
+    puzzleHeroToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  }
+  publishHeroHeight();
+}
+
+if (puzzleHeroToggle) {
+  let collapsed = false;
+  try { collapsed = window.localStorage.getItem(HERO_KEY) === "1"; } catch { /* private mode */ }
+  setHeroCollapsed(collapsed);
+  puzzleHeroToggle.addEventListener("click", () => {
+    collapsed = !puzzleHero.classList.contains("is-collapsed");
+    setHeroCollapsed(collapsed);
+    try { window.localStorage.setItem(HERO_KEY, collapsed ? "1" : "0"); } catch { /* quota */ }
+  });
+}
+
+function renderSession() {
+  if (sessionSeenEl) sessionSeenEl.textContent = String(session.seen);
+  if (sessionSolvedEl) sessionSolvedEl.textContent = String(session.solved);
+  if (sessionStreakEl) {
+    sessionStreakEl.textContent = String(session.streak);
+    sessionStreakEl.parentElement.dataset.hot = session.streak >= 3 ? "true" : "false";
+  }
+}
+
+/** Fold one graded attempt into the session strip. `continue` never lands here. */
+function recordSessionResult(passed) {
+  if (passed) {
+    session.solved += 1;
+    session.streak += 1;
+  } else {
+    session.streak = 0;
+  }
+  renderSession();
+}
+
 const board = Chessground(boardElement, {
   coordinates: true,
   turnColor: "white",
@@ -160,7 +229,7 @@ const board = Chessground(boardElement, {
   },
 });
 
-nextButton.addEventListener("click", loadNextPuzzle);
+nextButton.addEventListener("click", () => loadNextPuzzle());
 openingsFieldset.addEventListener("change", onOpeningsChange);
 playoutButton.addEventListener("click", startPlayout);
 if (playoutTakebackButton) playoutTakebackButton.addEventListener("click", takebackPlayout);
@@ -202,13 +271,17 @@ async function init() {
     renderRating();
     renderOpenings(openings.selected);
     maiaRatingSelect.value = String(nearestRating(state.rating));
-    await loadNextPuzzle();
+    await loadNextPuzzle({ focus: false });
   } catch (error) {
     statusText.textContent = error.message;
   }
 }
 
-async function loadNextPuzzle() {
+/* `focus` decides whether loading a puzzle also *shows* the puzzle view. The
+ * "Next Puzzle" button wants that; boot does not — the shell has already
+ * routed to whatever deep link the user opened, and switching here pushed
+ * /puzzles over it, which made every /training/* URL unreachable on load. */
+async function loadNextPuzzle({ focus = true } = {}) {
   if (state.calc.active) exitCalcMode();
   state.puzzle = await request("/api/puzzle/next");
   state.chess = new Chess(state.puzzle.fen);
@@ -224,6 +297,10 @@ async function loadNextPuzzle() {
   nextButton.disabled = true;
   statusText.textContent = "Find the best move, or play something solid.";
   sideToMove.textContent = state.puzzle.side_to_move === "w" ? "White" : "Black";
+  if (turnChip) turnChip.dataset.side = state.puzzle.side_to_move === "w" ? "w" : "b";
+  renderRating(0);
+  session.seen += 1;
+  renderSession();
 
   const color = state.puzzle.side_to_move === "w" ? "white" : "black";
   board.set({
@@ -238,7 +315,7 @@ async function loadNextPuzzle() {
     },
   });
   board.setShapes([]);
-  switchTab("train");
+  if (focus) switchTab("train");
 }
 
 function resetPlayoutState() {
@@ -352,8 +429,13 @@ async function submitTrainingMove(source, target) {
     return;
   }
 
+  const ratingBefore = state.rating;
   state.rating = result.user_rating_after;
-  renderRating();
+  renderRating(
+    typeof result.user_rating_after === "number" && typeof ratingBefore === "number"
+      ? result.user_rating_after - ratingBefore
+      : 0,
+  );
   if (result.opponent_move_uci) {
     await delay(OPPONENT_REPLY_DELAY_MS);
     playOpponentMove(result.opponent_move_uci);
@@ -368,6 +450,7 @@ async function submitTrainingMove(source, target) {
   }
 
   state.canPlayOut = Boolean(result.can_play_out);
+  recordSessionResult(Boolean(result.solved));
   renderFeedback(result);
   playSound("end");
 }
@@ -509,6 +592,12 @@ const TAGLINES = {
 function switchTab(tabId) {
   if (state.calc.active) exitCalcMode();
   state.view = tabId;
+  // Lets CSS drop chrome that does not belong to a view — the board on Stats,
+  // the opening filter anywhere but the puzzle feed it actually filters.
+  const puzzlesRootEl = document.getElementById("puzzles-root");
+  if (puzzlesRootEl) puzzlesRootEl.dataset.view = tabId;
+  // The hero only exists on the feed; every other view must get 0 back.
+  publishHeroHeight();
   const tagline = document.querySelector("#topbar-tagline");
   if (tagline && TAGLINES[tabId]) tagline.textContent = TAGLINES[tabId];
   tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === tabId));
@@ -617,6 +706,13 @@ function onStatsReviewClick(event) {
 }
 
 function drawRatingChart(history) {
+  // The canvas shipped a fixed 340px bitmap, so it sat as a small rectangle
+  // in the corner of a full-width card. Match the box it is drawn into.
+  const boxWidth = Math.round(statsChart.parentElement?.clientWidth || 0);
+  if (boxWidth > 0) {
+    const target = Math.max(280, boxWidth - 32);
+    if (statsChart.width !== target) statsChart.width = target;
+  }
   const ctx = statsChart.getContext("2d");
   if (!ctx) return;
   ctx.clearRect(0, 0, statsChart.width, statsChart.height);
@@ -626,21 +722,58 @@ function drawRatingChart(history) {
     ctx.fillText("Not enough data", 10, 20);
     return;
   }
-  const padding = 12;
+  // A bare unlabelled line in an off-palette blue told you nothing about
+  // where the rating actually went. Site green, with the range called out.
+  const padding = 16;
+  const labelPad = 34;
   const ratings = history.map((entry) => Number(entry.rating));
   const min = Math.min(...ratings);
   const max = Math.max(...ratings);
   const range = Math.max(1, max - min);
-  ctx.strokeStyle = "#8ab4f8";
-  ctx.lineWidth = 2;
+  const x0 = padding + labelPad;
+  const plotW = statsChart.width - x0 - padding;
+  const plotH = statsChart.height - padding * 2;
+  const at = (index, rating) => [
+    x0 + (index / (ratings.length - 1)) * plotW,
+    statsChart.height - padding - ((rating - min) / range) * plotH,
+  ];
+
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+  ctx.lineWidth = 1;
+  [padding, statsChart.height - padding].forEach((y) => {
+    ctx.beginPath();
+    ctx.moveTo(x0, y);
+    ctx.lineTo(statsChart.width - padding, y);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = "#7a8795";
+  ctx.font = "10px Inter, system-ui, sans-serif";
+  ctx.textBaseline = "middle";
+  ctx.fillText(String(max), padding, padding);
+  ctx.fillText(String(min), padding, statsChart.height - padding);
+
   ctx.beginPath();
   ratings.forEach((rating, index) => {
-    const x = padding + (index / (ratings.length - 1)) * (statsChart.width - padding * 2);
-    const y = statsChart.height - padding - ((rating - min) / range) * (statsChart.height - padding * 2);
+    const [x, y] = at(index, rating);
     if (index === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   });
+  ctx.strokeStyle = "#44d62c";
+  ctx.lineWidth = 2;
   ctx.stroke();
+
+  ctx.lineTo(statsChart.width - padding, statsChart.height - padding);
+  ctx.lineTo(x0, statsChart.height - padding);
+  ctx.closePath();
+  ctx.fillStyle = "rgba(68, 214, 44, 0.10)";
+  ctx.fill();
+
+  const [lx, ly] = at(ratings.length - 1, ratings[ratings.length - 1]);
+  ctx.beginPath();
+  ctx.arc(lx, ly, 3, 0, Math.PI * 2);
+  ctx.fillStyle = "#57e83f";
+  ctx.fill();
 }
 
 function setPlayoutTimeline(initialFen, moveList) {
@@ -924,8 +1057,16 @@ function renderOpenings(selected) {
   }
 }
 
-function renderRating() {
+function renderRating(delta) {
   ratingEl.textContent = state.rating;
+  if (!ratingDeltaEl) return;
+  if (!delta) {
+    ratingDeltaEl.textContent = "";
+    delete ratingDeltaEl.dataset.dir;
+    return;
+  }
+  ratingDeltaEl.textContent = `${delta > 0 ? "+" : "−"}${Math.abs(delta)}`;
+  ratingDeltaEl.dataset.dir = delta > 0 ? "up" : "down";
 }
 
 function renderFeedback(result) {

@@ -5,8 +5,9 @@ from __future__ import annotations
 import io
 import json
 import re
+import threading
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 from typing import Any
 
@@ -297,6 +298,7 @@ def analyze_and_store(
     attach_findability_fn: Callable[..., Any] | None = None,
     policy_fn: Callable[..., Any] | None = None,
     user_rating: int | None = None,
+    engines: Sequence[Any] | None = None,
 ) -> dict[str, Any]:
     """Run analysis and write ``review_moves`` + summary fields on ``reviews``."""
 
@@ -313,8 +315,14 @@ def analyze_and_store(
         FindabilityConstants.load() if depth_tier == "full" else None
     )
     # Shared Zobrist MultiPV cache — two users reviewing the same opening
-    # share engine work across review_ids.
-    cached_engine = CachingEngine(engine, connection)
+    # share engine work across review_ids. With a pool, every proxy shares the
+    # one connection and therefore the one lock.
+    cache_lock = threading.Lock()
+    pool_inner = list(engines) if engines else [engine]
+    cached_pool = [
+        CachingEngine(inner, connection, lock=cache_lock) for inner in pool_inner
+    ]
+    cached_engine = cached_pool[0]
 
     def progress_cb(done: int, total: int, _ply: Any) -> None:
         if total <= 0:
@@ -331,6 +339,7 @@ def analyze_and_store(
     plies = analyze_pgn(
         pgn,
         cached_engine,
+        engines=cached_pool if len(cached_pool) > 1 else None,
         depth=depth,
         multipv=multipv,
         recurse_depth=0,

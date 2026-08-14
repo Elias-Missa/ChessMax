@@ -207,32 +207,47 @@
    * rising-probability sparkline (the ``curve``), the personal likelihood, and
    * the realistic alternative move.
    */
-  function renderFindability(panelEl, findability, bestSan) {
+  function renderFindability(panelEl, findability, bestSan, options) {
     if (!panelEl) return;
     panelEl.innerHTML = "";
     if (!findability) {
       panelEl.classList.add("hidden");
       return;
     }
+    const opts = options || {};
     panelEl.classList.remove("hidden");
     const band = findability.band || "";
     const bandColor = FIND_BAND_COLORS[band] || "#5C8BB0";
     const score = typeof findability.score === "number" ? findability.score : null;
+    const alreadyPlayed = !!bestSan && bestSan === opts.playedSan;
 
     // Best-move header — makes explicit that this whole panel describes how hard
-    // it is to FIND THE BEST MOVE (not the move that was actually played).
+    // it is to FIND THE BEST MOVE (not the move that was actually played). The
+    // move itself glows in the same purple as the board arrow so the two read
+    // as one object.
     if (bestSan) {
       const bm = document.createElement("div");
       bm.className = "review-find-bestmove";
       const bmLabel = document.createElement("span");
       bmLabel.className = "review-find-bestmove-label";
-      bmLabel.textContent = "Best move to find";
+      bmLabel.textContent = alreadyPlayed ? "Best move — you played it" : "Best move to find";
       const bmMove = document.createElement("strong");
       bmMove.className = "review-find-bestmove-san";
-      bmMove.textContent = `→ ${bestSan}`;
+      bmMove.textContent = bestSan;
       bm.appendChild(bmLabel);
       bm.appendChild(bmMove);
       panelEl.appendChild(bm);
+
+      // The single most misread thing about this panel: the score belongs to
+      // the engine's move, not to the move on the board.
+      const scope = document.createElement("p");
+      scope.className = "review-find-scope";
+      scope.textContent = alreadyPlayed
+        ? `Difficulty of ${bestSan} — the move you found.`
+        : opts.playedSan
+          ? `Difficulty of ${bestSan}, not of your ${opts.playedSan}.`
+          : `Difficulty of the engine's move, not of the move played.`;
+      panelEl.appendChild(scope);
     }
 
     // Header: label + band verdict.

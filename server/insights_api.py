@@ -186,6 +186,9 @@ def build_insights_router(app: FastAPI) -> APIRouter:
                 metrics = json.loads(row["metrics"])
             except json.JSONDecodeError:
                 metrics = None
+        if metrics is not None:
+            from server.insights_narrative import ensure_narrative
+            metrics = ensure_narrative(metrics)
         source = row["source"] if "source" in row.keys() else "chesscom"
         return {
             "run_id": row["run_id"],
@@ -230,6 +233,7 @@ def build_insights_router(app: FastAPI) -> APIRouter:
             params,
         ).fetchall()
         runs = []
+        from server.insights_narrative import ensure_narrative
         for row in rows:
             metrics = None
             if row["metrics"]:
@@ -237,6 +241,8 @@ def build_insights_router(app: FastAPI) -> APIRouter:
                     metrics = json.loads(row["metrics"])
                 except json.JSONDecodeError:
                     metrics = None
+            if metrics is not None:
+                metrics = ensure_narrative(metrics)
             runs.append({
                 **dict(row),
                 "metrics": metrics,

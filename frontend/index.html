@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="/static/elo/styles.css" />
     <link rel="stylesheet" href="/static/eval/styles.css" />
     <link rel="stylesheet" href="/static/insights/styles.css" />
+    <link rel="stylesheet" href="/static/insights/postmortem.css?v=story-3" />
   </head>
   <body>
     <div id="bootError" class="boot-error hidden" role="alert"></div>
@@ -75,17 +76,86 @@
     </nav>
 
     <!-- ════════════════════════════ PUZZLES APP ═══════════════════════════ -->
-    <div id="puzzles-root">
+    <!-- `data-view` is authored so the hero/topbar swap is right on first paint;
+         `switchTab` keeps it in sync from then on. -->
+    <div id="puzzles-root" data-view="train">
       <header class="topbar">
         <div>
           <p id="topbar-tagline">Decide if there is a tactic — or just make a solid move.</p>
         </div>
-        <fieldset id="openings" class="openings">
-          <legend>Openings</legend>
-          <label><input type="checkbox" value="london" /> London</label>
-          <label><input type="checkbox" value="caro-kann" /> Caro-Kann</label>
-        </fieldset>
       </header>
+
+      <!-- Puzzles home hero — shown on the Puzzles feed only (data-view="train"). -->
+      <section class="puzzle-hero" id="puzzleHero" aria-labelledby="puzzleHeroTitle">
+        <div class="puzzle-hero-glow" aria-hidden="true"></div>
+
+        <div class="puzzle-hero-top">
+          <span class="puzzle-hero-eyebrow">
+            <span class="puzzle-hero-pulse" aria-hidden="true"></span>Puzzles 2.0
+          </span>
+          <button type="button" id="puzzleHeroToggle" class="puzzle-hero-toggle"
+            aria-expanded="true" aria-controls="puzzleHero">Hide intro</button>
+        </div>
+
+        <div class="puzzle-hero-body">
+          <div class="puzzle-hero-copy">
+            <h2 class="puzzle-hero-title" id="puzzleHeroTitle">
+              Is it a real puzzle? Or just an <em>equal</em> position?
+            </h2>
+            <p class="puzzle-hero-sub">
+              Every puzzle site tells you a tactic is there before you look — the one hint you
+              never get in a real game. Here, some positions hide a winning tactic and the rest
+              only reward a solid move, and <strong>you are never told which one you got</strong>.
+              Calculate to find out.
+            </p>
+
+            <ol class="puzzle-hero-steps">
+              <li>
+                <span class="puzzle-step-n">1</span>
+                <div>
+                  <strong>Calculate</strong>
+                  <p>No theme tag, no "mate in 2", no tell of any kind.</p>
+                </div>
+              </li>
+              <li>
+                <span class="puzzle-step-n">2</span>
+                <div>
+                  <strong>Commit</strong>
+                  <p>Play the move you'd actually play over the board.</p>
+                </div>
+              </li>
+              <li>
+                <span class="puzzle-step-n">3</span>
+                <div>
+                  <strong>Get graded honestly</strong>
+                  <p>Tactics on the line. Quiet positions on how much eval you dropped.</p>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <aside class="puzzle-hero-aside">
+            <div class="puzzle-hero-split">
+              <div class="puzzle-hero-face" data-kind="tactic">
+                <span class="puzzle-hero-face-tag">Sometimes</span>
+                <strong>There's a tactic</strong>
+                <p>A forced win is sitting there. Miss it and you lose rating.</p>
+              </div>
+              <div class="puzzle-hero-vs" aria-hidden="true">or</div>
+              <div class="puzzle-hero-face" data-kind="quiet">
+                <span class="puzzle-hero-face-tag">Just as often</span>
+                <strong>There's nothing</strong>
+                <p>Only a solid move. Force it and you'll hand back the eval.</p>
+              </div>
+            </div>
+            <fieldset id="openings" class="openings">
+              <legend>Opening focus</legend>
+              <label><input type="checkbox" value="london" /> London</label>
+              <label><input type="checkbox" value="caro-kann" /> Caro-Kann</label>
+            </fieldset>
+          </aside>
+        </div>
+      </section>
 
       <main class="layout">
         <section class="board-panel">
@@ -94,18 +164,27 @@
 
         <section class="side-panel">
           <section id="view-train" class="view">
-            <div class="card">
-              <div class="meta-row">
-                <span>Rating</span>
-                <strong id="rating">1500</strong>
+            <div class="card puzzle-rating-card">
+              <div class="puzzle-rating">
+                <span class="puzzle-rating-label">Puzzle rating</span>
+                <div class="puzzle-rating-row">
+                  <strong id="rating">1500</strong>
+                  <span id="rating-delta" class="puzzle-rating-delta"></span>
+                </div>
               </div>
-              <div class="meta-row">
-                <span>Side to move</span>
-                <strong id="side-to-move">-</strong>
+              <div class="puzzle-turn" id="turn-chip" data-side="w">
+                <span class="puzzle-turn-dot" aria-hidden="true"></span>
+                <span class="puzzle-turn-text"><strong id="side-to-move">-</strong> to move</span>
               </div>
             </div>
 
-            <div class="card">
+            <div class="puzzle-session" aria-label="This session">
+              <div><span class="label">Seen</span><strong id="session-seen">0</strong></div>
+              <div><span class="label">Solved</span><strong id="session-solved">0</strong></div>
+              <div><span class="label">Streak</span><strong id="session-streak">0</strong></div>
+            </div>
+
+            <div class="card puzzle-prompt-card">
               <p id="status">Loading first puzzle…</p>
               <div id="feedback" class="feedback hidden"></div>
               <div id="playout-start" class="playout-start hidden">
@@ -336,7 +415,7 @@
                 <h3>Your Mistakes</h3>
                 <span class="streak-badge" id="mistakes-bucket-badge" title="Puzzle type">—</span>
               </div>
-              <p class="mode-desc">Puzzles mined from your own Chess.com games — the wins you missed and the moves you blundered. Solve it, then see what you actually played, side by side with the right move.</p>
+              <p class="mode-desc">Puzzles mined from your own games on Chess.com or Lichess — the wins you missed and the moves you blundered. Solve it, then see what you actually played, side by side with the right move.</p>
             </div>
 
             <div class="card" id="mistakes-generate">
@@ -432,6 +511,33 @@
     <div id="vol-root" class="hidden">
     <main class="app">
 
+    <!-- ── Game Review landing: shown until a game is loaded ─────────────── -->
+    <section id="reviewLanding" class="review-landing" aria-label="Start a game review">
+      <div class="review-landing-copy">
+        <p class="review-landing-kicker">Game Review</p>
+        <h1 class="review-landing-title">Analyze a game, move by move</h1>
+        <p class="review-landing-sub">
+          Paste a PGN and get accuracy for both sides, every move classified,
+          the turning points, and a volatility read on how punishing each
+          position really was.
+        </p>
+        <ul class="review-landing-points">
+          <li><span aria-hidden="true">◈</span><div><b>Move classification</b>Brilliant through blunder, on the eval graph and the move list.</div></li>
+          <li><span aria-hidden="true">◆</span><div><b>Key moments</b>The handful of moves that actually decided the result.</div></li>
+          <li><span aria-hidden="true">◧</span><div><b>Volatility</b>How much the position punished a wrong move, not just the eval.</div></li>
+        </ul>
+      </div>
+      <div class="review-landing-form" id="reviewLandingForm">
+        <!-- #pgnDrawer is moved in here while empty, and back to the right
+             panel once a game is loaded. One set of controls, one set of
+             listeners. -->
+        <p class="review-landing-alt">
+          Already reviewed a game?
+          <button type="button" class="review-landing-link" data-vol-tab="library">Open your library</button>
+        </p>
+      </div>
+    </section>
+
     <!-- ── Board + side panel row ────────────────────────────────────────── -->
     <div class="board-row">
 
@@ -463,6 +569,7 @@
           <div class="board-frame">
             <div id="volBoard"></div>
             <svg id="arrowLayer" class="arrow-layer" aria-hidden="true"></svg>
+            <div id="arrowTip" class="arrow-tip hidden" role="tooltip" aria-hidden="true"></div>
             <div id="reviewBoardOverlay" class="review-board-overlay hidden" aria-hidden="true"></div>
           </div>
 
@@ -609,12 +716,21 @@
               <label class="toggle">
                 <input id="arrowToggleGame" type="checkbox" checked />
                 <span class="toggle-track"><span class="toggle-knob"></span></span>
-                <span class="toggle-label">Show arrow</span>
+                <span class="toggle-label">Show best-move arrow</span>
               </label>
               <label class="toggle">
                 <input id="soundsToggle" type="checkbox" checked />
                 <span class="toggle-track"><span class="toggle-knob"></span></span>
                 <span class="toggle-label">Sound effects</span>
+              </label>
+              <label class="drawer-select" for="findModeSelect">
+                <span class="drawer-select-label">Findability panel</span>
+                <select id="findModeSelect">
+                  <option value="always" selected>Always show</option>
+                  <option value="2">Only when the best move gains ≥ 2% win</option>
+                  <option value="5">Only when the best move gains ≥ 5% win</option>
+                  <option value="10">Only when the best move gains ≥ 10% win</option>
+                </select>
               </label>
               <button id="btnFlipGame" class="btn btn-block">Flip board</button>
             </div>
@@ -794,7 +910,7 @@
           <input id="libraryOpponent" type="search" placeholder="Name" />
         </label>
         <label>
-          <span class="micro-label">Min avg V</span>
+          <span class="micro-label" title="Only show games whose average volatility is at least this">Min avg volatility</span>
           <input id="libraryMinV" type="number" min="0" max="100" step="1" placeholder="0" />
         </label>
         <label>
@@ -1419,14 +1535,17 @@
             <div class="insights-hero-stat">
               <span class="label">Games</span>
               <span class="value" id="insights-stat-games">—</span>
+              <span class="hint">analyzed in this window</span>
             </div>
-            <div class="insights-hero-stat">
+            <div class="insights-hero-stat" title="Winning chances given away on moves a player at your level would realistically have found — summed across every analyzed game.">
               <span class="label">Fixable loss</span>
               <span class="value is-accent" id="insights-stat-fixable">—</span>
+              <span class="hint" id="insights-stat-fixable-hint">win% you could have kept</span>
             </div>
             <div class="insights-hero-stat">
               <span class="label">Practice set</span>
               <span class="value" id="insights-stat-practice">—</span>
+              <span class="hint">positions queued to drill</span>
             </div>
           </div>
         </header>
@@ -1459,8 +1578,10 @@
               <option value="daily">Daily</option>
             </select>
           </div>
-          <button id="insights-generate" type="submit" class="insights-primary">Generate</button>
-          <button id="insights-refresh" type="button" class="insights-ghost">Refresh</button>
+          <button id="insights-generate" type="submit" class="insights-primary"
+                  title="Run a new snapshot using the settings above">Generate</button>
+          <button id="insights-refresh" type="button" class="insights-ghost" disabled
+                  title="Re-run the report you have open, analyzing only games not already cached">Refresh</button>
         </form>
 
         <div class="insights-status-row">
@@ -1480,12 +1601,13 @@
           </div>
           <div class="insights-ready-cta">
             <button type="button" id="insights-open" class="insights-open-btn">
-              <span>Open Insights</span>
+              <span>Why you lose</span>
               <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20">
                 <path d="M5 12h13M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </button>
-            <p class="insights-ready-hint">Full-screen report · press <kbd>Esc</kbd> to exit</p>
+            <button type="button" id="insights-open-deep" class="insights-deep-btn">Deep dive</button>
+            <p class="insights-ready-hint">The story first · numbers in Deep dive · <kbd>Esc</kbd> to exit</p>
           </div>
         </section>
 
@@ -1924,6 +2046,34 @@
         </div>
       </div>
 
+      <!-- ── Post-mortem: Verdict / Why / How ────────────────────────────── -->
+      <div id="postmortem" class="pm-overlay hidden" role="dialog" aria-modal="true" aria-label="Why you lose">
+        <header class="pm-top">
+          <button type="button" id="pm-close" class="pm-back" aria-label="Close">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path d="M19 12H6M12 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <nav class="pm-tabs" aria-label="Story">
+            <button type="button" class="pm-tab is-on" data-pm="verdict">Verdict</button>
+            <button type="button" class="pm-tab" data-pm="why">Why you lose</button>
+            <button type="button" class="pm-tab" data-pm="how">How to fix it</button>
+          </nav>
+          <button type="button" class="pm-deep" data-pm="deep">Deep dive</button>
+          <div class="pm-identity" id="pm-identity"></div>
+        </header>
+        <nav class="pm-secnav hidden" id="pm-secnav" aria-label="Sections on this page"></nav>
+        <div class="pm-body">
+          <aside id="pm-spine" class="pm-spine" aria-hidden="true"></aside>
+          <div id="pm-scroll" class="pm-scroll">
+            <section id="pm-verdict" class="pm-screen"></section>
+            <section id="pm-why" class="pm-screen hidden"></section>
+            <section id="pm-how" class="pm-screen hidden"></section>
+          </div>
+        </div>
+        <footer class="pm-foot" id="pm-foot"></footer>
+      </div>
+
       <!-- ── Position inspector modal ─────────────────────────────────────── -->
       <div id="insights-modal-overlay" class="insights-modal-overlay hidden" aria-hidden="true">
         <div class="insights-modal-card">
@@ -1973,6 +2123,7 @@
     <script src="/static/elo/app.js"></script>
     <script src="/static/eval/app.js"></script>
     <script src="/static/insights/app.js"></script>
+    <script src="/static/insights/postmortem.js?v=story-3"></script>
     <!-- Puzzles app, then the shell tab controller (modules run in order, after classic scripts) -->
     <script type="module" src="/static/app.js?v=3"></script>
     <script type="module" src="/static/shell.js"></script>

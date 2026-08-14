@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from typing import Any
 
 import chess
@@ -143,11 +144,17 @@ class CachingEngine:
         *,
         engine_version: str = ENGINE_VERSION,
         maia_version: str = DEFAULT_MAIA_VERSION,
+        lock: threading.Lock | None = None,
     ) -> None:
         self._inner = inner
         self._connection = connection
         self._engine_version = engine_version
         self._maia_version = maia_version
+        # Reviews may walk a game on several engines at once; one SQLite
+        # connection is shared, so cache reads and writes are serialised. The
+        # engine call itself stays outside the lock — that is the slow part.
+        # Proxies sharing a connection must be handed the *same* lock.
+        self._lock = lock or threading.Lock()
         self.hits = 0
         self.misses = 0
 
@@ -157,30 +164,34 @@ class CachingEngine:
         depth: int = 18,
         multipv: int = 6,
     ) -> list[dict[str, Any]]:
-        cached = get_features(
-            self._connection,
-            board,
-            depth=depth,
-            multipv=multipv,
-            engine_version=self._engine_version,
-            maia_version=self._maia_version,
-        )
+        with self._lock:
+            cached = get_features(
+                self._connection,
+                board,
+                depth=depth,
+                multipv=multipv,
+                engine_version=self._engine_version,
+                maia_version=self._maia_version,
+            )
         if cached is not None:
             infos = features_to_infos(cached, board.turn)
             if infos:
-                self.hits += 1
+                with self._lock:
+                    self.hits += 1
                 return infos
-        self.misses += 1
+        with self._lock:
+            self.misses += 1
         infos = self._inner.analyse(board, depth=depth, multipv=multipv)
-        put_features(
-            self._connection,
-            board,
-            depth=depth,
-            multipv=multipv,
-            features=infos_to_features(infos, board.turn),
-            engine_version=self._engine_version,
-            maia_version=self._maia_version,
-        )
+        with self._lock:
+            put_features(
+                self._connection,
+                board,
+                depth=depth,
+                multipv=multipv,
+                features=infos_to_features(infos, board.turn),
+                engine_version=self._engine_version,
+                maia_version=self._maia_version,
+            )
         return infos
 
     def __getattr__(self, name: str) -> Any:

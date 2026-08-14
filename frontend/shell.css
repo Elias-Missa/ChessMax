@@ -2,6 +2,13 @@
    Theme: chess.com-style dark cards with a Razer edge — near-black cool
    surfaces + neon "Razer green" (#44d62c) accents and subtle green glow. */
 
+/* Declared on :root, not body — shell.js writes the measured height onto
+ * documentElement, and a body-level declaration would shadow it for every
+ * descendant that reads the variable. */
+:root {
+  --shell-header-h: 3.7rem;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -19,6 +26,9 @@ body {
   color: #ffffff;
 }
 
+/* One row at every width. Wrapping used to drop the account chip onto a
+ * second line below ~950px, leaving a lone "Log out" button floating over a
+ * 45px band of empty header on every page. The tab strip scrolls instead. */
 .shell-header {
   align-items: center;
   backdrop-filter: blur(14px);
@@ -26,7 +36,7 @@ body {
   border-bottom: 1px solid rgba(68, 214, 44, 0.14);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 8px 30px rgba(0, 0, 0, 0.4);
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.75rem 2rem;
   padding: 0.8rem clamp(1rem, 4vw, 3rem);
   position: sticky;
@@ -39,19 +49,30 @@ body {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  flex: none;
   font-size: 1.3rem;
   font-weight: 800;
   letter-spacing: 0.1em;
   margin: 0;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .shell-tabs {
   align-items: center;
   display: flex;
-  flex-wrap: wrap;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
   gap: 0.3rem;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+
+.shell-tabs::-webkit-scrollbar { display: none; }
+
+.shell-tabs .shell-tab,
+.shell-tabs .shell-tab-group-label { flex: none; white-space: nowrap; }
 
 .shell-tab-group-label {
   color: #5d6877;
@@ -114,13 +135,20 @@ body {
   background: rgba(8, 10, 12, 0.92);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.25rem;
+  overflow-x: auto;
   padding: 0.45rem clamp(1rem, 4vw, 3rem);
   position: sticky;
-  top: 3.4rem;
+  scrollbar-width: none;
+  /* Measured by shell.js — a hard-coded offset left a gap under the header. */
+  top: var(--shell-header-h, 3.7rem);
   z-index: 40;
 }
+
+.shell-subnav::-webkit-scrollbar { display: none; }
+
+.shell-subnav button { flex: none; white-space: nowrap; }
 
 .shell-subnav.hidden {
   display: none;
@@ -160,10 +188,20 @@ body {
   }
 }
 
+@media (max-width: 1000px) {
+  /* The address is never the thing you came for; the way out is. */
+  .shell-user-email { display: none; }
+}
+
+@media (max-width: 720px) {
+  .shell-title { font-size: 1.05rem; letter-spacing: 0.06em; }
+}
+
 /* ── Account chip in the shell header ──────────────────────────────────── */
 .shell-user {
   align-items: center;
   display: flex;
+  flex: none;
   gap: 0.6rem;
   margin-left: auto;
 }

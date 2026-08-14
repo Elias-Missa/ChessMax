@@ -694,9 +694,13 @@ def main() -> None:
     parser.add_argument("--dump", default=None, help="write per-puzzle C_A curves to JSON (full mode)")
     parser.add_argument(
         "--policy",
-        choices=("maia1", "maia2"),
+        choices=("maia1", "maia2", "maia3"),
         default="maia1",
-        help="human model: maia1 (per-rating lc0 nets) or maia2 (rating-conditioned policy head)",
+        help=(
+            "human model: maia1 (per-rating lc0 nets), maia2 (rating-conditioned "
+            "policy head) or maia3 (Chessformer, raw-Elo conditioned — the backend "
+            "best_available_policy() actually returns)"
+        ),
     )
     args = parser.parse_args()
 
@@ -719,7 +723,14 @@ def main() -> None:
         )
     print(f"Sampled {len(puzzles)} puzzles across {len(by_band)} bands: {dict(sorted(by_band.items()))}", flush=True)
 
-    policy_obj = Maia2Policy() if args.policy == "maia2" else None
+    # Calibration must be able to measure the backend that actually ships.
+    if args.policy == "maia3":
+        from core.human import Maia3Policy
+        policy_obj = Maia3Policy()
+    elif args.policy == "maia2":
+        policy_obj = Maia2Policy()
+    else:
+        policy_obj = None
 
     if args.mode == "full":
         constants = FindabilityConstants.load()
@@ -734,7 +745,7 @@ def main() -> None:
             nodes=args.nodes,
             multipv=args.multipv,
             enrich=args.enrich,
-            policy=policy_obj if args.policy == "maia2" else GridPolicyHead(),
+            policy=policy_obj if policy_obj is not None else GridPolicyHead(),
             dump_path=args.dump,
         )
         print("\n=== Full model (spec section 3.3) ===")
@@ -757,7 +768,7 @@ def main() -> None:
             constants,
             nodes=args.nodes,
             multipv=args.multipv,
-            policy=policy_obj if args.policy == "maia2" else GridPolicyHead(),
+            policy=policy_obj if policy_obj is not None else GridPolicyHead(),
             dump_path=args.dump,
         )
         print("\n=== Line model (multi-move findability) ===")
