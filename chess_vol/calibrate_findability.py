@@ -669,6 +669,122 @@ def run_line(
     }
 
 
+def run_calibrate(
+    puzzles: list[DbPuzzle],
+    constants: FindabilityConstants,
+    *,
+    nodes: int,
+    multipv: int,
+    policy: object | None = None,
+    progress_every: int = 25,
+) -> dict[str, object]:
+    """Fit ``calibration.c0`` / ``c1`` against the Lichess Elo expectancy.
+
+    A puzzle rated ``R`` is solved by a player rated ``r`` with probability
+    ``1 / (1 + 10 ** ((R - r) / 400))``. Walking a puzzle's whole solution line
+    and multiplying the per-node find-probabilities gives the model's answer to
+    the same question, so the two constants are whatever makes those agree.
+    Reports the residual (MAE against the expectancy) and the ranking power
+    against puzzle rating; write the fitted pair into
+    ``core/constants/findability.json``.
+
+    Deliberately a grid search over two constants rather than an optimiser:
+    the surface is shallow, it needs no extra dependency, and the printed table
+    shows how flat it is.
+    """
+    from core.findability import ELO_LOGIT_SCALE, _logit
+
+    grid = list(constants.rating_grid)
+    stockfish = open_stockfish()
+    policy_cm = policy if policy is not None else GridPolicyHead()
+    per_puzzle: list[tuple[float, list[list[float]]]] = []
+    skipped = 0
+    start = time.time()
+    try:
+        with policy_cm as pol:
+            for i, puzzle in enumerate(puzzles, 1):
+                board = chess.Board(puzzle.fen)
+                curves: list[list[float]] = []
+                try:
+                    for j, uci in enumerate(puzzle.line):
+                        move = chess.Move.from_uci(uci)
+                        if move not in board.legal_moves:
+                            break
+                        if j % 2 == 0:
+                            mes = multipv_move_evals(
+                                stockfish, board, multipv=multipv, nodes=nodes
+                            )
+                            if len(mes) >= 2:
+                                pf = score_position(board.fen(), mes, pol, constants)
+                                if pf is not None and not pf.forced:
+                                    curves.append([v for _, v in pf.curve])
+                        board.push(move)
+                except Exception:  # noqa: BLE001 — one bad line must not abort the sweep
+                    skipped += 1
+                    continue
+                if curves:
+                    per_puzzle.append((float(puzzle.rating), curves))
+                if progress_every and i % progress_every == 0:
+                    rate = i / max(1e-9, time.time() - start)
+                    print(f"  {i}/{len(puzzles)}  ({rate:.2f} puzzles/s)", flush=True)
+    finally:
+        try:
+            stockfish.quit()
+        except Exception:  # noqa: BLE001
+            pass
+
+    # ``score_position`` already applied the *current* calibration, so undo it
+    # back to a difficulty per node before refitting.
+    base = constants.calibration
+    nodes_d: list[tuple[float, list[float]]] = []
+    for rating, curves in per_puzzle:
+        ds = []
+        for curve in curves:
+            implied = [
+                r - ELO_LOGIT_SCALE * _logit(v, base.clamp)
+                for v, r in zip(curve, grid, strict=True)
+            ]
+            mean = sum(implied) / len(implied)
+            ds.append((mean - base.c0) / base.c1 if base.enabled and base.c1 else mean)
+        nodes_d.append((rating, ds))
+
+    def expectancy(difficulty: float, rating: float) -> float:
+        return 1.0 / (1.0 + 10 ** ((difficulty - rating) / 400.0))
+
+    def residual(c0: float, c1: float) -> float:
+        total = 0.0
+        n = 0
+        for rating, ds in nodes_d:
+            for r in grid:
+                model = 1.0
+                for d in ds:
+                    model *= expectancy(c0 + c1 * d, r)
+                total += abs(model - expectancy(rating, r))
+                n += 1
+        return total / max(1, n)
+
+    best = None
+    table: list[tuple[float, float, float]] = []
+    for c1 in [0.8 + 0.04 * k for k in range(16)]:
+        for c0 in [-200.0 + 25.0 * k for k in range(17)]:
+            mae = residual(c0, c1)
+            table.append((mae, c0, c1))
+            if best is None or mae < best[0]:
+                best = (mae, c0, c1)
+    table.sort()
+
+    mae, c0, c1 = best  # type: ignore[misc]
+    return {
+        "n_puzzles": len(nodes_d),
+        "skipped": skipped,
+        "seconds": round(time.time() - start, 1),
+        "c0": round(c0, 2),
+        "c1": round(c1, 4),
+        "line_mae": round(mae, 4),
+        "top_5": [(round(m, 4), c_0, round(c_1, 3)) for m, c_0, c_1 in table[:5]],
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", default=_default_db_path(), help="trainer.db path")
@@ -678,9 +794,13 @@ def main() -> None:
     parser.add_argument("--net", type=int, default=1500, help="Maia net rating for the baseline")
     parser.add_argument(
         "--mode",
-        choices=("policy", "value", "full", "line"),
+        choices=("policy", "value", "full", "line", "calibrate"),
         default="policy",
-        help="policy/value = single-move baseline; full = single-position model; line = multi-move whole-line",
+        help=(
+            "policy/value = single-move baseline; full = single-position model; "
+            "line = multi-move whole-line; calibrate = refit calibration.c0/c1 "
+            "against the Elo expectancy"
+        ),
     )
     parser.add_argument(
         "--max-plies",
@@ -754,6 +874,25 @@ def main() -> None:
         r = abs(float(metrics["r_score_vs_rating"]))
         verdict = "DEFENSIBLE (>0.7)" if r > 0.7 else "WEAK - redesign (spec 4.3)" if r < 0.4 else "MARGINAL"
         print(f"\n  verdict: |r(score, rating)|={r:.3f} -> {verdict}")
+        return
+
+    if args.mode == "calibrate":
+        constants = FindabilityConstants.load()
+        print(
+            f"Refitting calibration (Stockfish nodes={args.nodes}, multipv={args.multipv}) "
+            f"+ {args.policy} policy, grid={list(constants.rating_grid)}...",
+            flush=True,
+        )
+        metrics = run_calibrate(
+            puzzles,
+            constants,
+            nodes=args.nodes,
+            multipv=args.multipv,
+            policy=policy_obj if policy_obj is not None else GridPolicyHead(),
+        )
+        print("\n=== Calibration refit (write c0/c1 into core/constants/findability.json) ===")
+        for key, value in metrics.items():
+            print(f"  {key}: {value}")
         return
 
     if args.mode == "line":

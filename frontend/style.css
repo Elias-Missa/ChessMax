@@ -439,24 +439,66 @@
   filter: none;
 }
 
-/* Collapsed: keep the eyebrow + headline as a slim banner, drop the rest. */
+/* Collapsed is the *default* state (app.js opts in unless the user has
+   expanded before), because the board sizes off the height left over below
+   this banner — a two-row intro costs the board ~250px, which is the whole
+   difference between a 352px board and a full-size one. So collapsed has to
+   be a single line: `display: contents` dissolves the two-column body wrapper
+   so eyebrow / headline / opening filter / toggle all become flex items of
+   the banner itself and sit on one row. */
 .puzzle-hero.is-collapsed {
-  padding-bottom: clamp(1.1rem, 2.4vw, 1.6rem);
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.1rem;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem clamp(0.9rem, 2vw, 1.35rem);
 }
 
 .puzzle-hero.is-collapsed .puzzle-hero-sub,
 .puzzle-hero.is-collapsed .puzzle-hero-steps,
-.puzzle-hero.is-collapsed .puzzle-hero-split {
+.puzzle-hero.is-collapsed .puzzle-hero-split,
+.puzzle-hero.is-collapsed .puzzle-hero-glow {
   display: none;
 }
 
-.puzzle-hero.is-collapsed .puzzle-hero-body {
-  align-items: center;
-  grid-template-columns: minmax(0, 1fr) auto;
+.puzzle-hero.is-collapsed .puzzle-hero-top,
+.puzzle-hero.is-collapsed .puzzle-hero-body,
+.puzzle-hero.is-collapsed .puzzle-hero-copy,
+.puzzle-hero.is-collapsed .puzzle-hero-aside {
+  display: contents;
 }
 
+.puzzle-hero.is-collapsed .puzzle-hero-eyebrow { order: 1; }
+.puzzle-hero.is-collapsed .puzzle-hero-title { order: 2; }
+.puzzle-hero.is-collapsed .openings { order: 3; margin-left: auto; }
+.puzzle-hero.is-collapsed .puzzle-hero-toggle { order: 4; }
+
 .puzzle-hero.is-collapsed .puzzle-hero-title {
-  font-size: clamp(1.05rem, 2vw, 1.35rem);
+  font-size: clamp(0.92rem, 1.5vw, 1.05rem);
+  font-weight: 700;
+}
+
+/* One line, truncated if the window is narrow — wrapping the headline would
+   push the banner to two rows and give the board's height straight back. */
+.puzzle-hero.is-collapsed .puzzle-hero-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.puzzle-hero.is-collapsed .openings {
+  padding: 0.2rem 0.7rem;
+}
+
+.puzzle-hero.is-collapsed .openings legend { font-size: 0.68rem; }
+.puzzle-hero.is-collapsed .openings label { font-size: 0.8rem; }
+
+@media (max-width: 820px) {
+  /* Two short rows beat one row that wraps mid-sentence. */
+  .puzzle-hero.is-collapsed .puzzle-hero-title { display: none; }
 }
 
 /* Short screens: the intro must not cost the board more room than it has to.
@@ -551,9 +593,13 @@
   overflow: hidden;
   /* `--puzzle-hero-h` is measured by app.js: the hero sits above this row, so
    * without subtracting it the board keeps its full-height size and gets pushed
-   * off the bottom of a laptop screen. It is 0 on every view but the feed. */
+   * off the bottom of a laptop screen. It is 0 on every view but the feed.
+   * The 8.25rem is the rest of the column's chrome — the layout's top padding,
+   * the board panel's own padding top and bottom, and a little air below it.
+   * It used to be 10.5rem, which was conservative enough that even a collapsed
+   * hero left the board smaller than the Game Review board. */
   width: clamp(330px, calc(
-    100dvh - var(--shell-header-h, 3.7rem) - var(--puzzle-hero-h, 0px) - 10.5rem
+    100dvh - var(--shell-header-h, 3.7rem) - var(--puzzle-hero-h, 0px) - 8.25rem
   ), 640px);
   max-width: 100%;
 }

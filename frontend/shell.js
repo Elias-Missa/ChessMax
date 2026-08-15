@@ -2,6 +2,7 @@
 // Insights, and Guess the Elo. Training and Game Review keep nested sub-navs.
 
 const ROUTES = [
+  { path: "/", app: "home", tab: "home", top: "home" },
   { path: "/puzzles", app: "puzzles", tab: "train", top: "puzzles" },
   { path: "/training", app: "puzzles", tab: "evalhold", top: "training" },
   { path: "/training/eval-hold", app: "puzzles", tab: "evalhold", top: "training" },
@@ -23,6 +24,7 @@ const ROUTES = [
 const TAB_TO_PATH = Object.fromEntries(
   ROUTES.filter((r) => r.path !== "/training").map((r) => [r.tab, r.path]),
 );
+TAB_TO_PATH.home = "/";
 TAB_TO_PATH.train = "/puzzles";
 TAB_TO_PATH.game = "/game-review";
 TAB_TO_PATH.editor = "/game-review/editor";
@@ -40,6 +42,7 @@ const VOL_TABS = new Set(["game", "editor", "library", "about"]);
 const shellTabs = Array.from(document.querySelectorAll(".shell-tab[data-top]"));
 const trainingNav = document.getElementById("training-subnav");
 const gameReviewNav = document.getElementById("game-review-subnav");
+const homeRoot = document.getElementById("home-root");
 const puzzlesRoot = document.getElementById("puzzles-root");
 const volRoot = document.getElementById("vol-root");
 const eloRoot = document.getElementById("elo-root");
@@ -52,7 +55,7 @@ let currentRoute = null;
 function matchRoute(pathname) {
   const path = pathname.replace(/\/+$/, "") || "/";
   if (path === "/" || path === "") {
-    return ROUTES.find((r) => r.path === "/puzzles");
+    return ROUTES.find((r) => r.path === "/");
   }
   const exact = ROUTES.find((r) => r.path === path);
   if (exact) return exact;
@@ -67,7 +70,7 @@ function matchRoute(pathname) {
   if (path.startsWith("/game-review")) {
     return ROUTES.find((r) => r.path === "/game-review");
   }
-  return ROUTES.find((r) => r.path === "/puzzles");
+  return ROUTES.find((r) => r.path === "/");
 }
 
 function highlightTop(topId) {
@@ -88,6 +91,7 @@ function highlightSubnav(nav, tabId) {
 }
 
 function showRoots(app, tab) {
+  if (homeRoot) homeRoot.classList.toggle("hidden", app !== "home");
   puzzlesRoot.classList.toggle("hidden", app !== "puzzles");
   volRoot.classList.toggle("hidden", app !== "vol");
   if (eloRoot) eloRoot.classList.toggle("hidden", app !== "elo");
@@ -114,37 +118,28 @@ function applyRoute(route, { push = false } = {}) {
   highlightTop(route.top);
   showRoots(route.app, route.tab);
 
-  if (route.app === "puzzles") {
+  // Every app gets told whether it is the active one, exactly once, so adding a
+  // sixth app is one line here rather than a fresh `false` in five branches.
+  const app = route.app;
+  if (window.__homeSetActive) window.__homeSetActive(app === "home");
+  if (window.__eloSetActive) window.__eloSetActive(app === "elo");
+  if (window.__evalSetActive) window.__evalSetActive(app === "eval");
+  if (window.__insightsSetActive) {
+    if (app === "insights") window.__insightsSetActive(true, route.path);
+    else window.__insightsSetActive(false);
+  }
+  if (app === "puzzles") {
     if (trainingNav) {
       trainingNav.classList.toggle("hidden", !TRAINING_TABS.has(route.tab));
       highlightSubnav(trainingNav, route.tab);
     }
     if (window.__puzzlesSwitchTab) window.__puzzlesSwitchTab(route.tab);
-    if (window.__eloSetActive) window.__eloSetActive(false);
-    if (window.__evalSetActive) window.__evalSetActive(false);
-    if (window.__insightsSetActive) window.__insightsSetActive(false);
-  } else if (route.app === "vol") {
-    if (window.__puzzlesDeactivate) window.__puzzlesDeactivate();
+  } else if (window.__puzzlesDeactivate) {
+    window.__puzzlesDeactivate();
+  }
+  if (app === "vol") {
     if (gameReviewNav) highlightSubnav(gameReviewNav, route.tab);
     if (window.__volSetTab) window.__volSetTab(route.tab);
-    if (window.__eloSetActive) window.__eloSetActive(false);
-    if (window.__evalSetActive) window.__evalSetActive(false);
-    if (window.__insightsSetActive) window.__insightsSetActive(false);
-  } else if (route.app === "elo") {
-    if (window.__puzzlesDeactivate) window.__puzzlesDeactivate();
-    if (window.__eloSetActive) window.__eloSetActive(true);
-    if (window.__evalSetActive) window.__evalSetActive(false);
-    if (window.__insightsSetActive) window.__insightsSetActive(false);
-  } else if (route.app === "eval") {
-    if (window.__puzzlesDeactivate) window.__puzzlesDeactivate();
-    if (window.__eloSetActive) window.__eloSetActive(false);
-    if (window.__evalSetActive) window.__evalSetActive(true);
-    if (window.__insightsSetActive) window.__insightsSetActive(false);
-  } else if (route.app === "insights") {
-    if (window.__puzzlesDeactivate) window.__puzzlesDeactivate();
-    if (window.__eloSetActive) window.__eloSetActive(false);
-    if (window.__evalSetActive) window.__evalSetActive(false);
-    if (window.__insightsSetActive) window.__insightsSetActive(true, route.path);
   }
 
   requestAnimationFrame(() => {
@@ -173,6 +168,13 @@ shellTabs.forEach((btn) => {
     if (path) navigateToPath(path, { push: true });
   });
 });
+
+// The wordmark is a home link, not a tab — it carries no `data-top`, so it is
+// not in `shellTabs` and never picks up the active highlight.
+const homeLink = document.querySelector(".shell-home");
+if (homeLink) {
+  homeLink.addEventListener("click", () => navigateToPath("/", { push: true }));
+}
 
 if (trainingNav) {
   trainingNav.querySelectorAll("[data-tab]").forEach((btn) => {
@@ -245,8 +247,6 @@ if (document.fonts && document.fonts.ready) {
 window.__shellNavigate = navigateToPath;
 window.__shellSwitchTab = switchShellTab;
 
-// Boot from current URL (SPA deep link or `/` → puzzles).
+// Boot from the current URL — `/` is the home screen, everything else is a
+// deep link into one of the apps.
 navigateToPath(window.location.pathname, { push: false });
-if (window.location.pathname === "/" || window.location.pathname === "") {
-  history.replaceState({ chessmax: true, path: "/puzzles" }, "", "/puzzles");
-}

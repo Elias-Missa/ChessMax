@@ -1,16 +1,38 @@
 {
-  "_comment": "Game Review 2.0 findability constants. ALL PLACEHOLDERS (spec 3.3 Step 5) fit in Phase 3 calibration against the Lichess puzzle DB + a uniform quiet holdout. Refitting rewrites this file, never code.",
+  "_comment": "Game Review 2.0 findability constants. Refitting rewrites this file, never code. The visibility weights and the calibration below are FITTED (Phase 3); the tau / gate / alternate constants are still the spec's placeholders.",
 
   "tau": 2.5,
-  "score_mode": "mean_ca",
+  "score_mode": "calibrated",
+
+  "_score_mode_comment": "MEASURED. 'calibrated' = visibility reweight + Elo-shaped calibration, and it is what ships. Against 272 rated Lichess puzzles (train) and an independent 320 (holdout), |r(score, puzzle rating)| goes 0.23 -> 0.38 versus the previous 'mean_ca', and the line probability tracks the Elo expectancy at MAE 0.170 / r 0.741 on the holdout. 'mean_ca' and 'rfind' are kept for the calibration harness; both use the old calc reweight.",
+
   "tau_volatility": {
-    "_comment": "Phase 4: tau = f(volatility). enabled=false keeps constant tau (Phases 0-3). tau_min/tau_max are placeholders fit in Phase 3.",
+    "_comment": "Phase 4: tau = f(volatility). enabled=false keeps constant tau.",
     "enabled": false,
     "tau_min": 1.0,
     "tau_max": 6.0
   },
-  "beta": 1.2,
 
+  "visibility": {
+    "_comment": "FITTED. Replaces the calc term for the shipped score. The old calc leaned on dep (iterative-deepening depth) and narr, but the review reuses the volatility pass's MultiPV, so d_star is 1 for every move and narr is 0 — the reweight reallocated nothing, and supplying the real values changed |r| by 0.004. Measured against puzzle rating, d_star and narr have spearman 0.00; the move giving check has -0.41, the move being quiet +0.32, PV forcingness -0.30. Rejected after measuring: the move hanging itself (-0.12, and the wrong sign for a difficulty term), backward moves (-0.04), edge squares (-0.03), PV length (+0.01).",
+    "beta": 1.4,
+    "check": 1.0,
+    "capture": 0.25,
+    "promotion": 0.35,
+    "forcing": 0.6,
+    "deep_quiet": 0.4,
+    "deep_quiet_ply": 3
+  },
+
+  "calibration": {
+    "_comment": "FITTED. Each grid rating implies a difficulty D_r = r - 173.7*logit(C_A(r)); D is their mean, and the calibrated curve is the Elo expectancy for D. c0/c1 are the residual correction, fitted so the product over a puzzle's whole solution line reproduces 1/(1+10^((rating-r)/400)). They land at 0 and 1.028 — the reweighted curve is already on the Lichess rating scale to within 3%. An unconstrained affine map in logit space fitted the puzzles slightly better but extrapolated the wrong way onto easy positions it had never seen (it scored a wide-open game position 61 where the raw model said 79), which is why the Elo shape is used instead.",
+    "enabled": true,
+    "c0": 0.0,
+    "c1": 1.028,
+    "clamp": 0.002
+  },
+
+  "beta": 1.2,
   "calc_weights": {
     "dep": 0.45,
     "forc": 0.35,
@@ -31,7 +53,7 @@
     "nodes": 2500000
   },
 
-  "_rating_grid_comment": "MEASURED, do not widen. Maia-3 conditions on raw Elo 600-2600 and the obvious move was to widen the grid to match. Against 72 stratified Lichess puzzles (seed 7, line mode, Maia-3) the shipped score_mode='mean_ca' gets *worse* as the grid widens: |r(score,puzzle rating)| = 0.603 at 1100-2000, 0.594 at 1000-2200, 0.591 at 900-2300, 0.577 at 600-2600, and 0.602 at 1200-1950. Widening only helps the unused r_find-crossing scoring (0.484 -> 0.508), because averaging C_A over ratings nobody in the sample plays at compresses easy and hard positions together.",
+  "_rating_grid_comment": "MEASURED, do not widen. Maia-3 conditions on raw Elo 600-2600 and the obvious move was to widen the grid to match. Against 72 stratified Lichess puzzles (seed 7, line mode, Maia-3) the score gets *worse* as the grid widens: |r(score, puzzle rating)| = 0.603 at 1100-2000, 0.594 at 1000-2200, 0.591 at 900-2300, 0.577 at 600-2600, and 0.602 at 1200-1950. Averaging over ratings nobody in the sample plays at compresses easy and hard positions together.",
   "rating_grid": [1100, 1250, 1400, 1550, 1700, 1850, 2000],
 
   "gate_win_prob_high": 0.97,
@@ -47,11 +69,12 @@
   "t_mod_min": 0.5,
   "t_mod_max": 1.3,
 
+  "_bands_comment": "MEASURED against the calibrated scale, where the score is a probability: the share of players across the 1100-2000 grid who find an acceptable move. Thresholds are the readings of that probability, and they land near the quintiles of 286 real game positions (21% engine-only, 22% hard, 22% needs thought, 17% natural, 17% obvious). The old 90/70/45/20 cut-offs were set before the score meant anything and put 74% of rated puzzles in Hard or Engine-only with nothing ever reaching Natural.",
   "bands": [
-    {"min": 90, "label": "Obvious"},
-    {"min": 70, "label": "Natural"},
-    {"min": 45, "label": "Needs thought"},
-    {"min": 20, "label": "Hard"},
+    {"min": 80, "label": "Obvious"},
+    {"min": 60, "label": "Natural"},
+    {"min": 40, "label": "Needs thought"},
+    {"min": 18, "label": "Hard"},
     {"min": 0,  "label": "Engine-only"}
   ]
 }

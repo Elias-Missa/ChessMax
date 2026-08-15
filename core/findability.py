@@ -7,20 +7,28 @@ ratings, producing two monotone curves:
     C_star(r) — P(a player rated r plays the engine move m*)
     C_A(r)    — P(a player rated r plays *any* acceptable move) — the headline
 
-Every scalar the UI shows is a functional of those curves:
+The human prior is reweighted by :func:`core.features.visibility` before the
+curves are built, and each curve is passed through PAVA isotonic regression so
+we never inherit local zigzag from an incoherent model (spec §3.6). The raw
+curve is then run through :class:`Calibration`, which reads a **difficulty
+rating** ``D`` off it — the strength at which about half of players find an
+acceptable move, on the same scale as a Lichess puzzle rating — and replaces
+the curve with the Elo expectancy for ``D``. Every scalar the UI shows is a
+functional of that:
 
-    findability (0-100, rating-free)  = 100 * clamp(1 - (R_find - 600)/2000, 0, 1)
-                                        where R_find = C_A^-1(0.5)
-    personal    (needs user_rating)   = C_A(R_user) * time_modifier
+    r_find                            = D
+    findability (0-100, rating-free)  = 100 * mean over the grid of
+                                        1 / (1 + 10 ** ((D - r) / 400))
+    personal    (needs user_rating)   = that same expectancy at R_user,
+                                        times the time modifier
     alternate move                    = argmax pi_tilde(m) over A, when m* is
                                         effectively unfindable for the user
 
-The human prior is calculation-reweighted (:mod:`core.features`) before the
-curves are built, and each curve is passed through PAVA isotonic regression so
-we never inherit local zigzag from an incoherent model (spec §3.6).
+The pre-calibration forms (``score_mode`` ``"mean_ca"`` / ``"rfind"``, on the
+old ``calc`` reweight) are kept so the Phase 3 harness can still measure them.
 
 This module is **pure** given a ``policy_fn`` — inject a fake in tests, wire
-:class:`core.human.MaiaPolicy` in production.
+:func:`core.human.best_available_policy` in production.
 """
 
 from __future__ import annotations
@@ -35,13 +43,91 @@ import chess
 
 from core.acceptable import acceptable_set, tau_for
 from core.evaluation import clamp_mate_cp, delta_w, win_prob, win_prob_cp
-from core.features import MoveEval, compute_features, reweight
+from core.features import (
+    MoveEval,
+    VisibilityWeights,
+    centered,
+    compute_features,
+    reweight,
+    visibility,
+)
 
 # ``policy_fn(fen, rating, moves) -> {move: P(move | position, rating)}`` for the
 # requested moves only. See :func:`core.human.uniform_policy` for the contract.
 PolicyFn = Callable[[str, int, list[chess.Move]], dict[chess.Move, float]]
 
 _CONSTANTS_PATH = Path(__file__).resolve().parent / "constants" / "findability.json"
+
+
+# --------------------------------------------------------------------------- #
+# Calibration                                                                  #
+# --------------------------------------------------------------------------- #
+
+
+def _logit(p: float, eps: float = 1e-4) -> float:
+    p = max(eps, min(1.0 - eps, p))
+    return math.log(p / (1.0 - p))
+
+
+def _sigmoid(x: float) -> float:
+    if x >= 0.0:
+        return 1.0 / (1.0 + math.exp(-min(x, 60.0)))
+    e = math.exp(max(x, -60.0))
+    return e / (1.0 + e)
+
+
+#: Logit points per 400 Elo — the constant that converts between a probability
+#: and a rating difference under the Elo expectancy curve.
+ELO_LOGIT_SCALE: float = 400.0 / math.log(10.0)
+
+
+@dataclass(frozen=True)
+class Calibration:
+    """Turns the raw ``C_A`` curve into a **difficulty rating** and a solve curve.
+
+    Maia's policy head answers "what does a player of this rating *play*, in one
+    forward pass" — roughly a one-second blitz move. Read as a probability of
+    *finding* something, it is both too low (a player sitting on a position
+    calculates) and too flat across rating.
+
+    The Lichess puzzle database supplies the missing ground truth in a specific
+    shape: a puzzle rated ``D`` is solved by a player rated ``r`` with
+    probability ``1 / (1 + 10 ** ((D - r) / 400))``. So rather than bending the
+    curve with a free affine map — which fit the rated-puzzle sample but then
+    *lowered* the score on easy positions it had never seen, because a slope
+    below 1 in logit space extrapolates the wrong way — we invert that formula.
+    Each grid rating implies its own difficulty ``D_r = r - k * logit(C_A(r))``;
+    ``D`` is their mean, and the calibrated curve is the Elo expectancy for
+    ``D``. That guarantees the right shape at both ends and makes ``r_find`` and
+    a puzzle rating literally the same unit.
+
+    ``c0``/``c1`` are the residual affine correction on ``D``. Fitted so the
+    *product over a puzzle's whole solution line* reproduces the expectancy,
+    they come out at ``0`` and ``1.028`` — the raw curve is already on the
+    Lichess rating scale to within 3%, which is the strongest evidence that the
+    reweighted human model is measuring the right thing.
+    """
+
+    enabled: bool = True
+    c0: float = 0.0
+    c1: float = 1.0
+    clamp: float = 0.002
+    """Floor/ceiling on ``C_A`` before inverting. Bounds how far ``D`` can run
+    past the grid: 0.002 caps it near 2600, so an unfindable move bottoms out at
+    a score of ~3 rather than a spurious 0."""
+
+    def difficulty(self, curve: list[float], grid: list[int]) -> float:
+        """Rating at which about half of players find an acceptable move."""
+        implied = [
+            rating - ELO_LOGIT_SCALE * _logit(value, self.clamp)
+            for value, rating in zip(curve, grid, strict=True)
+        ]
+        mean = sum(implied) / len(implied)
+        return mean if not self.enabled else self.c0 + self.c1 * mean
+
+    def apply(self, difficulty: float, rating: float) -> float:
+        """Elo expectancy: P(a player rated ``rating`` finds it)."""
+        return 1.0 / (1.0 + 10.0 ** ((difficulty - rating) / 400.0))
 
 
 # --------------------------------------------------------------------------- #
@@ -55,16 +141,24 @@ class FindabilityConstants:
     refitting never requires a code change."""
 
     tau: float = 2.5
-    score_mode: str = "mean_ca"
-    """How the 0-100 score is derived from the C_A curve. ``"mean_ca"`` (default)
-    = 100·mean(C_A over grid) — censoring-free; Phase 3 found this recovers ~0.09
-    of rating-correlation that ``"rfind"`` (100·clamp(1-(R_find-600)/span), the
-    original spec form) loses to the 0.5-crossing censoring. ``r_find`` is still
+    score_mode: str = "calibrated"
+    """How the 0-100 score is derived from the C_A curve.
+
+    ``"calibrated"`` (shipped) — reweight by :func:`core.features.visibility`,
+    then map the raw curve through :meth:`Calibration.apply` onto the Lichess
+    solve-probability scale, and take 100·mean over the grid. ``"mean_ca"`` and
+    ``"rfind"`` are the pre-calibration forms, kept so the Phase 3 harness can
+    still measure them; both use the old ``calc`` reweight. ``r_find`` is
     reported either way."""
     tau_volatility_enabled: bool = False
     tau_volatility_min: float = 1.0
     tau_volatility_max: float = 6.0
     beta: float = 1.2
+    """Reweight strength for the legacy ``calc`` term (``mean_ca`` / ``rfind``)."""
+    vis_beta: float = 2.2
+    """Reweight strength for :func:`core.features.visibility` (``calibrated``)."""
+    vis: VisibilityWeights = field(default_factory=VisibilityWeights)
+    calibration: Calibration = field(default_factory=Calibration)
     w_dep: float = 0.45
     w_forc: float = 0.35
     w_narr: float = 0.20
@@ -106,9 +200,28 @@ class FindabilityConstants:
         ) or cls.bands
         base = cls()
         tau_vol = data.get("tau_volatility", {}) or {}
+        vis_raw = data.get("visibility", {}) or {}
+        vis = VisibilityWeights(
+            check=float(vis_raw.get("check", base.vis.check)),
+            capture=float(vis_raw.get("capture", base.vis.capture)),
+            promotion=float(vis_raw.get("promotion", base.vis.promotion)),
+            forcing=float(vis_raw.get("forcing", base.vis.forcing)),
+            deep_quiet=float(vis_raw.get("deep_quiet", base.vis.deep_quiet)),
+            deep_quiet_ply=int(vis_raw.get("deep_quiet_ply", base.vis.deep_quiet_ply)),
+        )
+        cal_raw = data.get("calibration", {}) or {}
+        calibration = Calibration(
+            enabled=bool(cal_raw.get("enabled", base.calibration.enabled)),
+            c0=float(cal_raw.get("c0", base.calibration.c0)),
+            c1=float(cal_raw.get("c1", base.calibration.c1)),
+            clamp=float(cal_raw.get("clamp", base.calibration.clamp)),
+        )
         return cls(
             tau=float(data.get("tau", base.tau)),
             score_mode=str(data.get("score_mode", base.score_mode)),
+            vis_beta=float(vis_raw.get("beta", base.vis_beta)),
+            vis=vis,
+            calibration=calibration,
             tau_volatility_enabled=bool(tau_vol.get("enabled", base.tau_volatility_enabled)),
             tau_volatility_min=float(tau_vol.get("tau_min", base.tau_volatility_min)),
             tau_volatility_max=float(tau_vol.get("tau_max", base.tau_volatility_max)),
@@ -165,9 +278,14 @@ class PositionFindability:
     """Findability verdict for one position (spec §7 ``findability`` payload)."""
 
     score: int
-    """0-100, rating-free, time-free. 100 = obvious, 0 = engine-only."""
+    """0-100, rating-free, time-free. Under the calibrated mode it is a
+    probability: the share of players across the rating grid who find an
+    acceptable move. 100 = obvious, single digits = engine-only."""
     r_find: int | None
-    """Rating at which C_A crosses 0.5; ``None`` when the curve never does."""
+    """Difficulty rating — the strength at which about half of players find an
+    acceptable move, on the same scale as a Lichess puzzle rating. ``None`` for
+    a forced position (and, in the legacy ``rfind`` mode, when the curve never
+    crosses 0.5)."""
     band: str
     personal: float | None
     """C_A(R_user) * time-modifier; ``None`` when no user rating supplied."""
@@ -363,25 +481,35 @@ def score_position(
     )
     acceptable = acceptable_set(probs, tau)
 
-    # Calculation-reweight ingredients are rating-independent — compute once.
-    calc_by_move = {
-        me.move: compute_features(
-            me,
-            board,
-            dep_offset=constants.dep_offset,
-            dep_span=constants.dep_span,
-            forc_plies=constants.forc_plies,
-            w_dep=constants.w_dep,
-            w_forc=constants.w_forc,
-            w_narr=constants.w_narr,
-            q_weight=constants.q_weight,
-        ).calc
-        for me in move_evals
-    }
+    # Reweight ingredients are rating-independent — compute once. The shipped
+    # mode reweights by centred visibility; the legacy modes keep the ``calc``
+    # term so the Phase 3 harness can still measure the pre-calibration model.
+    calibrated_mode = constants.score_mode == "calibrated"
+    if calibrated_mode:
+        weight_by_move = centered(
+            {me.move: visibility(me, board, constants.vis) for me in move_evals}
+        )
+        beta = constants.vis_beta
+    else:
+        weight_by_move = {
+            me.move: compute_features(
+                me,
+                board,
+                dep_offset=constants.dep_offset,
+                dep_span=constants.dep_span,
+                forc_plies=constants.forc_plies,
+                w_dep=constants.w_dep,
+                w_forc=constants.w_forc,
+                w_narr=constants.w_narr,
+                q_weight=constants.q_weight,
+            ).calc
+            for me in move_evals
+        }
+        beta = constants.beta
 
     def curves_at(rating: int) -> tuple[dict[chess.Move, float], float, float]:
         pi = policy_fn(fen, rating, moves)
-        pi_tilde = reweight(pi, calc_by_move, beta=constants.beta)
+        pi_tilde = reweight(pi, weight_by_move, beta=beta)
         c_star = pi_tilde.get(m_star, 0.0)
         c_a = sum(pi_tilde.get(m, 0.0) for m in acceptable)
         return pi_tilde, c_star, c_a
@@ -394,22 +522,42 @@ def score_position(
         c_star_raw.append(c_star)
         c_a_raw.append(c_a)
 
+    difficulty: float | None = None
+    star_difficulty: float | None = None
+    if calibrated_mode:
+        cal = constants.calibration
+        # PAVA first: the difficulty is read off the *monotone* curve, so an
+        # incoherent wiggle in the human model cannot leak into it.
+        c_a_raw = [max(0.0, min(1.0, v)) for v in pava(c_a_raw)]
+        c_star_raw = [max(0.0, min(1.0, v)) for v in pava(c_star_raw)]
+        difficulty = cal.difficulty(c_a_raw, grid)
+        star_difficulty = cal.difficulty(c_star_raw, grid)
+        c_a_raw = [cal.apply(difficulty, r) for r in grid]
+        c_star_raw = [cal.apply(star_difficulty, r) for r in grid]
+
     c_star_iso = [max(0.0, min(1.0, v)) for v in pava(c_star_raw)]
     c_a_iso = [max(0.0, min(1.0, v)) for v in pava(c_a_raw)]
 
-    # ``r_find`` (the 0.5 crossing) is always reported for display, but the 0-100
-    # score can be derived censoring-free from the whole curve (spec §4 Phase 3).
-    r_find = invert_monotone(grid, c_a_iso, 0.5)
-    if constants.score_mode == "mean_ca":
+    # ``r_find`` is the rating at which half of players find a good move. Under
+    # the calibrated mode it is the fitted difficulty itself — the same unit as
+    # a Lichess puzzle rating, and defined even when it lands past the grid,
+    # where the 0.5-crossing would have had to report "never".
+    if calibrated_mode:
+        r_find: float | None = difficulty
         score = round(100.0 * (sum(c_a_iso) / len(c_a_iso)))
         band = band_for(score, constants)
-    elif r_find is None:
-        score = 0
-        band = "Engine-only"
     else:
-        frac = 1.0 - (r_find - constants.score_floor_rating) / constants.score_span
-        score = round(100.0 * max(0.0, min(1.0, frac)))
-        band = band_for(score, constants)
+        r_find = invert_monotone(grid, c_a_iso, 0.5)
+        if constants.score_mode == "mean_ca":
+            score = round(100.0 * (sum(c_a_iso) / len(c_a_iso)))
+            band = band_for(score, constants)
+        elif r_find is None:
+            score = 0
+            band = "Engine-only"
+        else:
+            frac = 1.0 - (r_find - constants.score_floor_rating) / constants.score_span
+            score = round(100.0 * max(0.0, min(1.0, frac)))
+            band = band_for(score, constants)
 
     curve = list(zip(grid, c_a_iso, strict=True))
     star_curve = list(zip(grid, c_star_iso, strict=True))
@@ -420,11 +568,21 @@ def score_position(
     if user_rating is not None:
         pi_tilde_user, c_star_user, c_a_user = curves_at(user_rating)
         t_mod = _time_modifier(t_spent, t_expected, constants)
-        personal = max(0.0, min(1.0, c_a_user)) * t_mod
-        personal_star = c_star_user
+        # The alternate-move test compares the engine move's share against the
+        # other candidates' shares, so it stays on the *raw* pi_tilde scale;
+        # calibrating one side of that comparison and not the other would
+        # silently retire the feature.
         alternate = _best_alternate(
             board, pi_tilde_user, acceptable, probs, best_prob, m_star, c_star_user, constants
         )
+        if calibrated_mode and difficulty is not None and star_difficulty is not None:
+            # The user's own rating goes straight into the same expectancy the
+            # grid uses, so "personal" needs no interpolation between grid
+            # points and stays meaningful outside the grid's range.
+            c_a_user = constants.calibration.apply(difficulty, user_rating)
+            c_star_user = constants.calibration.apply(star_difficulty, user_rating)
+        personal = max(0.0, min(1.0, c_a_user)) * t_mod
+        personal_star = c_star_user
 
     return PositionFindability(
         score=int(score),
@@ -476,6 +634,7 @@ def _best_alternate(
 
 __all__ = [
     "Alternate",
+    "Calibration",
     "FindabilityConstants",
     "PolicyFn",
     "PositionFindability",

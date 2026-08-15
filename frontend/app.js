@@ -178,8 +178,11 @@ function setHeroCollapsed(collapsed) {
 }
 
 if (puzzleHeroToggle) {
-  let collapsed = false;
-  try { collapsed = window.localStorage.getItem(HERO_KEY) === "1"; } catch { /* private mode */ }
+  // Collapsed by default: the feed has to be solvable at full board size on
+  // arrival, and the long-form pitch now lives on the home screen. Only an
+  // explicit "0" (the user expanded it before) opts back into the full intro.
+  let collapsed = true;
+  try { collapsed = window.localStorage.getItem(HERO_KEY) !== "0"; } catch { /* private mode */ }
   setHeroCollapsed(collapsed);
   puzzleHeroToggle.addEventListener("click", () => {
     collapsed = !puzzleHero.classList.contains("is-collapsed");

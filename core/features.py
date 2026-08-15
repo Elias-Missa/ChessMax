@@ -115,9 +115,106 @@ def calc_term(
     w_narr: float = 0.20,
     q_weight: float = 0.6,
 ) -> float:
-    """``calc(m) = (w_dep*dep + w_forc*forc + w_narr*narr) * (1 - q_weight*q)`` (spec §3.3)."""
+    """``calc(m) = (w_dep*dep + w_forc*forc + w_narr*narr) * (1 - q_weight*q)`` (spec §3.3).
+
+    Superseded by :func:`visibility` for the shipped score — see that docstring
+    for why. Kept because the legacy ``score_mode`` values still use it and the
+    stored feature payloads still record ``dep``/``narr``/``q``.
+    """
     base = w_dep * dep + w_forc * forc + w_narr * narr
     return base * (1.0 - q_weight * q)
+
+
+# --------------------------------------------------------------------------- #
+# Visibility (the shipped reweight)                                            #
+# --------------------------------------------------------------------------- #
+
+
+def first_forcing_ply(board_before: chess.Board, pv: list[chess.Move]) -> int:
+    """Index of the first *forcing* move the mover plays in ``pv``.
+
+    A large value is the signature of a move whose point only appears deep in
+    the line — the "no human finds this" case the spec's ``q`` flag was after,
+    but read straight off the PV instead of costing extra searches. Returns a
+    large sentinel when the mover never plays a forcing move in the PV.
+    """
+    scratch = board_before.copy(stack=False)
+    for index, move in enumerate(pv):
+        if move not in scratch.legal_moves:
+            break
+        if index % 2 == 0 and (
+            scratch.is_capture(move)
+            or scratch.gives_check(move)
+            or move.promotion is not None
+        ):
+            return index
+        scratch.push(move)
+    return 99
+
+
+@dataclass(frozen=True)
+class VisibilityWeights:
+    """Weights for :func:`visibility`, fitted in Phase 3 (see the constants JSON)."""
+
+    check: float = 0.60
+    capture: float = 0.25
+    promotion: float = 0.35
+    forcing: float = 0.60
+    deep_quiet: float = 0.40
+    deep_quiet_ply: int = 3
+
+
+def visibility(
+    move_eval: MoveEval,
+    board_before: chess.Board,
+    weights: VisibilityWeights,
+) -> float:
+    """How likely a human is to *look at* this move, beyond the raw human prior.
+
+    Replaces ``calc`` as the reweighting term. ``calc`` leans on ``dep``
+    (iterative-deepening depth) and ``narr``, neither of which the review
+    pipeline can supply — it reuses the volatility pass's MultiPV, so ``d_star``
+    is 1 for every move and ``narr`` is 0 — which left the reweight a near
+    constant multiplier that reallocated nothing. Measured against 272 rated
+    Lichess puzzles, ``d_star`` and ``narr`` carry no signal at all
+    (spearman 0.00 against puzzle rating) while properties of the move itself
+    do: it gives check (-0.41), it is quiet (+0.32), its continuation is forcing
+    (-0.30).
+
+    So visibility is built from what a human's "checks, captures, threats" scan
+    actually surfaces, and is *penalised* for a quiet move whose PV only turns
+    forcing later. Callers centre it across the candidate set before
+    :func:`reweight`, so it redistributes attention among candidates rather than
+    inflating the position as a whole.
+    """
+    move = move_eval.move
+    gives_check = board_before.gives_check(move)
+    is_capture = board_before.is_capture(move)
+    is_promotion = move.promotion is not None
+    forc = forcingness(board_before, move_eval.pv, plies=4)
+    quiet = not (gives_check or is_capture or is_promotion)
+    deep_quiet = quiet and first_forcing_ply(board_before, move_eval.pv) >= weights.deep_quiet_ply
+    return (
+        weights.check * float(gives_check)
+        + weights.capture * float(is_capture)
+        + weights.promotion * float(is_promotion)
+        + weights.forcing * forc
+        - weights.deep_quiet * float(deep_quiet)
+    )
+
+
+def centered(values: dict[M, float]) -> dict[M, float]:
+    """Subtract the mean, so a reweight reallocates instead of inflating.
+
+    :func:`reweight` renormalises the candidate moves against a tail bucket of
+    everything outside the MultiPV set, which carries an implicit weight of
+    ``exp(0)``. Handing it uncentred visibility would push mass out of that tail
+    on every position and quietly raise every score.
+    """
+    if not values:
+        return {}
+    mean = sum(values.values()) / len(values)
+    return {key: value - mean for key, value in values.items()}
 
 
 def compute_features(
@@ -172,9 +269,13 @@ def reweight(
 __all__ = [
     "MoveEval",
     "MoveFeatures",
+    "VisibilityWeights",
     "calc_term",
+    "centered",
     "compute_features",
     "depthness",
+    "first_forcing_ply",
     "forcingness",
     "reweight",
+    "visibility",
 ]

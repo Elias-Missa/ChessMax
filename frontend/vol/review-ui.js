@@ -292,10 +292,12 @@
     if (typeof findability.personal === "number") {
       desc.textContent = `At your rating, you'd find this move ${Math.round(findability.personal * 100)}% of the time.`;
     } else if (findability.r_find != null) {
+      // r_find is now a difficulty *rating* on the same scale as a puzzle
+      // rating: the strength at which about half of players find this move.
       desc.textContent =
         findability.r_find <= 850
           ? "Most players would find this move."
-          : `Takes about ${findability.r_find}-strength to find reliably.`;
+          : `About half of ${findability.r_find}-rated players find this move.`;
     }
     if (desc.textContent) panelEl.appendChild(desc);
 

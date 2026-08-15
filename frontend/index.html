@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="/static/style.css" />
     <link rel="stylesheet" href="/static/vol/styles.css" />
     <link rel="stylesheet" href="/static/shell.css" />
+    <link rel="stylesheet" href="/static/home/styles.css" />
     <link rel="stylesheet" href="/static/elo/styles.css" />
     <link rel="stylesheet" href="/static/eval/styles.css" />
     <link rel="stylesheet" href="/static/insights/styles.css" />
@@ -43,8 +44,12 @@
 
     <!-- ── ChessMax shell: five top-level apps + nested Training / Review ─── -->
     <header class="shell-header">
-      <h1 class="shell-title">ChessMax</h1>
+      <!-- The wordmark is the way home; `data-route` is all shell.js needs. -->
+      <h1 class="shell-title">
+        <button type="button" class="shell-home" data-route="/" aria-label="ChessMax home">ChessMax</button>
+      </h1>
       <nav class="shell-tabs" role="tablist" aria-label="ChessMax sections">
+        <button class="shell-tab" type="button" role="tab" data-top="home" data-tab="home" data-route="/" aria-selected="false">Home</button>
         <button class="shell-tab active" type="button" role="tab" data-top="puzzles" data-tab="train" data-route="/puzzles" aria-selected="true">Puzzles</button>
         <button class="shell-tab" type="button" role="tab" data-top="training" data-tab="evalhold" data-route="/training" aria-selected="false">Training</button>
         <button class="shell-tab" type="button" role="tab" data-top="game-review" data-tab="game" data-route="/game-review" aria-selected="false">Game Review</button>
@@ -75,6 +80,430 @@
       <button type="button" role="tab" data-tab="about" aria-selected="false">Why</button>
     </nav>
 
+    <!-- ═════════════════════════════ HOME SCREEN ══════════════════════════ -->
+    <!-- Landing page at `/`. Every card is a <button> that hands off to
+         `window.__shellNavigate`, so the shell owns routing exactly once. -->
+    <div id="home-root" class="hidden">
+      <div class="hm-bg" aria-hidden="true">
+        <div class="hm-bg-field"></div>
+        <div class="hm-bg-board" id="hmBoard"></div>
+        <div class="hm-bg-grain"></div>
+        <div class="hm-bg-vignette"></div>
+      </div>
+
+      <div class="hm-page">
+        <!-- ── Hero ──────────────────────────────────────────────────── -->
+        <section class="hm-hero">
+          <div class="hm-hero-copy hm-reveal">
+            <span class="hm-eyebrow">
+              <span class="hm-eyebrow-dot" aria-hidden="true"></span>
+              Chess analysis, rebuilt
+            </span>
+
+            <h1 class="hm-title">
+              <span class="hm-title-word" data-word="ChessMax">ChessMax</span>
+            </h1>
+
+            <p class="hm-byline">Built by <b>Elias Missa</b></p>
+
+            <p class="hm-lede">
+              Engines tell you <em>what</em> the best move was. ChessMax tells you
+              <strong>whether a human was ever going to find it</strong> — by measuring how
+              sharp the position was, how findable the move was for a player of your
+              strength, and what that actually cost you across every game you have played.
+            </p>
+
+            <div class="hm-cta">
+              <button type="button" class="hm-btn hm-btn--primary" data-home-go="/game-review">
+                Review a game
+                <span class="hm-btn-arrow" aria-hidden="true">→</span>
+              </button>
+              <button type="button" class="hm-btn hm-btn--ghost" data-home-go="/puzzles">
+                Train on puzzles
+              </button>
+            </div>
+          </div>
+
+          <!-- Signature panel: one move read three ways. -->
+          <div class="hm-hero-art hm-reveal" style="--delay: 140ms">
+            <div class="hm-art-head">
+              <h2 class="hm-art-title">Move 24 · one position</h2>
+              <span class="hm-art-move">Rxd4</span>
+            </div>
+
+            <svg class="hm-art-spine" viewBox="0 0 300 96" role="img"
+                 aria-label="Evaluation swinging sharply at move 24">
+              <defs>
+                <linearGradient id="hmSpineGrad" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stop-color="#67e8a2" />
+                  <stop offset="62%" stop-color="#f2c84a" />
+                  <stop offset="100%" stop-color="#ff6358" />
+                </linearGradient>
+                <linearGradient id="hmSpineFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="rgba(68,214,44,0.22)" />
+                  <stop offset="100%" stop-color="rgba(68,214,44,0)" />
+                </linearGradient>
+              </defs>
+              <line x1="0" y1="48" x2="300" y2="48" stroke="rgba(255,255,255,0.10)" stroke-width="1" />
+              <path class="hm-spine-path"
+                    d="M2 52 L28 47 L54 50 L80 44 L106 46 L132 38 L158 41 L184 30 L206 34 L222 20 L240 62 L262 74 L286 79" />
+              <g class="hm-spine-drop">
+                <circle cx="222" cy="20" r="4.5" fill="#0b0d0f" stroke="#f2c84a" stroke-width="2" />
+                <circle cx="240" cy="62" r="5" fill="#ff6358" />
+                <text x="240" y="92" fill="#8b95a1" font-size="9" text-anchor="middle"
+                      font-family="Inter, system-ui, sans-serif">the move that decided it</text>
+              </g>
+            </svg>
+
+            <div class="hm-art-metrics">
+              <div class="hm-metric">
+                <span class="hm-metric-label">Volatility</span>
+                <span class="hm-metric-value" data-tone="hot">87</span>
+                <span class="hm-metric-note">one move holds</span>
+              </div>
+              <div class="hm-metric">
+                <span class="hm-metric-label">Findability</span>
+                <span class="hm-metric-value" data-tone="warn">31</span>
+                <span class="hm-metric-note">hard</span>
+                <div class="hm-meter"><div class="hm-meter-fill" style="--fill: 0.31"></div></div>
+              </div>
+              <div class="hm-metric">
+                <span class="hm-metric-label">Cost</span>
+                <span class="hm-metric-value" data-tone="good">−28%</span>
+                <span class="hm-metric-note">win chance</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── The five things ───────────────────────────────────────── -->
+        <section class="hm-section">
+          <div class="hm-section-head hm-reveal">
+            <div>
+              <h2 class="hm-section-title">Six ways to <em>get better</em></h2>
+              <div class="hm-rule"></div>
+            </div>
+            <p class="hm-section-sub">
+              Every tool below runs on the same engine stack — Stockfish for truth,
+              Maia-3 for what a human of your rating would actually play.
+            </p>
+          </div>
+
+          <div class="hm-grid">
+            <!-- Game Review -->
+            <button type="button" class="hm-card hm-card--wide hm-reveal" data-home-go="/game-review">
+              <div class="hm-card-inner">
+                <div class="hm-card-copy">
+                  <div class="hm-card-top">
+                    <span class="hm-card-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                           stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2 16l4-9 3 13 3.5-16 3 12 2.5-6h4" />
+                      </svg>
+                    </span>
+                    <div>
+                      <span class="hm-card-kicker">Volatility Bar + Findability</span>
+                      <h3 class="hm-card-title">Game Review</h3>
+                    </div>
+                  </div>
+
+                  <p class="hm-card-body">
+                    Paste a PGN or pull a game and watch the <b>Volatility Bar</b> move with it: a
+                    live read of how much the position punishes one wrong move. Then every mistake
+                    gets a <b>Findability score</b> — was the best move obvious, hard, or something
+                    only an engine sees?
+                  </p>
+
+                  <ul class="hm-card-list">
+                    <li>Move-by-move volatility, classification and accuracy</li>
+                    <li>Findability 0–100 with the human-realistic alternative move</li>
+                    <li>Key moments, opening detection and a saved review library</li>
+                  </ul>
+
+                  <span class="hm-card-foot">
+                    Open Game Review
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+                         aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" /></svg>
+                  </span>
+                </div>
+
+                <div>
+                  <div class="hm-demo-bars" aria-hidden="true">
+                    <div class="hm-demo-bar" data-tone="low"
+                         style="--from: 14%; --to: 34%; --dur: 3.9s; --delay: 0s"><i></i></div>
+                    <div class="hm-demo-bar" data-tone="med"
+                         style="--from: 32%; --to: 66%; --dur: 3.1s; --delay: .35s"><i></i></div>
+                    <div class="hm-demo-bar" data-tone="high"
+                         style="--from: 55%; --to: 94%; --dur: 2.6s; --delay: .7s"><i></i></div>
+                    <div class="hm-demo-bar" data-tone="med"
+                         style="--from: 28%; --to: 58%; --dur: 3.4s; --delay: 1.05s"><i></i></div>
+                    <div class="hm-demo-bar" data-tone="low"
+                         style="--from: 12%; --to: 30%; --dur: 4.2s; --delay: 1.4s"><i></i></div>
+                  </div>
+                  <p class="hm-demo-caption">quiet → sharp → decisive</p>
+                </div>
+              </div>
+            </button>
+
+            <!-- Insights -->
+            <button type="button" class="hm-card hm-card--third hm-reveal" style="--delay: 90ms"
+                    data-home-go="/insights">
+              <div class="hm-card-top">
+                <span class="hm-card-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                       stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 3v18h18" /><path d="M7 15l4-5 3 3 5-7" />
+                    <circle cx="19" cy="6" r="1.6" fill="currentColor" stroke="none" />
+                  </svg>
+                </span>
+                <div>
+                  <span class="hm-card-kicker">Your whole history</span>
+                  <h3 class="hm-card-title">Insights</h3>
+                </div>
+              </div>
+
+              <p class="hm-card-body">
+                Import from Chess.com or Lichess and get a <b>post-mortem of your play</b>,
+                not a pile of charts. It opens on one question: <b>why you lose</b>.
+              </p>
+
+              <ul class="hm-card-list">
+                <li>Ranked leak board, priced in rating points</li>
+                <li>Openings, phases, tilt and time-scramble decay</li>
+                <li>Every finding links straight to the move</li>
+              </ul>
+
+              <span class="hm-card-foot">
+                See why you lose
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+                     aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" /></svg>
+              </span>
+            </button>
+
+            <!-- Puzzles 2.0 -->
+            <button type="button" class="hm-card hm-card--half hm-reveal" style="--delay: 40ms"
+                    data-home-go="/puzzles">
+              <div class="hm-card-top">
+                <span class="hm-card-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                       stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 9a3 3 0 114 2.8c-.9.4-1.3 1-1.3 2v.7" />
+                    <circle cx="11.7" cy="17.6" r="1.1" fill="currentColor" stroke="none" />
+                    <rect x="3" y="3" width="18" height="18" rx="4" />
+                  </svg>
+                </span>
+                <div>
+                  <span class="hm-card-kicker">No tell, ever</span>
+                  <h3 class="hm-card-title">Puzzles 2.0</h3>
+                </div>
+              </div>
+
+              <p class="hm-card-body">
+                Every other site tells you a tactic is there before you look — the one hint you
+                never get in a real game. Here, <b>half the positions hide nothing at all</b>,
+                and you are never told which kind you got.
+              </p>
+
+              <ul class="hm-card-list">
+                <li>Tactical positions graded on the line you found</li>
+                <li>Quiet positions graded on the evaluation you kept</li>
+                <li>Play any position out against a human-like Maia opponent</li>
+              </ul>
+
+              <span class="hm-card-foot">
+                Start solving
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+                     aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" /></svg>
+              </span>
+            </button>
+
+            <!-- Training -->
+            <button type="button" class="hm-card hm-card--half hm-reveal" style="--delay: 130ms"
+                    data-home-go="/training">
+              <div class="hm-card-top">
+                <span class="hm-card-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                       stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4" />
+                    <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" />
+                  </svg>
+                </span>
+                <div>
+                  <span class="hm-card-kicker">Five drills</span>
+                  <h3 class="hm-card-title">Training Modes</h3>
+                </div>
+              </div>
+
+              <p class="hm-card-body">
+                The parts of a game a puzzle set never touches: <b>holding an edge</b>,
+                <b>defending a worse one</b>, and finishing what you started.
+              </p>
+
+              <ul class="hm-card-list">
+                <li>Eval Hold — survive N moves without dropping the eval</li>
+                <li>Defense Gym &amp; Forced Lines — the uncomfortable side</li>
+                <li>Your Mistakes — your real blunders, replayed as drills</li>
+              </ul>
+
+              <span class="hm-card-foot">
+                Enter the gym
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+                     aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" /></svg>
+              </span>
+            </button>
+
+            <!-- Guess the Elo -->
+            <button type="button" class="hm-card hm-card--half hm-reveal" style="--delay: 60ms"
+                    data-home-go="/guess-the-elo">
+              <div class="hm-card-top">
+                <span class="hm-card-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                       stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3.5 18a9 9 0 1117 0" /><path d="M12 18l4.5-6" />
+                    <circle cx="12" cy="18" r="1.4" fill="currentColor" stroke="none" />
+                  </svg>
+                </span>
+                <div>
+                  <span class="hm-card-kicker">Head to head</span>
+                  <h3 class="hm-card-title">Guess the Elo</h3>
+                </div>
+              </div>
+
+              <p class="hm-card-body">
+                You and an opponent watch the <b>same</b> game and guess its hidden rating inside
+                two minutes. Closest guess wins. The games are Maia self-play at a secret
+                strength — so the tells are real ones.
+              </p>
+
+              <ul class="hm-card-list">
+                <li>Live matchmaking, with a bot if nobody is waiting</li>
+                <li>Two-minute clock, one guess, no takebacks</li>
+              </ul>
+
+              <span class="hm-card-foot">
+                Find a duel
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+                     aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" /></svg>
+              </span>
+            </button>
+
+            <!-- Guess the Eval -->
+            <button type="button" class="hm-card hm-card--half hm-reveal" style="--delay: 110ms"
+                    data-home-go="/guess-the-eval">
+              <div class="hm-card-top">
+                <span class="hm-card-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                       stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 4v16" /><path d="M5 7h14" />
+                    <path d="M5 7l-2.5 6h5zM19 7l-2.5 6h5z" />
+                  </svg>
+                </span>
+                <div>
+                  <span class="hm-card-kicker">Battle mode</span>
+                  <h3 class="hm-card-title">Guess the Eval</h3>
+                </div>
+              </div>
+
+              <p class="hm-card-body">
+                A position appears. <b>How winning is it, really?</b> Call the evaluation before
+                the bar does — the fastest way there is to learn what an advantage looks like.
+              </p>
+
+              <ul class="hm-card-list">
+                <li>Score on how close you were, not just the sign</li>
+                <li>Positions drawn from real games across the rating range</li>
+              </ul>
+
+              <span class="hm-card-foot">
+                Call the eval
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+                     aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" /></svg>
+              </span>
+            </button>
+          </div>
+        </section>
+
+        <!-- ── Proof strip ───────────────────────────────────────────── -->
+        <section class="hm-section">
+          <div class="hm-proof hm-reveal">
+            <div class="hm-proof-cell">
+              <span class="hm-proof-value" data-count-to="4.29" data-suffix="M" data-decimals="2">0</span>
+              <span class="hm-proof-label">Lichess puzzles indexed and rated</span>
+            </div>
+            <div class="hm-proof-cell">
+              <span class="hm-proof-value" data-count-to="2600" data-suffix="">0</span>
+              <span class="hm-proof-label">Maia-3 human model, rated to master strength</span>
+            </div>
+            <div class="hm-proof-cell">
+              <span class="hm-proof-value" data-count-to="3" data-suffix="×">0</span>
+              <span class="hm-proof-label">Faster reviews on a parallel engine pool</span>
+            </div>
+            <div class="hm-proof-cell">
+              <span class="hm-proof-value" data-count-to="0" data-suffix="¢">0</span>
+              <span class="hm-proof-label">Everything here, free and open</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── How it works ──────────────────────────────────────────── -->
+        <section class="hm-section">
+          <div class="hm-section-head hm-reveal">
+            <div>
+              <h2 class="hm-section-title">How the <em>findability</em> score works</h2>
+              <div class="hm-rule"></div>
+            </div>
+            <p class="hm-section-sub">
+              The number that makes a ChessMax review different from every other engine report.
+            </p>
+          </div>
+
+          <div class="hm-steps hm-reveal" style="--delay: 80ms">
+            <div class="hm-step">
+              <h3>Find what is acceptable</h3>
+              <p>
+                Stockfish scores every candidate move in win probability, not centipawns.
+                Anything that keeps essentially the same winning chances counts as a good move —
+                often there is more than one.
+              </p>
+            </div>
+            <div class="hm-step">
+              <h3>Ask a human, at every rating</h3>
+              <p>
+                Maia-3 predicts what players from 1100 to 2000 actually play here. That gives a
+                curve: the chance a player of each strength lands on a good move at all.
+              </p>
+            </div>
+            <div class="hm-step">
+              <h3>Correct for calculation</h3>
+              <p>
+                A pattern model never calculates, so forcing lines get credit for being
+                walkable, and quiet, deep, uniquely-winning moves get marked for what they are:
+                nearly impossible to see.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <footer class="hm-footer">
+          <p style="margin: 0">
+            <b>ChessMax</b> — built by Elias Missa. Stockfish for truth, Maia for humans.
+          </p>
+          <nav class="hm-footer-links" aria-label="Quick links">
+            <button type="button" data-home-go="/game-review">Game Review</button>
+            <button type="button" data-home-go="/game-review/why">Why volatility</button>
+            <button type="button" data-home-go="/insights">Insights</button>
+            <button type="button" data-home-go="/puzzles">Puzzles</button>
+          </nav>
+        </footer>
+      </div>
+    </div>
+
     <!-- ════════════════════════════ PUZZLES APP ═══════════════════════════ -->
     <!-- `data-view` is authored so the hero/topbar swap is right on first paint;
          `switchTab` keeps it in sync from then on. -->
@@ -85,8 +514,10 @@
         </div>
       </header>
 
-      <!-- Puzzles home hero — shown on the Puzzles feed only (data-view="train"). -->
-      <section class="puzzle-hero" id="puzzleHero" aria-labelledby="puzzleHeroTitle">
+      <!-- Puzzles home hero — shown on the Puzzles feed only (data-view="train").
+           Authored collapsed so the board is full size on first paint; app.js
+           re-expands it only for a user who has expanded it before. -->
+      <section class="puzzle-hero is-collapsed" id="puzzleHero" aria-labelledby="puzzleHeroTitle">
         <div class="puzzle-hero-glow" aria-hidden="true"></div>
 
         <div class="puzzle-hero-top">
@@ -94,7 +525,7 @@
             <span class="puzzle-hero-pulse" aria-hidden="true"></span>Puzzles 2.0
           </span>
           <button type="button" id="puzzleHeroToggle" class="puzzle-hero-toggle"
-            aria-expanded="true" aria-controls="puzzleHero">Hide intro</button>
+            aria-expanded="false" aria-controls="puzzleHero">What is this?</button>
         </div>
 
         <div class="puzzle-hero-body">
@@ -2124,6 +2555,7 @@
     <script src="/static/eval/app.js"></script>
     <script src="/static/insights/app.js"></script>
     <script src="/static/insights/postmortem.js?v=story-3"></script>
+    <script src="/static/home/app.js"></script>
     <!-- Puzzles app, then the shell tab controller (modules run in order, after classic scripts) -->
     <script type="module" src="/static/app.js?v=3"></script>
     <script type="module" src="/static/shell.js"></script>

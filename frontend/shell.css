@@ -44,18 +44,41 @@ body {
   z-index: 50;
 }
 
+/* The gradient lives on the inner button, not the <h1> — `background-clip:
+   text` only paints the element that owns the text node. */
 .shell-title {
-  background: linear-gradient(100deg, #ffffff 18%, #57e83f 68%, #44d62c);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
   flex: none;
   font-size: 1.3rem;
   font-weight: 800;
-  letter-spacing: 0.1em;
+  line-height: 1;
   margin: 0;
-  text-transform: uppercase;
   white-space: nowrap;
+}
+
+.shell-home {
+  background: linear-gradient(100deg, #ffffff 18%, #57e83f 68%, #44d62c);
+  -webkit-background-clip: text;
+  background-clip: text;
+  border: 0;
+  border-radius: 8px;
+  color: transparent;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: 0.1em;
+  padding: 0.15rem 0.2rem;
+  text-transform: uppercase;
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
+
+.shell-home:hover {
+  filter: brightness(1.15) drop-shadow(0 0 12px rgba(68, 214, 44, 0.45));
+}
+
+.shell-home:active { transform: translateY(1px); }
+
+.shell-home:focus-visible {
+  outline: 2px solid rgba(68, 214, 44, 0.7);
+  outline-offset: 2px;
 }
 
 .shell-tabs {
