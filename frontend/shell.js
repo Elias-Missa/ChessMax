@@ -1,5 +1,10 @@
 // ChessMax shell: History-API routes across Puzzles, Training, Game Review,
-// Insights, and Guess the Elo. Training and Game Review keep nested sub-navs.
+// Insights, and Duels. Training, Game Review and Duels keep nested sub-navs.
+//
+// Duels is one top-level tab over two independent app roots (`elo` + `eval`).
+// `/guess-the-elo` and `/guess-the-eval` predate the merge and are kept as
+// aliases so old links and bookmarks still resolve — they carry the same
+// `top: "duels"`, so the single tab highlights either way.
 
 const ROUTES = [
   { path: "/", app: "home", tab: "home", top: "home" },
@@ -17,8 +22,11 @@ const ROUTES = [
   { path: "/game-review/library", app: "vol", tab: "library", top: "game-review" },
   { path: "/game-review/why", app: "vol", tab: "about", top: "game-review" },
   { path: "/insights", app: "insights", tab: "insights", top: "insights" },
-  { path: "/guess-the-elo", app: "elo", tab: "eloduels", top: "elo" },
-  { path: "/guess-the-eval", app: "eval", tab: "evalduels", top: "eval" },
+  { path: "/duels", app: "elo", tab: "eloduels", top: "duels" },
+  { path: "/duels/elo", app: "elo", tab: "eloduels", top: "duels" },
+  { path: "/duels/eval", app: "eval", tab: "evalduels", top: "duels" },
+  { path: "/guess-the-elo", app: "elo", tab: "eloduels", top: "duels" },
+  { path: "/guess-the-eval", app: "eval", tab: "evalduels", top: "duels" },
 ];
 
 const TAB_TO_PATH = Object.fromEntries(
@@ -30,18 +38,20 @@ TAB_TO_PATH.game = "/game-review";
 TAB_TO_PATH.editor = "/game-review/editor";
 TAB_TO_PATH.library = "/game-review/library";
 TAB_TO_PATH.about = "/game-review/why";
-TAB_TO_PATH.eloduels = "/guess-the-elo";
-TAB_TO_PATH.evalduels = "/guess-the-eval";
+TAB_TO_PATH.eloduels = "/duels/elo";
+TAB_TO_PATH.evalduels = "/duels/eval";
 TAB_TO_PATH.insights = "/insights";
 
 const TRAINING_TABS = new Set([
   "evalhold", "defense", "forced", "guess", "mistakes", "playout", "stats",
 ]);
 const VOL_TABS = new Set(["game", "editor", "library", "about"]);
+const DUEL_APPS = new Set(["elo", "eval"]);
 
 const shellTabs = Array.from(document.querySelectorAll(".shell-tab[data-top]"));
 const trainingNav = document.getElementById("training-subnav");
 const gameReviewNav = document.getElementById("game-review-subnav");
+const duelsNav = document.getElementById("duels-subnav");
 const homeRoot = document.getElementById("home-root");
 const puzzlesRoot = document.getElementById("puzzles-root");
 const volRoot = document.getElementById("vol-root");
@@ -69,6 +79,9 @@ function matchRoute(pathname) {
   }
   if (path.startsWith("/game-review")) {
     return ROUTES.find((r) => r.path === "/game-review");
+  }
+  if (path.startsWith("/duels")) {
+    return ROUTES.find((r) => r.path === "/duels");
   }
   return ROUTES.find((r) => r.path === "/");
 }
@@ -101,6 +114,7 @@ function showRoots(app, tab) {
     trainingNav.classList.toggle("hidden", app !== "puzzles" || !TRAINING_TABS.has(tab));
   }
   if (gameReviewNav) gameReviewNav.classList.toggle("hidden", app !== "vol");
+  if (duelsNav) duelsNav.classList.toggle("hidden", !DUEL_APPS.has(app));
 }
 
 function applyRoute(route, { push = false } = {}) {
@@ -141,6 +155,7 @@ function applyRoute(route, { push = false } = {}) {
     if (gameReviewNav) highlightSubnav(gameReviewNav, route.tab);
     if (window.__volSetTab) window.__volSetTab(route.tab);
   }
+  if (DUEL_APPS.has(app) && duelsNav) highlightSubnav(duelsNav, route.tab);
 
   requestAnimationFrame(() => {
     window.dispatchEvent(new Event("resize"));
@@ -183,6 +198,11 @@ if (trainingNav) {
 }
 if (gameReviewNav) {
   gameReviewNav.querySelectorAll("[data-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => navigateToTab(btn.dataset.tab, { push: true }));
+  });
+}
+if (duelsNav) {
+  duelsNav.querySelectorAll("[data-tab]").forEach((btn) => {
     btn.addEventListener("click", () => navigateToTab(btn.dataset.tab, { push: true }));
   });
 }

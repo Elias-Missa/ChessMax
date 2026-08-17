@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="/static/style.css" />
     <link rel="stylesheet" href="/static/vol/styles.css" />
     <link rel="stylesheet" href="/static/shell.css" />
-    <link rel="stylesheet" href="/static/home/styles.css" />
+    <link rel="stylesheet" href="/static/home/styles.css?v=6" />
     <link rel="stylesheet" href="/static/elo/styles.css" />
     <link rel="stylesheet" href="/static/eval/styles.css" />
     <link rel="stylesheet" href="/static/insights/styles.css" />
@@ -54,8 +54,7 @@
         <button class="shell-tab" type="button" role="tab" data-top="training" data-tab="evalhold" data-route="/training" aria-selected="false">Training</button>
         <button class="shell-tab" type="button" role="tab" data-top="game-review" data-tab="game" data-route="/game-review" aria-selected="false">Game Review</button>
         <button class="shell-tab" type="button" role="tab" data-top="insights" data-tab="insights" data-route="/insights" aria-selected="false">Insights</button>
-        <button class="shell-tab shell-tab--accent" type="button" role="tab" data-top="elo" data-tab="eloduels" data-route="/guess-the-elo" aria-selected="false">Guess the Elo</button>
-        <button class="shell-tab shell-tab--accent" type="button" role="tab" data-top="eval" data-tab="evalduels" data-route="/guess-the-eval" aria-selected="false">Guess the Eval</button>
+        <button class="shell-tab shell-tab--accent" type="button" role="tab" data-top="duels" data-tab="eloduels" data-route="/duels" aria-selected="false">Duels</button>
       </nav>
       <div class="shell-user hidden" id="shell-user-wrap">
         <span class="shell-user-email" id="shell-user"></span>
@@ -80,13 +79,23 @@
       <button type="button" role="tab" data-tab="about" aria-selected="false">Why</button>
     </nav>
 
+    <nav id="duels-subnav" class="shell-subnav hidden" aria-label="Duel modes">
+      <button type="button" role="tab" data-tab="eloduels" aria-selected="false">Guess the Elo</button>
+      <button type="button" role="tab" data-tab="evalduels" aria-selected="false">Guess the Eval</button>
+    </nav>
+
     <!-- ═════════════════════════════ HOME SCREEN ══════════════════════════ -->
-    <!-- Landing page at `/`. Every card is a <button> that hands off to
-         `window.__shellNavigate`, so the shell owns routing exactly once. -->
+    <!-- Landing page at `/`. Every navigation is a <button> that hands off to
+         `window.__shellNavigate`, so the shell owns routing exactly once. The
+         hero board replays a real game against real engine output — see
+         `frontend/home/opera.js` for where the numbers come from. -->
     <div id="home-root" class="hidden">
+      <div class="hm-scrollbar" aria-hidden="true"><i id="hmProgress"></i></div>
+
       <div class="hm-bg" aria-hidden="true">
         <div class="hm-bg-field"></div>
         <div class="hm-bg-board" id="hmBoard"></div>
+        <div class="hm-bg-lamp" id="hmLamp"></div>
         <div class="hm-bg-grain"></div>
         <div class="hm-bg-vignette"></div>
       </div>
@@ -94,97 +103,171 @@
       <div class="hm-page">
         <!-- ── Hero ──────────────────────────────────────────────────── -->
         <section class="hm-hero">
-          <div class="hm-hero-copy hm-reveal">
-            <span class="hm-eyebrow">
+          <div class="hm-hero-copy">
+            <span class="hm-eyebrow hm-reveal">
               <span class="hm-eyebrow-dot" aria-hidden="true"></span>
               Chess analysis, rebuilt
             </span>
 
-            <h1 class="hm-title">
-              <span class="hm-title-word" data-word="ChessMax">ChessMax</span>
+            <h1 class="hm-title hm-reveal" style="--delay: 60ms">
+              <span class="hm-title-word" data-word="ChessMax" aria-label="ChessMax">
+                <span aria-hidden="true">C</span><span aria-hidden="true">h</span><span aria-hidden="true">e</span><span aria-hidden="true">s</span><span aria-hidden="true">s</span><span aria-hidden="true" class="hm-title-cut">M</span><span aria-hidden="true">a</span><span aria-hidden="true">x</span>
+              </span>
             </h1>
 
-            <p class="hm-byline">Built by <b>Elias Missa</b></p>
+            <p class="hm-byline hm-reveal" style="--delay: 120ms">
+              Built by <b>Elias Missa</b>
+            </p>
 
-            <p class="hm-lede">
+            <p class="hm-lede hm-reveal" style="--delay: 170ms">
               Engines tell you <em>what</em> the best move was. ChessMax tells you
               <strong>whether a human was ever going to find it</strong> — by measuring how
               sharp the position was, how findable the move was for a player of your
               strength, and what that actually cost you across every game you have played.
             </p>
 
-            <div class="hm-cta">
-              <button type="button" class="hm-btn hm-btn--primary" data-home-go="/game-review">
-                Review a game
-                <span class="hm-btn-arrow" aria-hidden="true">→</span>
+            <div class="hm-cta hm-reveal" style="--delay: 220ms">
+              <button type="button" class="hm-btn hm-btn--primary" data-magnetic data-home-go="/game-review">
+                <span class="hm-btn-label">Review a game</span>
+                <span class="hm-btn-arrow" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                       stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M12 5l7 7-7 7" /></svg>
+                </span>
               </button>
-              <button type="button" class="hm-btn hm-btn--ghost" data-home-go="/puzzles">
+              <button type="button" class="hm-btn hm-btn--ghost" data-magnetic data-home-go="/puzzles">
                 Train on puzzles
               </button>
             </div>
+
+            <dl class="hm-hero-facts hm-reveal" style="--delay: 280ms">
+              <div><dt>Truth</dt><dd>Stockfish</dd></div>
+              <div><dt>Humans</dt><dd>Maia&#8209;3</dd></div>
+              <div><dt>Unit</dt><dd>Win&nbsp;%, not cp</dd></div>
+            </dl>
           </div>
 
-          <!-- Signature panel: one move read three ways. -->
-          <div class="hm-hero-art hm-reveal" style="--delay: 140ms">
-            <div class="hm-art-head">
-              <h2 class="hm-art-title">Move 24 · one position</h2>
-              <span class="hm-art-move">Rxd4</span>
+          <!-- Signature panel: a real game, replayed against real engine output. -->
+          <div class="hm-stage hm-reveal" style="--delay: 140ms" id="hmStage">
+            <div class="hm-stage-sheen" aria-hidden="true"></div>
+            <!-- Fills across the dwell before each move lands, so the panel has
+                 a heartbeat: analyse, then play. -->
+            <div class="hm-stage-think" aria-hidden="true"><i id="hmThink"></i></div>
+
+            <header class="hm-stage-head">
+              <span class="hm-live">
+                <span class="hm-live-dot" aria-hidden="true"></span><span id="hmLiveText">Replaying</span>
+              </span>
+              <div class="hm-stage-game">
+                <strong>Morphy vs Duke Karl &amp; Count Isouard</strong>
+                <span>Paris Opera, 1858</span>
+              </div>
+              <button type="button" class="hm-stage-toggle" id="hmPlayToggle"
+                      aria-label="Pause replay" aria-pressed="false">
+                <svg class="hm-icon-pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <rect x="7" y="5" width="3.4" height="14" rx="1.2" />
+                  <rect x="13.6" y="5" width="3.4" height="14" rx="1.2" />
+                </svg>
+                <svg class="hm-icon-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M8 5.5v13l11-6.5z" />
+                </svg>
+              </button>
+            </header>
+
+            <div class="hm-stage-body">
+              <div class="hm-evalbar" aria-hidden="true">
+                <i id="hmEvalFill"></i>
+              </div>
+
+              <div class="hm-board cg-wrap" id="hmGameBoard" role="img"
+                   aria-label="Chess board replaying the Opera Game">
+                <div class="hm-board-grid" id="hmBoardGrid" aria-hidden="true"></div>
+                <div class="hm-hl hm-hl--from" id="hmHlFrom" aria-hidden="true"></div>
+                <div class="hm-hl hm-hl--to" id="hmHlTo" aria-hidden="true"></div>
+                <div class="hm-pieces" id="hmPieces" aria-hidden="true"></div>
+                <!-- One board unit == one viewBox unit, so app.js can write
+                     square coordinates straight into the geometry. -->
+                <svg class="hm-arrow" id="hmArrow" viewBox="0 0 8 8" aria-hidden="true">
+                  <path class="hm-arrow-shaft" id="hmArrowShaft" d="" />
+                  <path class="hm-arrow-head" id="hmArrowHead" d="" />
+                </svg>
+                <span class="hm-impact" id="hmImpact" aria-hidden="true"></span>
+                <span class="hm-board-flash" id="hmFlash" aria-hidden="true"></span>
+              </div>
+
+              <div class="hm-readouts">
+                <div class="hm-ro" data-metric="vol">
+                  <span class="hm-ro-label">Volatility</span>
+                  <div class="hm-ro-main">
+                    <svg class="hm-gauge" viewBox="0 0 44 44" aria-hidden="true">
+                      <circle class="hm-gauge-track" cx="22" cy="22" r="18" />
+                      <circle class="hm-gauge-fill" id="hmGauge" cx="22" cy="22" r="18" />
+                    </svg>
+                    <strong id="hmVolVal">—</strong>
+                  </div>
+                  <span class="hm-ro-note" id="hmVolNote">how much one move is worth</span>
+                </div>
+
+                <div class="hm-ro" data-metric="find">
+                  <span class="hm-ro-label">Findability</span>
+                  <div class="hm-ro-main">
+                    <strong id="hmFindVal">—</strong>
+                    <span class="hm-band" id="hmFindBand">—</span>
+                  </div>
+                  <div class="hm-ro-meter"><i id="hmFindFill"></i></div>
+                  <span class="hm-ro-note">best move: <b id="hmFindBest">—</b></span>
+                </div>
+
+                <div class="hm-ro" data-metric="win">
+                  <span class="hm-ro-label">White win chance</span>
+                  <div class="hm-ro-main"><strong id="hmWinVal">—</strong></div>
+                  <span class="hm-ro-note" id="hmMoveNo">before move 1</span>
+                </div>
+              </div>
             </div>
 
-            <svg class="hm-art-spine" viewBox="0 0 300 96" role="img"
-                 aria-label="Evaluation swinging sharply at move 24">
-              <defs>
-                <linearGradient id="hmSpineGrad" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stop-color="#67e8a2" />
-                  <stop offset="62%" stop-color="#f2c84a" />
-                  <stop offset="100%" stop-color="#ff6358" />
-                </linearGradient>
-                <linearGradient id="hmSpineFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="rgba(68,214,44,0.22)" />
-                  <stop offset="100%" stop-color="rgba(68,214,44,0)" />
-                </linearGradient>
-              </defs>
-              <line x1="0" y1="48" x2="300" y2="48" stroke="rgba(255,255,255,0.10)" stroke-width="1" />
-              <path class="hm-spine-path"
-                    d="M2 52 L28 47 L54 50 L80 44 L106 46 L132 38 L158 41 L184 30 L206 34 L222 20 L240 62 L262 74 L286 79" />
-              <g class="hm-spine-drop">
-                <circle cx="222" cy="20" r="4.5" fill="#0b0d0f" stroke="#f2c84a" stroke-width="2" />
-                <circle cx="240" cy="62" r="5" fill="#ff6358" />
-                <text x="240" y="92" fill="#8b95a1" font-size="9" text-anchor="middle"
-                      font-family="Inter, system-ui, sans-serif">the move that decided it</text>
-              </g>
-            </svg>
-
-            <div class="hm-art-metrics">
-              <div class="hm-metric">
-                <span class="hm-metric-label">Volatility</span>
-                <span class="hm-metric-value" data-tone="hot">87</span>
-                <span class="hm-metric-note">one move holds</span>
-              </div>
-              <div class="hm-metric">
-                <span class="hm-metric-label">Findability</span>
-                <span class="hm-metric-value" data-tone="warn">31</span>
-                <span class="hm-metric-note">hard</span>
-                <div class="hm-meter"><div class="hm-meter-fill" style="--fill: 0.31"></div></div>
-              </div>
-              <div class="hm-metric">
-                <span class="hm-metric-label">Cost</span>
-                <span class="hm-metric-value" data-tone="good">−28%</span>
-                <span class="hm-metric-note">win chance</span>
-              </div>
+            <div class="hm-stage-foot">
+              <svg class="hm-spine" id="hmSpine" viewBox="0 0 320 46" preserveAspectRatio="none"
+                   role="img" aria-label="Volatility across the game">
+                <defs>
+                  <linearGradient id="hmSpineFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="rgba(68,214,44,0.34)" />
+                    <stop offset="100%" stop-color="rgba(68,214,44,0)" />
+                  </linearGradient>
+                </defs>
+                <path class="hm-spine-area" id="hmSpineArea" d="" />
+                <path class="hm-spine-line" id="hmSpineLine" d="" />
+                <circle class="hm-spine-halo" id="hmSpineHalo" r="3" cx="0" cy="46" />
+                <circle class="hm-spine-head" id="hmSpineHead" r="3" cx="0" cy="46" />
+              </svg>
+              <div class="hm-moverow" id="hmMoveRow" aria-live="off"></div>
             </div>
           </div>
         </section>
 
-        <!-- ── The five things ───────────────────────────────────────── -->
+        <!-- ── Ticker ────────────────────────────────────────────────── -->
+        <div class="hm-ticker hm-reveal" aria-hidden="true">
+          <div class="hm-ticker-track">
+            <span>Volatility</span><i></i><span>Findability 0–100</span><i></i>
+            <span>Maia-3 conditioned on your rating</span><i></i><span>Win %, never centipawns</span><i></i>
+            <span>4.29M puzzles indexed</span><i></i><span>Leaks priced in rating points</span><i></i>
+            <span>Stockfish depth 20 · MultiPV 6</span><i></i><span>Free and open</span><i></i>
+            <span>Volatility</span><i></i><span>Findability 0–100</span><i></i>
+            <span>Maia-3 conditioned on your rating</span><i></i><span>Win %, never centipawns</span><i></i>
+            <span>4.29M puzzles indexed</span><i></i><span>Leaks priced in rating points</span><i></i>
+            <span>Stockfish depth 20 · MultiPV 6</span><i></i><span>Free and open</span><i></i>
+          </div>
+        </div>
+
+        <!-- ── The tools ─────────────────────────────────────────────── -->
         <section class="hm-section">
           <div class="hm-section-head hm-reveal">
             <div>
-              <h2 class="hm-section-title">Six ways to <em>get better</em></h2>
+              <span class="hm-kicker">01 — The toolkit</span>
+              <h2 class="hm-section-title">Five ways to <em>get better</em></h2>
               <div class="hm-rule"></div>
             </div>
             <p class="hm-section-sub">
-              Every tool below runs on the same engine stack — Stockfish for truth,
+              Every tool below runs on the same stack — Stockfish for truth,
               Maia-3 for what a human of your rating would actually play.
             </p>
           </div>
@@ -192,6 +275,7 @@
           <div class="hm-grid">
             <!-- Game Review -->
             <button type="button" class="hm-card hm-card--wide hm-reveal" data-home-go="/game-review">
+              <span class="hm-card-frame" aria-hidden="true"></span>
               <div class="hm-card-inner">
                 <div class="hm-card-copy">
                   <div class="hm-card-top">
@@ -202,22 +286,22 @@
                       </svg>
                     </span>
                     <div>
-                      <span class="hm-card-kicker">Volatility Bar + Findability</span>
+                      <span class="hm-card-kicker">Volatility + Findability</span>
                       <h3 class="hm-card-title">Game Review</h3>
                     </div>
                   </div>
 
                   <p class="hm-card-body">
-                    Paste a PGN or pull a game and watch the <b>Volatility Bar</b> move with it: a
-                    live read of how much the position punishes one wrong move. Then every mistake
-                    gets a <b>Findability score</b> — was the best move obvious, hard, or something
-                    only an engine sees?
+                    Paste a PGN or pull a game and watch the <b>Volatility Bar</b> move with it —
+                    a live read of how hard the position punishes one wrong move. Then every
+                    mistake gets a <b>Findability score</b>: was the best move obvious, hard, or
+                    something only an engine sees?
                   </p>
 
                   <ul class="hm-card-list">
                     <li>Move-by-move volatility, classification and accuracy</li>
-                    <li>Findability 0–100 with the human-realistic alternative move</li>
-                    <li>Key moments, opening detection and a saved review library</li>
+                    <li>Findability 0–100 plus the human-realistic alternative</li>
+                    <li>Key moments, opening detection, saved review library</li>
                   </ul>
 
                   <span class="hm-card-foot">
@@ -228,27 +312,18 @@
                   </span>
                 </div>
 
-                <div>
-                  <div class="hm-demo-bars" aria-hidden="true">
-                    <div class="hm-demo-bar" data-tone="low"
-                         style="--from: 14%; --to: 34%; --dur: 3.9s; --delay: 0s"><i></i></div>
-                    <div class="hm-demo-bar" data-tone="med"
-                         style="--from: 32%; --to: 66%; --dur: 3.1s; --delay: .35s"><i></i></div>
-                    <div class="hm-demo-bar" data-tone="high"
-                         style="--from: 55%; --to: 94%; --dur: 2.6s; --delay: .7s"><i></i></div>
-                    <div class="hm-demo-bar" data-tone="med"
-                         style="--from: 28%; --to: 58%; --dur: 3.4s; --delay: 1.05s"><i></i></div>
-                    <div class="hm-demo-bar" data-tone="low"
-                         style="--from: 12%; --to: 30%; --dur: 4.2s; --delay: 1.4s"><i></i></div>
-                  </div>
-                  <p class="hm-demo-caption">quiet → sharp → decisive</p>
-                </div>
+                <!-- The same Opera Game volatility series as the hero, as columns. -->
+                <figure class="hm-viz hm-viz--cols">
+                  <div class="hm-cols" id="hmVizCols" aria-hidden="true"></div>
+                  <figcaption>Opera Game · volatility per move · peak <b>Qb8+</b></figcaption>
+                </figure>
               </div>
             </button>
 
             <!-- Insights -->
             <button type="button" class="hm-card hm-card--third hm-reveal" style="--delay: 90ms"
                     data-home-go="/insights">
+              <span class="hm-card-frame" aria-hidden="true"></span>
               <div class="hm-card-top">
                 <span class="hm-card-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
@@ -268,11 +343,21 @@
                 not a pile of charts. It opens on one question: <b>why you lose</b>.
               </p>
 
-              <ul class="hm-card-list">
-                <li>Ranked leak board, priced in rating points</li>
-                <li>Openings, phases, tilt and time-scramble decay</li>
-                <li>Every finding links straight to the move</li>
-              </ul>
+              <figure class="hm-viz hm-viz--leaks" aria-hidden="true">
+                <figcaption>Leak board · rating points per game</figcaption>
+                <div class="hm-leak" style="--w: 100%; --i: 0">
+                  <span>Hanging a piece</span><i></i><b>−31</b>
+                </div>
+                <div class="hm-leak" style="--w: 71%; --i: 1">
+                  <span>Time scramble</span><i></i><b>−22</b>
+                </div>
+                <div class="hm-leak" style="--w: 52%; --i: 2">
+                  <span>Endgame conversion</span><i></i><b>−16</b>
+                </div>
+                <div class="hm-leak" style="--w: 33%; --i: 3">
+                  <span>Opening prep</span><i></i><b>−10</b>
+                </div>
+              </figure>
 
               <span class="hm-card-foot">
                 See why you lose
@@ -285,6 +370,7 @@
             <!-- Puzzles 2.0 -->
             <button type="button" class="hm-card hm-card--half hm-reveal" style="--delay: 40ms"
                     data-home-go="/puzzles">
+              <span class="hm-card-frame" aria-hidden="true"></span>
               <div class="hm-card-top">
                 <span class="hm-card-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
@@ -306,11 +392,17 @@
                 and you are never told which kind you got.
               </p>
 
-              <ul class="hm-card-list">
-                <li>Tactical positions graded on the line you found</li>
-                <li>Quiet positions graded on the evaluation you kept</li>
-                <li>Play any position out against a human-like Maia opponent</li>
-              </ul>
+              <figure class="hm-viz hm-viz--coin" aria-hidden="true">
+                <div class="hm-coin-face" data-face="a">
+                  <span class="hm-coin-tag">Sometimes</span>
+                  <strong>There is a tactic</strong>
+                </div>
+                <div class="hm-coin-q">?</div>
+                <div class="hm-coin-face" data-face="b">
+                  <span class="hm-coin-tag">Just as often</span>
+                  <strong>There is nothing</strong>
+                </div>
+              </figure>
 
               <span class="hm-card-foot">
                 Start solving
@@ -323,6 +415,7 @@
             <!-- Training -->
             <button type="button" class="hm-card hm-card--half hm-reveal" style="--delay: 130ms"
                     data-home-go="/training">
+              <span class="hm-card-frame" aria-hidden="true"></span>
               <div class="hm-card-top">
                 <span class="hm-card-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
@@ -332,7 +425,7 @@
                   </svg>
                 </span>
                 <div>
-                  <span class="hm-card-kicker">Five drills</span>
+                  <span class="hm-card-kicker">Six drills</span>
                   <h3 class="hm-card-title">Training Modes</h3>
                 </div>
               </div>
@@ -342,11 +435,13 @@
                 <b>defending a worse one</b>, and finishing what you started.
               </p>
 
-              <ul class="hm-card-list">
-                <li>Eval Hold — survive N moves without dropping the eval</li>
-                <li>Defense Gym &amp; Forced Lines — the uncomfortable side</li>
-                <li>Your Mistakes — your real blunders, replayed as drills</li>
-              </ul>
+              <figure class="hm-viz hm-viz--drills" aria-hidden="true">
+                <span class="hm-scanline"></span>
+                <div class="hm-drill"><b>Eval Hold</b><span>survive N moves without dropping</span></div>
+                <div class="hm-drill"><b>Defense Gym</b><span>hold the worse side</span></div>
+                <div class="hm-drill"><b>Forced Lines</b><span>walk it to the end</span></div>
+                <div class="hm-drill"><b>Your Mistakes</b><span>your blunders, as drills</span></div>
+              </figure>
 
               <span class="hm-card-foot">
                 Enter the gym
@@ -356,105 +451,140 @@
               </span>
             </button>
 
-            <!-- Guess the Elo -->
-            <button type="button" class="hm-card hm-card--half hm-reveal" style="--delay: 60ms"
-                    data-home-go="/guess-the-elo">
-              <div class="hm-card-top">
-                <span class="hm-card-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                       stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3.5 18a9 9 0 1117 0" /><path d="M12 18l4.5-6" />
-                    <circle cx="12" cy="18" r="1.4" fill="currentColor" stroke="none" />
-                  </svg>
-                </span>
-                <div>
-                  <span class="hm-card-kicker">Head to head</span>
-                  <h3 class="hm-card-title">Guess the Elo</h3>
+            <!-- Duels — Guess the Elo + Guess the Eval, one card, one tab.
+                 This is a <div>, not a <button>: it holds real buttons, and a
+                 button may not contain a button. -->
+            <div class="hm-card hm-card--duel hm-reveal" style="--delay: 60ms">
+              <span class="hm-card-frame" aria-hidden="true"></span>
+
+              <div class="hm-duel-head">
+                <div class="hm-card-top">
+                  <span class="hm-card-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                         stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M4 20l7-7M20 4l-7 7" /><path d="M14 4h6v6" /><path d="M10 20H4v-6" />
+                    </svg>
+                  </span>
+                  <div>
+                    <span class="hm-card-kicker">Head to head · two minutes</span>
+                    <h3 class="hm-card-title">Duels</h3>
+                  </div>
+                </div>
+
+                <div class="hm-seg" role="tablist" aria-label="Duel modes">
+                  <span class="hm-seg-thumb" aria-hidden="true"></span>
+                  <button type="button" role="tab" class="hm-seg-btn active" data-duel="elo"
+                          aria-selected="true">Guess the Elo</button>
+                  <button type="button" role="tab" class="hm-seg-btn" data-duel="eval"
+                          aria-selected="false">Guess the Eval</button>
                 </div>
               </div>
 
-              <p class="hm-card-body">
-                You and an opponent watch the <b>same</b> game and guess its hidden rating inside
-                two minutes. Closest guess wins. The games are Maia self-play at a secret
-                strength — so the tells are real ones.
-              </p>
+              <div class="hm-duel-body" data-duel-active="elo">
+                <!-- Elo face -->
+                <div class="hm-duel-face" data-face="elo">
+                  <div class="hm-duel-copy">
+                    <p class="hm-card-body">
+                      You and an opponent watch the <b>same</b> game and guess its hidden rating.
+                      The games are Maia self-play at a secret strength, so the tells are real
+                      ones — and the closest guess wins.
+                    </p>
+                    <ul class="hm-card-list">
+                      <li>Live matchmaking, with a bot if nobody is waiting</li>
+                      <li>Two-minute clock, one guess, no takebacks</li>
+                    </ul>
+                    <button type="button" class="hm-btn hm-btn--primary hm-btn--sm"
+                            data-home-go="/duels/elo">
+                      <span class="hm-btn-label">Find a duel</span>
+                      <span class="hm-btn-arrow" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                             stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M12 5l7 7-7 7" /></svg>
+                      </span>
+                    </button>
+                  </div>
 
-              <ul class="hm-card-list">
-                <li>Live matchmaking, with a bot if nobody is waiting</li>
-                <li>Two-minute clock, one guess, no takebacks</li>
-              </ul>
+                  <figure class="hm-viz hm-viz--dial" aria-hidden="true">
+                    <svg viewBox="0 0 200 122">
+                      <defs>
+                        <linearGradient id="hmDialGrad" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stop-color="#3f7fd6" />
+                          <stop offset="50%" stop-color="#44d62c" />
+                          <stop offset="100%" stop-color="#ff6358" />
+                        </linearGradient>
+                      </defs>
+                      <path class="hm-dial-track" d="M18 104a82 82 0 0 1 164 0" />
+                      <path class="hm-dial-arc" d="M18 104a82 82 0 0 1 164 0" />
+                      <g class="hm-dial-needle">
+                        <line x1="100" y1="104" x2="100" y2="34" />
+                        <circle cx="100" cy="104" r="6" />
+                      </g>
+                      <text class="hm-dial-min" x="16" y="119">600</text>
+                      <text class="hm-dial-max" x="184" y="119">2600</text>
+                    </svg>
+                    <figcaption><b id="hmDialVal">1500</b> guessed rating</figcaption>
+                  </figure>
+                </div>
 
-              <span class="hm-card-foot">
-                Find a duel
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
-                     aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" /></svg>
-              </span>
-            </button>
+                <!-- Eval face -->
+                <div class="hm-duel-face" data-face="eval">
+                  <div class="hm-duel-copy">
+                    <p class="hm-card-body">
+                      A position appears. <b>How winning is it, really?</b> Call the evaluation
+                      before the bar does — the fastest way there is to learn what an advantage
+                      actually looks like.
+                    </p>
+                    <ul class="hm-card-list">
+                      <li>Scored on how close you were, not just the sign</li>
+                      <li>Sixty seconds, positions from real games</li>
+                    </ul>
+                    <button type="button" class="hm-btn hm-btn--primary hm-btn--sm"
+                            data-home-go="/duels/eval">
+                      <span class="hm-btn-label">Call the eval</span>
+                      <span class="hm-btn-arrow" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                             stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M12 5l7 7-7 7" /></svg>
+                      </span>
+                    </button>
+                  </div>
 
-            <!-- Guess the Eval -->
-            <button type="button" class="hm-card hm-card--half hm-reveal" style="--delay: 110ms"
-                    data-home-go="/guess-the-eval">
-              <div class="hm-card-top">
-                <span class="hm-card-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                       stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 4v16" /><path d="M5 7h14" />
-                    <path d="M5 7l-2.5 6h5zM19 7l-2.5 6h5z" />
-                  </svg>
-                </span>
-                <div>
-                  <span class="hm-card-kicker">Battle mode</span>
-                  <h3 class="hm-card-title">Guess the Eval</h3>
+                  <figure class="hm-viz hm-viz--evalbar" aria-hidden="true">
+                    <div class="hm-ebar"><i id="hmEbarFill"></i><span class="hm-ebar-mid"></span></div>
+                    <div class="hm-ebar-scale"><span>−6</span><span>−3</span><span>0.0</span><span>+3</span><span>+6</span></div>
+                    <figcaption><b id="hmEbarVal">+0.0</b> your call</figcaption>
+                  </figure>
                 </div>
               </div>
-
-              <p class="hm-card-body">
-                A position appears. <b>How winning is it, really?</b> Call the evaluation before
-                the bar does — the fastest way there is to learn what an advantage looks like.
-              </p>
-
-              <ul class="hm-card-list">
-                <li>Score on how close you were, not just the sign</li>
-                <li>Positions drawn from real games across the rating range</li>
-              </ul>
-
-              <span class="hm-card-foot">
-                Call the eval
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
-                     aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" /></svg>
-              </span>
-            </button>
+            </div>
           </div>
         </section>
 
         <!-- ── Proof strip ───────────────────────────────────────────── -->
         <section class="hm-section">
           <div class="hm-proof hm-reveal">
-            <div class="hm-proof-cell">
+            <div class="hm-proof-cell" style="--i: 0">
               <span class="hm-proof-value" data-count-to="4.29" data-suffix="M" data-decimals="2">0</span>
               <span class="hm-proof-label">Lichess puzzles indexed and rated</span>
             </div>
-            <div class="hm-proof-cell">
+            <div class="hm-proof-cell" style="--i: 1">
               <span class="hm-proof-value" data-count-to="2600" data-suffix="">0</span>
               <span class="hm-proof-label">Maia-3 human model, rated to master strength</span>
             </div>
-            <div class="hm-proof-cell">
+            <div class="hm-proof-cell" style="--i: 2">
               <span class="hm-proof-value" data-count-to="3" data-suffix="×">0</span>
               <span class="hm-proof-label">Faster reviews on a parallel engine pool</span>
             </div>
-            <div class="hm-proof-cell">
+            <div class="hm-proof-cell" style="--i: 3">
               <span class="hm-proof-value" data-count-to="0" data-suffix="¢">0</span>
               <span class="hm-proof-label">Everything here, free and open</span>
             </div>
           </div>
         </section>
 
-        <!-- ── How it works ──────────────────────────────────────────── -->
-        <section class="hm-section">
+        <!-- ── How findability works — scroll-driven ─────────────────── -->
+        <section class="hm-section hm-how" id="hmHow">
           <div class="hm-section-head hm-reveal">
             <div>
+              <span class="hm-kicker">02 — The measurement</span>
               <h2 class="hm-section-title">How the <em>findability</em> score works</h2>
               <div class="hm-rule"></div>
             </div>
@@ -463,30 +593,116 @@
             </p>
           </div>
 
-          <div class="hm-steps hm-reveal" style="--delay: 80ms">
-            <div class="hm-step">
-              <h3>Find what is acceptable</h3>
-              <p>
-                Stockfish scores every candidate move in win probability, not centipawns.
-                Anything that keeps essentially the same winning chances counts as a good move —
-                often there is more than one.
-              </p>
+          <div class="hm-how-grid">
+            <ol class="hm-steps">
+              <li class="hm-step" data-step="1">
+                <span class="hm-step-n">01</span>
+                <h3>Find what is acceptable</h3>
+                <p>
+                  Stockfish scores every candidate in win probability, not centipawns.
+                  Anything that keeps essentially the same winning chances counts as a good
+                  move — and often there is more than one.
+                </p>
+              </li>
+              <li class="hm-step" data-step="2">
+                <span class="hm-step-n">02</span>
+                <h3>Ask a human, at every rating</h3>
+                <p>
+                  Maia-3 predicts what players from 1100 to 2000 actually play here. That
+                  gives a curve: the chance a player of each strength lands on a good move
+                  at all.
+                </p>
+              </li>
+              <li class="hm-step" data-step="3">
+                <span class="hm-step-n">03</span>
+                <h3>Put it on the rating scale</h3>
+                <p>
+                  Inverting the Elo expectancy turns that curve into a difficulty rating —
+                  the same scale as a puzzle rating — so <b>76</b> means three quarters of
+                  players find it, not "76 somethings".
+                </p>
+              </li>
+            </ol>
+
+            <div class="hm-how-stage hm-reveal">
+              <div class="hm-how-viz" id="hmHowViz" data-active="1">
+                <!-- 1: the acceptable set -->
+                <svg class="hm-how-layer" data-layer="1" viewBox="0 0 320 200" aria-hidden="true">
+                  <line class="hm-ax" x1="30" y1="170" x2="300" y2="170" />
+                  <line class="hm-ax" x1="30" y1="24" x2="30" y2="170" />
+                  <rect class="hm-tau" x="30" y="34" width="270" height="34" rx="6" />
+                  <text class="hm-lbl" x="296" y="30" text-anchor="end">acceptable (within τ)</text>
+                  <g class="hm-dots">
+                    <circle class="best" cx="72"  cy="44" r="7" />
+                    <circle class="ok"   cx="120" cy="52" r="6" />
+                    <circle class="ok"   cx="168" cy="60" r="6" />
+                    <circle class="bad"  cx="216" cy="104" r="6" />
+                    <circle class="bad"  cx="264" cy="140" r="6" />
+                  </g>
+                  <text class="hm-lbl" x="30" y="190">candidate moves, ranked by win %</text>
+                </svg>
+
+                <!-- 2: the raw Maia curve -->
+                <svg class="hm-how-layer" data-layer="2" viewBox="0 0 320 200" aria-hidden="true">
+                  <line class="hm-ax" x1="30" y1="170" x2="300" y2="170" />
+                  <line class="hm-ax" x1="30" y1="24" x2="30" y2="170" />
+                  <path class="hm-curve raw" d="M30 152 C 90 146, 130 128, 165 108 S 240 62, 300 48" />
+                  <g class="hm-curve-dots">
+                    <circle cx="30"  cy="152" r="4" /><circle cx="97" cy="136" r="4" />
+                    <circle cx="165" cy="108" r="4" /><circle cx="232" cy="74" r="4" />
+                    <circle cx="300" cy="48"  r="4" />
+                  </g>
+                  <text class="hm-lbl" x="30" y="190">1100</text>
+                  <text class="hm-lbl" x="300" y="190" text-anchor="end">2000</text>
+                  <text class="hm-lbl rot" x="24" y="30" text-anchor="end">C&#8330;</text>
+                </svg>
+
+                <!-- 3: calibrated to the rating scale -->
+                <svg class="hm-how-layer" data-layer="3" viewBox="0 0 320 200" aria-hidden="true">
+                  <line class="hm-ax" x1="30" y1="170" x2="300" y2="170" />
+                  <line class="hm-ax" x1="30" y1="24" x2="30" y2="170" />
+                  <path class="hm-curve ghost" d="M30 152 C 90 146, 130 128, 165 108 S 240 62, 300 48" />
+                  <path class="hm-curve cal" d="M30 160 C 92 150, 128 116, 165 88 S 246 44, 300 36" />
+                  <line class="hm-rfind" x1="165" y1="24" x2="165" y2="170" />
+                  <circle class="hm-rfind-dot" cx="165" cy="88" r="5" />
+                  <text class="hm-lbl accent" x="172" y="46">r_find ≈ 1550</text>
+                  <text class="hm-lbl" x="30" y="190">1100</text>
+                  <text class="hm-lbl" x="300" y="190" text-anchor="end">2000</text>
+                </svg>
+              </div>
+
+              <div class="hm-how-out">
+                <div class="hm-how-score">
+                  <span class="hm-ro-label">Findability</span>
+                  <strong id="hmHowScore">76</strong>
+                </div>
+                <div class="hm-how-band" id="hmHowBand">Natural</div>
+              </div>
             </div>
-            <div class="hm-step">
-              <h3>Ask a human, at every rating</h3>
-              <p>
-                Maia-3 predicts what players from 1100 to 2000 actually play here. That gives a
-                curve: the chance a player of each strength lands on a good move at all.
-              </p>
-            </div>
-            <div class="hm-step">
-              <h3>Correct for calculation</h3>
-              <p>
-                A pattern model never calculates, so forcing lines get credit for being
-                walkable, and quiet, deep, uniquely-winning moves get marked for what they are:
-                nearly impossible to see.
-              </p>
-            </div>
+          </div>
+        </section>
+
+        <!-- ── Closing ───────────────────────────────────────────────── -->
+        <section class="hm-outro hm-reveal">
+          <div class="hm-outro-aura" aria-hidden="true">
+            <svg viewBox="0 0 1200 260" preserveAspectRatio="none">
+              <path class="hm-outro-wave" d="" id="hmOutroWave" />
+              <path class="hm-outro-wave hm-outro-wave--b" d="" id="hmOutroWaveB" />
+            </svg>
+          </div>
+          <h2>Stop asking what the engine would play.</h2>
+          <p>Start asking what <em>you</em> could have found.</p>
+          <div class="hm-cta">
+            <button type="button" class="hm-btn hm-btn--primary" data-magnetic data-home-go="/game-review">
+              <span class="hm-btn-label">Review a game</span>
+              <span class="hm-btn-arrow" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                     stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M12 5l7 7-7 7" /></svg>
+              </span>
+            </button>
+            <button type="button" class="hm-btn hm-btn--ghost" data-magnetic data-home-go="/insights">
+              Import your games
+            </button>
           </div>
         </section>
 
@@ -499,6 +715,7 @@
             <button type="button" data-home-go="/game-review/why">Why volatility</button>
             <button type="button" data-home-go="/insights">Insights</button>
             <button type="button" data-home-go="/puzzles">Puzzles</button>
+            <button type="button" data-home-go="/duels">Duels</button>
           </nav>
         </footer>
       </div>
@@ -2547,7 +2764,7 @@
     <script src="/static/vendor/js/chart.umd.min.js"></script>
     <script src="/static/vendor/js/idb.js"></script>
     <script src="/static/vendor/js/jszip.min.js"></script>
-    <script src="/static/vol/audio.js"></script>
+    <script src="/static/vol/audio.js?v=standard"></script>
     <script src="/static/vol/library.js"></script>
     <script src="/static/vol/review-ui.js"></script>
     <script src="/static/vol/app.js"></script>
@@ -2555,9 +2772,10 @@
     <script src="/static/eval/app.js"></script>
     <script src="/static/insights/app.js"></script>
     <script src="/static/insights/postmortem.js?v=story-3"></script>
-    <script src="/static/home/app.js"></script>
+    <script src="/static/home/opera.js"></script>
+    <script src="/static/home/app.js?v=6"></script>
     <!-- Puzzles app, then the shell tab controller (modules run in order, after classic scripts) -->
-    <script type="module" src="/static/app.js?v=3"></script>
-    <script type="module" src="/static/shell.js"></script>
+    <script type="module" src="/static/app.js?v=4"></script>
+    <script type="module" src="/static/shell.js?v=duels"></script>
   </body>
 </html>

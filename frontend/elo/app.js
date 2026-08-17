@@ -28,7 +28,7 @@
       if (!mv) return;
       const n = Math.floor(i / 2) + 1;
       const label = i % 2 === 0 ? `${n}. ${san}` : `${n}… ${san}`;
-      out.push({ fen: game.fen(), from: mv.from, to: mv.to, label });
+      out.push({ fen: game.fen(), from: mv.from, to: mv.to, label, san: mv.san });
     });
     return out;
   }
@@ -43,10 +43,16 @@
     });
   }
 
-  function renderFrame(idx) {
+  let lastSoundIdx = -1;
+
+  function renderFrame(idx, withSound = false) {
     frameIdx = Math.max(0, Math.min(frames.length - 1, idx));
     const f = frames[frameIdx];
     if (cg && f) cg.set({ fen: f.fen, lastMove: f.from ? [f.from, f.to] : undefined });
+    if (withSound && frameIdx > 0 && frameIdx !== lastSoundIdx && f?.san && window.LichessAudio) {
+      window.LichessAudio.playMove({ san: f.san });
+    }
+    lastSoundIdx = frameIdx;
     const label = $("eloMoveLabel");
     if (label && f) label.textContent = frameIdx === 0 ? "Start" : `${f.label}  (${frameIdx}/${frames.length - 1})`;
   }
@@ -67,7 +73,7 @@
         stopAutoplay();
         return;
       }
-      renderFrame(frameIdx + 1);
+      renderFrame(frameIdx + 1, true);
     }, 850);
   }
 
@@ -324,8 +330,8 @@
     on("eloLockBtn", "click", () => lockGuess(false));
     on("eloFirst", "click", () => { stopAutoplay(); renderFrame(0); });
     on("eloPrev", "click", () => { stopAutoplay(); renderFrame(frameIdx - 1); });
-    on("eloNext", "click", () => { stopAutoplay(); renderFrame(frameIdx + 1); });
-    on("eloLast", "click", () => { stopAutoplay(); renderFrame(frames.length - 1); });
+    on("eloNext", "click", () => { stopAutoplay(); renderFrame(frameIdx + 1, true); });
+    on("eloLast", "click", () => { stopAutoplay(); renderFrame(frames.length - 1, true); });
     on("eloPlay", "click", toggleAutoplay);
     const slider = $("eloGuessSlider");
     if (slider) slider.addEventListener("input", () => { $("eloGuessVal").textContent = slider.value; });

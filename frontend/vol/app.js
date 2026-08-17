@@ -705,10 +705,8 @@
   }
 
   // ── Sound effects ─────────────────────────────────────────────────────── //
-  // Sounds come from the lichess "standard" set, preloaded once and cloned
-  // per play (see web/audio.js for the LichessAudio module). Enabled state
-  // and volume persist to localStorage; the in-page toggles below mirror it.
-  function ensureAudioResume() { /* HTMLAudio doesn't need an autoplay gate */ }
+  // Lichess "standard" move + capture clicks only (shared LichessAudio module).
+  function ensureAudioResume() { /* primer lives in audio.js */ }
 
   // Initialise the sound toggles from persisted state.
   if (window.LichessAudio) {
@@ -730,29 +728,9 @@
   if (soundsToggle) soundsToggle.addEventListener("change", () => syncSounds(soundsToggle));
   if (soundsToggleEditor) soundsToggleEditor.addEventListener("change", () => syncSounds(soundsToggleEditor));
 
-  function soundMove() { if (window.LichessAudio) window.LichessAudio.play("move"); }
-  function soundCapture() { if (window.LichessAudio) window.LichessAudio.play("capture"); }
-  function soundCheck() { if (window.LichessAudio) window.LichessAudio.play("check"); }
-  // No dedicated checkmate file in the standard lichess set — fall back to
-  // the notify chime, which is the closest "terminal" cue available.
-  function soundCheckmate() { if (window.LichessAudio) window.LichessAudio.play("notify"); }
-
-  function classifyMove(san) {
-    if (!san) return "move";
-    if (san.endsWith("#")) return "checkmate";
-    if (san.endsWith("+")) return "check";
-    if (san.includes("x")) return "capture";
-    return "move";
-  }
-
   function playMoveSound(san) {
-    if (!soundsEnabled()) return;
-    switch (classifyMove(san)) {
-      case "checkmate": soundCheckmate(); break;
-      case "check": soundCheck(); break;
-      case "capture": soundCapture(); break;
-      default: soundMove(); break;
-    }
+    if (!soundsEnabled() || !window.LichessAudio || !san) return;
+    window.LichessAudio.playMove({ san });
   }
 
   // ── Board ─────────────────────────────────────────────────────────────── //
@@ -845,8 +823,8 @@
       if (source === target) return;  // snap-back (illegal/no-op)
       ensureAudioResume();
       const captured = oldPos && oldPos[target] && oldPos[target] !== piece;
-      if (captured) soundCapture();
-      else soundMove();
+      const san = captured ? `${piece[1]}x${target}` : `${piece[1]}${target}`;
+      playMoveSound(san);
     },
     onMoveEnd: () => {
       paintLastMoveDecor();

@@ -14,16 +14,6 @@ window.addEventListener("unhandledrejection", (event) => {
 
 const OPPONENT_REPLY_DELAY_MS = 500;
 const MAIA_RATINGS = [1100, 1300, 1500, 1700, 1900];
-const sounds = {
-  move: new Audio("/static/sounds/Move.mp3"),
-  capture: new Audio("/static/sounds/Capture.mp3"),
-  check: new Audio("/static/sounds/Check.mp3"),
-  end: new Audio("/static/sounds/GenericNotify.mp3"),
-};
-for (const audio of Object.values(sounds)) {
-  audio.preload = "auto";
-  audio.volume = 0.7;
-}
 
 const state = {
   puzzle: null,
@@ -455,7 +445,6 @@ async function submitTrainingMove(source, target) {
   state.canPlayOut = Boolean(result.can_play_out);
   recordSessionResult(Boolean(result.solved));
   renderFeedback(result);
-  playSound("end");
 }
 
 async function startPlayout() {
@@ -994,9 +983,7 @@ function playMoveSoundFromUci(uci, fromFen) {
     promotion: uci.length > 4 ? uci.slice(4) : undefined,
   });
   if (!move) return;
-  if (boardCopy.inCheck()) playSound("check");
-  else if (move.flags.includes("c") || move.flags.includes("e")) playSound("capture");
-  else playSound("move");
+  playMoveSound(move);
 }
 
 function tryApplyMove(chessState, moveLike) {
@@ -1007,23 +994,8 @@ function tryApplyMove(chessState, moveLike) {
   }
 }
 
-function playMoveSound(move, chessInstance = state.chess) {
-  if (chessInstance.inCheck()) {
-    playSound("check");
-    return;
-  }
-  if (move.flags.includes("c") || move.flags.includes("e")) {
-    playSound("capture");
-    return;
-  }
-  playSound("move");
-}
-
-function playSound(name) {
-  const audio = sounds[name];
-  if (!audio) return;
-  audio.currentTime = 0;
-  audio.play().catch(() => {});
+function playMoveSound(move) {
+  if (window.LichessAudio) window.LichessAudio.playMove({ san: move.san });
 }
 
 function updatePlayoutStatus(status, result) {
@@ -1035,7 +1007,6 @@ function updatePlayoutStatus(status, result) {
   const resultText = result ? ` (${result})` : "";
   playoutStatus.textContent = `Game over: ${status}${resultText}.`;
   statusText.textContent = "Play-out finished.";
-  playSound("end");
 }
 
 async function onOpeningsChange() {
@@ -1372,7 +1343,6 @@ function renderHoldResult(mode, response) {
     <p>Streak: <strong>${response.streak}</strong></p>`;
   ui.live.classList.add("hidden");
   ui.setup.classList.remove("hidden");
-  playSound("end");
 }
 
 async function loadHoldSummary(mode) {
@@ -1516,7 +1486,6 @@ async function submitForcedLine() {
     forced.submitted = true;
     renderForcedResult(result);
     renderForcedSummary(result.summary);
-    playSound("end");
     await animateForcedSolution(result.solution_uci || []);
   } catch (error) {
     forcedUi.feedback.className = "feedback fail";
@@ -1751,7 +1720,6 @@ async function submitMistakeMove(source, target) {
     drawMistakeArrows(result.best_move_uci, attemptUci, result.user_actual_uci);
   }
   renderMistakeFeedback(result, move);
-  playSound("end");
   mistakesUi.next.disabled = false;
 }
 
@@ -1946,7 +1914,6 @@ async function submitGuess() {
     });
     guess.revealed = true;
     renderGuessReveal(result);
-    playSound("end");
     await loadGuessHistory();
   } catch (error) {
     guessUi.reveal.classList.remove("hidden");

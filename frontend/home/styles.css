@@ -1,8 +1,10 @@
 /* ============================================================
    ChessMax home screen
-   Scoped to #home-root so nothing leaks into the four app roots,
+   Scoped to #home-root so nothing leaks into the five app roots,
    each of which ships its own theme. Palette matches the shell:
-   near-black cool surfaces + Razer green (#44d62c).
+   near-black cool surfaces + Razer green (#44d62c), with a hot
+   ramp (amber -> red) reserved for volatility, which is the one
+   quantity on this page that means "danger".
    ============================================================ */
 
 #home-root {
@@ -16,10 +18,16 @@
   --accent-hi: #7bf765;
   --accent-lo: #2b8f1c;
   --accent-ink: #06140a;
+  --hot: #ff6358;
+  --warm: #f2c84a;
+  --cool: #58a8ff;
   --border: rgba(255, 255, 255, 0.08);
   --border-hi: rgba(68, 214, 44, 0.35);
   --glow: rgba(68, 214, 44, 0.30);
   --r: 20px;
+  --sq-light: #c3ccd4;
+  --sq-dark: #42505c;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
 
   color: var(--text);
   font-family: Inter, "Segoe UI", system-ui, sans-serif;
@@ -31,24 +39,41 @@
 #home-root * { box-sizing: border-box; }
 
 /* Animatable custom properties: without @property the browser cannot
-   interpolate an angle inside a conditional-gradient, so the rotating card
-   border would snap instead of sweep. */
+   interpolate an angle inside a conic gradient, so the rotating card border
+   would snap instead of sweep. */
 @property --hm-angle {
   syntax: "<angle>";
   initial-value: 0deg;
   inherits: false;
 }
 
-@property --hm-spot {
-  syntax: "<percentage>";
-  initial-value: 0%;
-  inherits: false;
+/* ── Scroll progress ─────────────────────────────────────────────────── */
+
+.hm-scrollbar {
+  position: fixed;
+  top: var(--shell-header-h, 3.7rem);
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 45;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.hm-scrollbar i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left;
+  transform: scaleX(var(--p, 0));
+  background: linear-gradient(90deg, var(--accent-lo), var(--accent-hi));
+  box-shadow: 0 0 12px rgba(68, 214, 44, 0.6);
 }
 
 /* ── Ambient background ─────────────────────────────────────────────────
-   Three stacked layers: a colour field, a slowly drifting 64-tile board,
-   and a grain wash. All fixed + pointer-events:none so the page scrolls
-   over them and nothing steals a click. */
+   Four stacked layers: a colour field, a slowly drifting 64-tile board, a
+   pointer-tracked lamp, and grain. All fixed + pointer-events:none so the
+   page scrolls over them and nothing steals a click. */
 
 .hm-bg {
   position: fixed;
@@ -74,9 +99,9 @@
   to   { transform: translate3d(2%, 2%, 0) scale(1.08); }
 }
 
-/* The board: 64 tiles built by app.js. Each tile carries --i (0-63) and
-   --d (diagonal index) so the pulse travels as a wave across the board
-   instead of every square blinking at once. */
+/* The board: 64 tiles built by app.js, walked by a knight's tour. `--py` is
+   the page's scroll parallax, written once per frame, and is kept *outside*
+   the static isometric transform so scrolling never re-derives the rotation. */
 .hm-bg-board {
   position: absolute;
   top: -6vh;
@@ -85,32 +110,84 @@
   aspect-ratio: 1;
   display: grid;
   grid-template-columns: repeat(8, 1fr);
-  transform: rotateX(56deg) rotateZ(-34deg) scale(1.15);
+  transform:
+    translate3d(0, var(--bgy, 0px), 0)
+    rotateX(56deg) rotateZ(calc(-34deg + var(--bgr, 0deg))) scale(1.15);
   transform-origin: 70% 30%;
   opacity: 0.85;
-  -webkit-mask-image: radial-gradient(62% 62% at 46% 48%, #000 24%, transparent 80%);
-  mask-image: radial-gradient(62% 62% at 46% 48%, #000 24%, transparent 80%);
+  /* Wide enough that the touring knight is inside the visible window for a
+     decent share of its walk; much tighter and the ambient layer is just a
+     static checker most of the time. */
+  -webkit-mask-image: radial-gradient(74% 74% at 46% 48%, #000 30%, transparent 86%);
+  mask-image: radial-gradient(74% 74% at 46% 48%, #000 30%, transparent 86%);
 }
 
 .hm-tile {
   border: 1px solid rgba(68, 214, 44, 0.14);
   background: rgba(68, 214, 44, 0.03);
+  position: relative;
 }
 
 .hm-tile.dark { background: rgba(68, 214, 44, 0.11); }
 
-.hm-tile.lit {
-  animation: hmTile 5.5s ease-in-out infinite;
-  animation-delay: calc(var(--d) * 0.16s);
+/* The tour's wake. app.js writes `--g` = 1 on the square the knight is
+   standing on and decays it to 0 over the dozen squares behind, so the trail
+   is one style write per visited tile rather than 64 running animations.
+   Painted on a child so the checker underneath stays intact. */
+.hm-tile::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  background: radial-gradient(circle at 50% 50%,
+    rgba(123, 247, 101, 0.5), rgba(68, 214, 44, 0.16) 68%, transparent 88%);
+  box-shadow: 0 0 24px rgba(68, 214, 44, 0.4);
+  opacity: var(--g, 0);
+  transition: opacity 1.1s linear;
 }
 
-@keyframes hmTile {
-  0%, 72%, 100% { background: rgba(68, 214, 44, 0.02); box-shadow: none; }
-  84% {
-    background: rgba(68, 214, 44, 0.30);
-    box-shadow: 0 0 22px rgba(68, 214, 44, 0.35);
-  }
+/* The knight itself. `.cg-wrap` is here only to pull in the vendored cburnett
+   sprite; the piece lies in the board's plane, which is what makes it read as
+   standing on the tiles rather than floating above them. */
+.hm-bg-knight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 12.5%;
+  width: 12.5%;
+  transform: translate(calc(var(--kx, 0) * 100%), calc(var(--ky, 0) * 100%));
+  transition: transform 0.42s cubic-bezier(0.34, 1.32, 0.5, 1);
+  z-index: 1;
 }
+
+/* `piece` is an unknown element, so it is inline by default and chessground's
+   own rule blockifies it by making it absolute. Taking that positioning back
+   means restoring the display too, or the sprite collapses to nothing. */
+.hm-bg-knight piece {
+  display: block;
+  filter: drop-shadow(0 0 10px rgba(68, 214, 44, 0.9));
+  height: 100%;
+  opacity: 0.8;
+  position: static;
+  width: 100%;
+}
+
+/* Pointer lamp. Position comes from app.js as raw pixels on a rAF tick; the
+   element itself never re-lays-out, it only translates. */
+.hm-bg-lamp {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 620px;
+  height: 620px;
+  margin: -310px 0 0 -310px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(68, 214, 44, 0.13), transparent 62%);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  will-change: transform;
+}
+
+.hm-bg-lamp.on { opacity: 1; }
 
 .hm-bg-grain {
   position: absolute;
@@ -132,35 +209,47 @@
   z-index: 1;
   margin: 0 auto;
   max-width: 1320px;
-  padding: clamp(2rem, 6vh, 4.5rem) clamp(1rem, 4vw, 3rem) 4rem;
+  padding: clamp(1.5rem, 5vh, 3.5rem) clamp(1rem, 4vw, 3rem) 4rem;
 }
 
-/* Scroll reveal. Elements start displaced and are released by an
-   IntersectionObserver; the no-JS path is covered by .is-in being applied
-   immediately when the observer is unavailable. */
+/* Motion is opt-in: app.js puts `.hm-anim` on #home-root once it is running,
+   and only when the visitor has not asked for reduced motion. So everything
+   that animates *in* is authored in its FINAL state, and the entry state is
+   scoped under `.hm-anim`. If the script fails to load or throws, the page is
+   a complete static page rather than a blank one — the failure mode of an
+   opacity:0-by-default reveal is an empty screen. */
+/* The entry offset rides on `translate`, not `transform`. `#home-root.hm-anim
+   .hm-reveal.is-in` outranks anything an element can say about itself with a
+   class, so a `.hm-reveal` card that also wants a hover lift or a pointer tilt
+   loses its whole transform to this rule's `none`. The independent transform
+   properties compose instead of overwriting, so both can move the same box. */
 .hm-reveal {
-  opacity: 0;
-  transform: translateY(22px);
-  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
-              transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 0.7s var(--ease), translate 0.7s var(--ease);
   transition-delay: var(--delay, 0ms);
 }
 
-.hm-reveal.is-in { opacity: 1; transform: none; }
+#home-root.hm-anim .hm-reveal {
+  opacity: 0;
+  translate: 0 22px;
+}
+
+#home-root.hm-anim .hm-reveal.is-in { opacity: 1; translate: none; }
 
 /* ── Hero ───────────────────────────────────────────────────────────── */
 
 .hm-hero {
   display: grid;
-  gap: clamp(1.6rem, 4vw, 3.5rem);
-  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.85fr);
+  gap: clamp(1.6rem, 3.5vw, 3rem);
+  grid-template-columns: minmax(0, 1fr) minmax(460px, 620px);
   align-items: center;
-  min-height: min(68vh, 560px);
+  min-height: min(66vh, 580px);
 }
 
-/* Stacked: the wordmark leads, the demo panel follows. */
-@media (max-width: 980px) {
+/* Stacked, the stage would otherwise inherit the full page width and render a
+   1100px board. Cap it and centre it instead. */
+@media (max-width: 1080px) {
   .hm-hero { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .hm-stage { margin-inline: auto; max-width: 620px; width: 100%; }
 }
 
 .hm-eyebrow {
@@ -192,15 +281,17 @@
   100% { box-shadow: 0 0 0 0 rgba(68, 214, 44, 0); }
 }
 
-/* The wordmark. `background-clip: text` over a gradient, with a second
-   pseudo-element carrying a moving specular sweep so the letters catch a
-   highlight the way brushed metal does. */
+/* The wordmark. Letters are individually revealed (mask-clipped rise) and the
+   whole word carries a gradient plus a periodic specular sweep. */
+/* The cap is set by the column, not by taste: the wordmark is a single
+   unbreakable inline-flex run, so anything wider than the hero's left track
+   slides under the stage panel instead of wrapping. */
 .hm-title {
-  font-size: clamp(3.2rem, 11vw, 8rem);
+  font-size: clamp(2.8rem, 7vw, 6.6rem);
   font-weight: 900;
-  letter-spacing: -0.035em;
-  line-height: 0.92;
-  margin: 1.1rem 0 0;
+  letter-spacing: -0.04em;
+  line-height: 0.9;
+  margin: 1rem 0 0;
   position: relative;
   text-transform: uppercase;
 }
@@ -211,9 +302,39 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  display: inline-block;
+  display: inline-flex;
   position: relative;
 }
+
+.hm-title-word > span {
+  display: inline-block;
+  transition: transform 0.85s var(--ease), opacity 0.5s ease;
+  transition-delay: calc(var(--i, 0) * 45ms);
+}
+
+#home-root.hm-anim .hm-title-word > span { opacity: 0; transform: translateY(0.9em); }
+#home-root.hm-anim .hm-reveal.is-in .hm-title-word > span { opacity: 1; transform: none; }
+
+/* A hairline sits under the "M" — the seam between the two halves of the
+   name, and the only ornament on the wordmark. */
+.hm-title-cut { position: relative; }
+
+.hm-title-cut::after {
+  content: "";
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 0.1em;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 14px var(--glow);
+  transform-origin: left;
+  transition: transform 0.8s var(--ease) 0.55s;
+}
+
+#home-root.hm-anim .hm-title-cut::after { transform: scaleX(0); }
+#home-root.hm-anim .hm-reveal.is-in .hm-title-cut::after { transform: scaleX(1); }
 
 .hm-title-word::after {
   content: attr(data-word);
@@ -226,6 +347,7 @@
   background-clip: text;
   color: transparent;
   animation: hmSheen 6.5s ease-in-out infinite;
+  pointer-events: none;
 }
 
 @keyframes hmSheen {
@@ -236,35 +358,29 @@
 
 .hm-byline {
   color: var(--muted);
-  font-size: clamp(0.82rem, 1.4vw, 0.95rem);
+  font-size: clamp(0.78rem, 1.3vw, 0.9rem);
   letter-spacing: 0.14em;
-  margin: 1rem 0 0;
+  margin: 0.9rem 0 0;
   text-transform: uppercase;
 }
 
-.hm-byline b {
-  color: var(--text);
-  font-weight: 700;
-}
+.hm-byline b { color: var(--text); font-weight: 700; }
 
 .hm-lede {
   color: var(--muted);
-  font-size: clamp(1rem, 1.7vw, 1.2rem);
-  line-height: 1.65;
-  margin: 1.4rem 0 0;
-  max-width: 56ch;
+  font-size: clamp(0.98rem, 1.5vw, 1.14rem);
+  line-height: 1.66;
+  margin: 1.2rem 0 0;
+  max-width: 54ch;
 }
 
-.hm-lede strong {
-  color: var(--text);
-  font-weight: 650;
-}
+.hm-lede strong { color: var(--text); font-weight: 650; }
 
 .hm-cta {
   display: flex;
   flex-wrap: wrap;
   gap: 0.8rem;
-  margin-top: 2rem;
+  margin-top: 1.8rem;
 }
 
 #home-root .hm-btn {
@@ -277,11 +393,15 @@
   font-size: 0.95rem;
   font-weight: 700;
   gap: 0.6rem;
+  overflow: hidden;
   padding: 0.85rem 1.4rem;
+  position: relative;
   text-decoration: none;
-  transition: transform 0.14s ease, box-shadow 0.2s ease, background 0.2s ease,
+  transition: transform 0.22s var(--ease), box-shadow 0.2s ease, background 0.2s ease,
               border-color 0.2s ease, color 0.2s ease;
 }
+
+#home-root .hm-btn--sm { font-size: 0.86rem; padding: 0.62rem 1.05rem; }
 
 #home-root .hm-btn--primary {
   background: linear-gradient(180deg, var(--accent-hi), var(--accent-lo));
@@ -289,9 +409,23 @@
   color: var(--accent-ink);
 }
 
+/* A specular band crosses the button on hover — a light source passing over a
+   solid surface, rather than the whole fill changing brightness. */
+#home-root .hm-btn--primary::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.55) 46%, transparent 62%);
+  background-size: 260% 100%;
+  background-position: 200% 0;
+  transition: background-position 0.7s var(--ease);
+  pointer-events: none;
+}
+
+#home-root .hm-btn--primary:hover::before { background-position: -80% 0; }
+
 #home-root .hm-btn--primary:hover {
-  box-shadow: 0 10px 34px rgba(68, 214, 44, 0.45), 0 0 0 1px rgba(140, 255, 120, 0.6) inset;
-  transform: translateY(-2px);
+  box-shadow: 0 12px 38px rgba(68, 214, 44, 0.45), 0 0 0 1px rgba(140, 255, 120, 0.6) inset;
 }
 
 #home-root .hm-btn--ghost {
@@ -303,153 +437,689 @@
 #home-root .hm-btn--ghost:hover {
   background: rgba(68, 214, 44, 0.09);
   border-color: var(--border-hi);
-  transform: translateY(-2px);
 }
 
-#home-root .hm-btn:active { transform: translateY(0); }
 #home-root .hm-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
-.hm-btn-arrow { transition: transform 0.2s ease; }
-#home-root .hm-btn:hover .hm-btn-arrow { transform: translateX(3px); }
-
-/* ── Hero art: the signature "one move, three readings" panel ────────── */
-
-.hm-hero-art {
-  background: linear-gradient(165deg, rgba(28, 32, 39, 0.92), rgba(13, 15, 18, 0.92));
-  border: 1px solid var(--border);
-  border-radius: 24px;
-  box-shadow: 0 40px 90px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
-  overflow: hidden;
-  padding: 1.3rem;
-  position: relative;
+/* Click ripple. The button already clips its overflow, so the circle is simply
+   sized to the diagonal and left to grow out of the press point. */
+.hm-ripple {
+  animation: hmRipple 0.62s ease-out forwards;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.6), transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  position: absolute;
+  transform: translate(-50%, -50%) scale(0);
 }
 
-.hm-hero-art::before {
-  content: "";
+#home-root .hm-btn--ghost .hm-ripple {
+  background: radial-gradient(circle, rgba(123, 247, 101, 0.45), transparent 70%);
+}
+
+@keyframes hmRipple {
+  to { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+
+.hm-btn-arrow {
+  display: inline-flex;
+  transition: transform 0.25s var(--ease);
+}
+
+.hm-btn-arrow svg { height: 15px; width: 15px; }
+
+#home-root .hm-btn:hover .hm-btn-arrow { transform: translateX(4px); }
+
+.hm-hero-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2.2rem;
+  margin: 2.2rem 0 0;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--border);
+}
+
+.hm-hero-facts dt {
+  color: var(--muted-2);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.hm-hero-facts dd {
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 650;
+  margin: 0.25rem 0 0;
+}
+
+/* Hero parallax: the copy rises out and the stage sinks, opening the two
+   columns apart as the page leaves. `--hero-p` (0 at rest, 1 when the hero is
+   a screen behind you) is written on the root once per frame. */
+.hm-hero-copy {
+  transform: translate3d(0, calc(var(--hero-p, 0) * -34px), 0);
+  will-change: transform;
+}
+
+/* ── The stage: a real game, replayed against real engine output ─────── */
+
+.hm-stage {
+  background: linear-gradient(165deg, rgba(28, 32, 39, 0.94), rgba(12, 14, 17, 0.96));
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: 0 40px 90px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  overflow: hidden;
+  padding: 1.05rem;
+  position: relative;
+  transform: translate3d(0, calc(var(--hero-p, 0) * 22px), 0);
+}
+
+/* Rotating conic hairline — the panel reads as powered rather than printed.
+   It is painted in `--tone`, the volatility ramp colour app.js writes on the
+   stage for the position on screen, so the frame is amber when the position is
+   sharp and red when one move decides it. */
+.hm-stage-sheen {
   position: absolute;
   inset: -1px;
   border-radius: inherit;
   padding: 1px;
   background: conic-gradient(from var(--hm-angle),
-    transparent 0deg, rgba(68, 214, 44, 0.55) 60deg, transparent 140deg,
-    transparent 220deg, rgba(68, 214, 44, 0.28) 280deg, transparent 340deg);
+    transparent 0deg, var(--tone, var(--accent)) 58deg, transparent 138deg,
+    transparent 220deg, var(--tone, var(--accent)) 278deg, transparent 342deg);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask-composite: exclude;
   animation: hmSpin 9s linear infinite;
+  opacity: calc(0.45 + var(--heat, 0) * 0.55);
+  transition: opacity 0.6s ease;
   pointer-events: none;
+  z-index: 3;
 }
 
-@keyframes hmSpin {
-  to { --hm-angle: 360deg; }
+@keyframes hmSpin { to { --hm-angle: 360deg; } }
+
+/* Heat haze. Inset rather than outset because the stage clips its overflow;
+   the panel gets warmer the more the position is worth. */
+.hm-stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 80px -16px var(--tone, var(--accent));
+  opacity: var(--heat, 0);
+  pointer-events: none;
+  transition: opacity 0.65s ease, box-shadow 0.65s ease;
+  z-index: 0;
 }
 
-.hm-art-head {
-  align-items: baseline;
+/* One analysis beat, drawn as a line filling across the top edge: the panel
+   thinks, then the move lands. Width is animated from app.js so the bar and
+   the replay clock cannot drift apart. */
+.hm-stage-think {
+  height: 2px;
+  left: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  top: 0;
+  z-index: 4;
+}
+
+.hm-stage-think i {
+  background: linear-gradient(90deg, transparent, var(--tone, var(--accent)));
+  box-shadow: 0 0 12px var(--tone, var(--accent));
+  display: block;
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: left;
+  width: 100%;
+}
+
+.hm-stage.is-paused .hm-stage-think i { opacity: 0; }
+
+.hm-stage-head,
+.hm-stage-body,
+.hm-stage-foot { position: relative; z-index: 1; }
+
+.hm-stage-head {
+  align-items: center;
   display: flex;
-  gap: 0.6rem;
-  justify-content: space-between;
-  margin-bottom: 0.9rem;
+  gap: 0.7rem;
+  margin-bottom: 0.85rem;
 }
 
-.hm-art-title {
-  font-size: 0.78rem;
+.hm-live {
+  align-items: center;
+  color: var(--accent-hi);
+  display: inline-flex;
+  flex: none;
+  font-size: 0.58rem;
   font-weight: 800;
+  gap: 0.38rem;
   letter-spacing: 0.16em;
-  margin: 0;
   text-transform: uppercase;
 }
 
-.hm-art-move {
-  color: var(--accent);
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 0.95rem;
+.hm-live-dot {
+  background: var(--accent);
+  border-radius: 50%;
+  height: 6px;
+  width: 6px;
+  animation: hmPulse 2s ease-out infinite;
+}
+
+.hm-stage.is-paused .hm-live { color: var(--muted); }
+
+.hm-stage.is-paused .hm-live-dot {
+  animation: none;
+  background: var(--muted-2);
+  box-shadow: none;
+}
+
+.hm-stage-game {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  margin-left: auto;
+  min-width: 0;
+  text-align: right;
+}
+
+.hm-stage-game strong {
+  font-size: 0.72rem;
   font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.hm-art-spine { display: block; width: 100%; height: auto; }
+.hm-stage-game span { color: var(--muted-2); font-size: 0.62rem; }
 
-.hm-spine-path {
-  fill: none;
-  stroke: url(#hmSpineGrad);
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-dasharray: 620;
-  stroke-dashoffset: 620;
-  animation: hmDraw 2.4s cubic-bezier(0.65, 0, 0.35, 1) 0.4s forwards;
+#home-root .hm-stage-toggle {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  flex: none;
+  height: 30px;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  width: 30px;
 }
 
-@keyframes hmDraw { to { stroke-dashoffset: 0; } }
-
-.hm-spine-drop {
-  opacity: 0;
-  animation: hmFadeIn 0.5s ease 2.5s forwards;
+#home-root .hm-stage-toggle:hover {
+  background: rgba(68, 214, 44, 0.12);
+  border-color: var(--border-hi);
+  color: var(--accent-hi);
 }
 
-@keyframes hmFadeIn { to { opacity: 1; } }
+.hm-stage-toggle svg { height: 15px; width: 15px; }
+.hm-stage-toggle .hm-icon-play { display: none; }
+.hm-stage-toggle[aria-pressed="true"] .hm-icon-play { display: block; }
+.hm-stage-toggle[aria-pressed="true"] .hm-icon-pause { display: none; }
 
-.hm-art-metrics {
+.hm-stage-body {
+  align-items: stretch;
   display: grid;
   gap: 0.7rem;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 1rem;
+  grid-template-columns: 14px minmax(0, 1fr) 168px;
 }
 
-.hm-metric {
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 0.7rem 0.75rem;
+@media (max-width: 620px) {
+  .hm-stage-body { grid-template-columns: 12px minmax(0, 1fr); }
+  .hm-readouts { grid-column: 1 / -1; flex-direction: row; }
+  .hm-ro { flex: 1; min-width: 0; }
 }
 
-.hm-metric-label {
-  color: var(--muted-2);
-  display: block;
-  font-size: 0.6rem;
-  font-weight: 700;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-}
-
-.hm-metric-value {
-  display: block;
-  font-size: 1.45rem;
-  font-weight: 800;
-  line-height: 1.2;
-  margin-top: 0.25rem;
-}
-
-.hm-metric-value[data-tone="hot"] { color: #ff6358; }
-.hm-metric-value[data-tone="warn"] { color: #f2c84a; }
-.hm-metric-value[data-tone="good"] { color: var(--accent-hi); }
-
-.hm-metric-note {
-  color: var(--muted-2);
-  display: block;
-  font-size: 0.66rem;
-  margin-top: 0.15rem;
-}
-
-.hm-meter {
-  background: rgba(255, 255, 255, 0.07);
-  border-radius: 999px;
-  height: 5px;
-  margin-top: 0.5rem;
+/* Eval bar — white's share of the win probability, bottom-up. The track is the
+   black side of the bar, so the whole column reads even before the fill. */
+.hm-evalbar {
+  align-self: stretch;
+  background: linear-gradient(180deg, #333c47, #232a33);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column-reverse;
   overflow: hidden;
 }
 
-.hm-meter-fill {
-  background: linear-gradient(90deg, #ff6358, #f2c84a 55%, var(--accent-hi));
-  border-radius: inherit;
-  height: 100%;
-  transform-origin: left;
-  transform: scaleX(0);
-  transition: transform 1.4s cubic-bezier(0.22, 1, 0.36, 1) 0.9s;
+.hm-evalbar i {
+  background: linear-gradient(180deg, #ffffff, #cfd8e0);
+  box-shadow: 0 -1px 10px rgba(255, 255, 255, 0.55);
+  display: block;
+  height: var(--h, 50%);
+  transition: height 0.55s var(--ease);
+  width: 100%;
 }
 
-.is-in .hm-meter-fill { transform: scaleX(var(--fill, 0.5)); }
+/* Board. `.cg-wrap` is chessground's own wrapper class, which is what makes
+   the vendored cburnett piece sprites apply to our <piece> elements. */
+.hm-board {
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 10px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.4) inset;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.hm-board-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  inset: 0;
+  position: absolute;
+}
+
+.hm-sq { background: var(--sq-light); }
+.hm-sq.dark { background: var(--sq-dark); }
+
+.hm-hl {
+  height: 12.5%;
+  inset: 0;
+  opacity: 0;
+  position: absolute;
+  transition: transform 0.42s var(--ease), opacity 0.3s ease;
+  width: 12.5%;
+  z-index: 1;
+}
+
+.hm-hl.on { opacity: 1; }
+.hm-hl--from { background: rgba(68, 214, 44, 0.26); }
+.hm-hl--to {
+  background: rgba(68, 214, 44, 0.34);
+  box-shadow: inset 0 0 0 2px rgba(123, 247, 101, 0.75);
+}
+
+.hm-pieces { inset: 0; position: absolute; }
+
+.hm-pieces piece {
+  transition: transform 0.42s var(--ease), opacity 0.32s ease, filter 0.32s ease;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
+}
+
+/* Set on the board while a seek rebuilds the position from the start, so the
+   jump lands as a cut instead of thirty pieces gliding at once. */
+.hm-board.hm-instant piece,
+.hm-board.hm-instant .hm-hl { transition: none; }
+
+/* Captured: the taken piece is knocked off its square — shrinking, turning and
+   flaring red — under the arriving one. */
+.hm-pieces piece.hm-gone {
+  filter: drop-shadow(0 0 12px rgba(255, 99, 88, 0.85));
+  opacity: 0;
+  transform: var(--t) scale(0.38) rotate(28deg);
+  z-index: 1;
+}
+
+/* ── Live board overlays ──────────────────────────────────────────────
+   One SVG unit is one square, so app.js writes board coordinates straight
+   into the geometry with no pixel maths. */
+
+.hm-arrow {
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  transition: opacity 0.3s ease;
+  z-index: 2;
+}
+
+.hm-arrow.on { opacity: 1; }
+
+.hm-arrow-shaft {
+  fill: none;
+  stroke: var(--tone, var(--accent-hi));
+  stroke-linecap: round;
+  stroke-width: 0.15;
+  stroke-dasharray: var(--len, 8);
+  stroke-dashoffset: var(--len, 8);
+  filter: drop-shadow(0 0 0.06em rgba(0, 0, 0, 0.6));
+}
+
+.hm-arrow.on .hm-arrow-shaft { animation: hmArrowDraw 0.4s var(--ease) forwards; }
+
+@keyframes hmArrowDraw { to { stroke-dashoffset: 0; } }
+
+.hm-arrow-head {
+  fill: var(--tone, var(--accent-hi));
+  opacity: 0;
+}
+
+.hm-arrow.on .hm-arrow-head { animation: hmArrowHead 0.24s ease 0.3s forwards; }
+
+@keyframes hmArrowHead { to { opacity: 1; } }
+
+/* The move landing: a ring thrown out from the destination square, red when
+   something was taken. */
+.hm-impact {
+  border: 2px solid var(--ring, rgba(123, 247, 101, 0.9));
+  border-radius: 50%;
+  box-sizing: border-box;
+  height: 12.5%;
+  left: 0;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  transform: var(--t) scale(0.45);
+  width: 12.5%;
+  z-index: 3;
+}
+
+.hm-impact.go { animation: hmImpact 0.62s var(--ease); }
+
+@keyframes hmImpact {
+  0%   { opacity: 0.95; transform: var(--t) scale(0.45); }
+  100% { opacity: 0;    transform: var(--t) scale(2.1); }
+}
+
+/* Check and mate come straight off the SAN suffix, so the flash fires on the
+   same plies a scoresheet would mark. */
+.hm-board-flash {
+  box-shadow:
+    inset 0 0 0 3px var(--flash, var(--warm)),
+    inset 0 0 44px var(--flash, var(--warm));
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 4;
+}
+
+.hm-board-flash.go { animation: hmFlash 0.9s ease-out; }
+
+@keyframes hmFlash {
+  0%   { opacity: 0; }
+  14%  { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+
+/* Readouts column */
+.hm-readouts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.hm-ro {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  flex: 1;
+  padding: 0.55rem 0.65rem;
+}
+
+.hm-ro-label {
+  color: var(--muted-2);
+  display: block;
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.hm-ro-main {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  margin-top: 0.15rem;
+}
+
+.hm-ro-main strong {
+  font-size: 1.5rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.hm-ro[data-metric="vol"] .hm-ro-main strong { color: var(--tone, var(--accent-hi)); }
+.hm-ro[data-metric="find"] .hm-ro-main strong { color: var(--tone, var(--text)); }
+.hm-ro[data-metric="win"] .hm-ro-main strong { color: #ffffff; }
+
+/* Every readout counts to its new value rather than snapping, and flares once
+   as it lands — the difference between a dashboard and a slideshow. */
+#home-root .hm-tick { animation: hmTick 0.6s ease-out; }
+
+@keyframes hmTick {
+  0%   { text-shadow: 0 0 20px currentColor; transform: translateY(-1px); }
+  100% { text-shadow: none; transform: none; }
+}
+
+.hm-ro { transition: border-color 0.5s ease, background 0.5s ease; }
+
+/* The volatility card takes the ramp colour once the position is genuinely
+   sharp, so the eye is pulled to it without a new element appearing. */
+.hm-ro[data-metric="vol"] { border-color: color-mix(in srgb, var(--tone, var(--accent)) calc(var(--heat, 0) * 55%), var(--border)); }
+
+.hm-ro-note {
+  color: var(--muted-2);
+  display: block;
+  font-size: 0.63rem;
+  line-height: 1.4;
+  margin-top: 0.22rem;
+}
+
+.hm-ro-note b { color: var(--muted); font-family: "SFMono-Regular", Consolas, monospace; }
+
+/* Volatility ring */
+.hm-gauge { flex: none; height: 34px; width: 34px; transform: rotate(-90deg); }
+
+.hm-gauge circle {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 4;
+}
+
+.hm-gauge-track { stroke: rgba(255, 255, 255, 0.08); }
+
+.hm-gauge-fill {
+  stroke: var(--tone, var(--accent));
+  stroke-dasharray: 113;
+  stroke-dashoffset: calc(113 - 113 * var(--v, 0));
+  transition: stroke-dashoffset 0.55s var(--ease), stroke 0.4s ease;
+}
+
+.hm-band {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  padding: 0.24rem 0.4rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.hm-band[data-band="Obvious"]       { color: var(--accent-hi); }
+.hm-band[data-band="Natural"]       { color: #8ef0bc; }
+.hm-band[data-band="Needs thought"] { color: var(--warm); }
+.hm-band[data-band="Hard"]          { color: #ff9d4a; }
+.hm-band[data-band="Engine-only"]   { color: var(--hot); }
+.hm-band[data-band="Forced"]        { color: var(--muted); }
+
+.hm-ro-meter {
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  height: 4px;
+  margin-top: 0.35rem;
+  overflow: hidden;
+}
+
+.hm-ro-meter i {
+  background: linear-gradient(90deg, var(--hot), var(--warm) 55%, var(--accent-hi));
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  transform-origin: left;
+  transform: scaleX(var(--v, 0));
+  transition: transform 0.55s var(--ease);
+}
+
+/* Stage foot: the volatility trace + the move list */
+.hm-stage-foot { margin-top: 0.7rem; }
+
+.hm-spine {
+  display: block;
+  height: 46px;
+  width: 100%;
+}
+
+.hm-spine-area { fill: url(#hmSpineFill); stroke: none; }
+
+/* CSS beats a presentation attribute, so the gradient's stops can follow
+   `--tone` off the stage — without this the trace's line turned red at a sharp
+   position while the wash underneath it stayed green. */
+#hmSpineFill stop {
+  stop-color: var(--tone, var(--accent));
+  transition: stop-color 0.5s ease;
+}
+
+#hmSpineFill stop:first-child { stop-opacity: 0.34; }
+#hmSpineFill stop:last-child  { stop-opacity: 0; }
+
+.hm-spine-line {
+  fill: none;
+  stroke: var(--tone, var(--accent));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+  transition: stroke 0.5s ease;
+  vector-effect: non-scaling-stroke;
+}
+
+.hm-spine-head {
+  fill: #ffffff;
+  stroke: var(--tone, var(--accent));
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  transition: cx 0.4s linear, cy 0.4s var(--ease), stroke 0.5s ease;
+}
+
+/* A sonar ping at the write head, so the trace reads as being drawn now. */
+.hm-spine-halo {
+  fill: none;
+  stroke: var(--tone, var(--accent));
+  stroke-width: 1.4;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: hmPing 2.1s ease-out infinite;
+  transition: cx 0.4s linear, cy 0.4s var(--ease);
+  vector-effect: non-scaling-stroke;
+}
+
+@keyframes hmPing {
+  0%   { opacity: 0.7; transform: scale(0.6); }
+  70%  { opacity: 0;   transform: scale(3.4); }
+  100% { opacity: 0;   transform: scale(3.4); }
+}
+
+.hm-stage.is-paused .hm-spine-halo { animation-play-state: paused; }
+
+/* One scrolling line rather than a wrapped block: the track slides so the move
+   being analysed sits about a third in, with the played moves trailing off to
+   the left and the rest of the game still ahead. */
+.hm-moverow {
+  border-top: 1px solid var(--border);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.68rem;
+  margin-top: 0.35rem;
+  overflow: hidden;
+  padding-top: 0.5rem;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 88%, transparent);
+}
+
+.hm-moverow-track {
+  display: inline-flex;
+  gap: 0.5rem;
+  transition: transform 0.55s var(--ease);
+  white-space: nowrap;
+  will-change: transform;
+}
+
+#home-root .hm-mv {
+  background: none;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted-2);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.1rem 0.2rem;
+  transition: color 0.3s ease, background 0.2s ease;
+}
+
+#home-root .hm-mv:hover { background: rgba(68, 214, 44, 0.14); color: var(--text); }
+#home-root .hm-mv:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+#home-root .hm-mv.played { color: var(--muted); }
+
+#home-root .hm-mv.now {
+  color: var(--accent-hi);
+  font-weight: 700;
+  text-shadow: 0 0 12px var(--glow);
+}
+
+.hm-mv-n { color: #4c5563; margin-right: 0.12rem; }
+
+/* ── Ticker ─────────────────────────────────────────────────────────── */
+
+.hm-ticker {
+  border-block: 1px solid var(--border);
+  margin-top: clamp(2rem, 5vh, 3.5rem);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  overflow: hidden;
+  padding: 0.75rem 0;
+}
+
+.hm-ticker-track {
+  align-items: center;
+  animation: hmMarquee 42s linear infinite;
+  display: flex;
+  gap: 1.4rem;
+  white-space: nowrap;
+  width: max-content;
+}
+
+.hm-ticker span {
+  color: var(--muted-2);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.hm-ticker i {
+  background: var(--accent);
+  border-radius: 50%;
+  flex: none;
+  height: 4px;
+  opacity: 0.6;
+  width: 4px;
+}
+
+@keyframes hmMarquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* Once app.js takes the marquee over it scrolls on a rAF tick instead, so the
+   strip can pick up speed from the page's scroll velocity and ease to a stop
+   under the pointer. The CSS animation stays as the no-script fallback. */
+.hm-ticker-track.is-live {
+  animation: none;
+  transform: translate3d(var(--x, 0px), 0, 0);
+  will-change: transform;
+}
 
 /* ── Section headings ───────────────────────────────────────────────── */
 
@@ -461,33 +1131,92 @@
   flex-wrap: wrap;
   gap: 0.5rem 1.5rem;
   justify-content: space-between;
-  margin-bottom: 1.6rem;
+  margin-bottom: 1.7rem;
+}
+
+.hm-kicker {
+  color: var(--accent);
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  margin-bottom: 0.55rem;
+  text-transform: uppercase;
+}
+
+/* The kicker is typed out, character by character, the first time it scrolls
+   into view — `.is-typing` is on only for the duration, so no caret is left
+   blinking on a heading nobody is reading. */
+.hm-kicker.is-typing::after {
+  animation: hmCaret 1s steps(1, end) infinite;
+  background: var(--accent);
+  content: "";
+  display: inline-block;
+  height: 0.85em;
+  margin-left: 0.3em;
+  vertical-align: -0.1em;
+  width: 0.45em;
+}
+
+@keyframes hmCaret {
+  0%, 49%    { opacity: 1; }
+  50%, 100%  { opacity: 0; }
 }
 
 .hm-section-title {
-  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  font-size: clamp(1.6rem, 3.2vw, 2.35rem);
   font-weight: 800;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   margin: 0;
+  position: relative;
 }
 
-.hm-section-title em {
-  color: var(--accent);
-  font-style: normal;
+.hm-section-title em { color: var(--accent); font-style: normal; }
+
+/* A light edge that sweeps across the heading once as it arrives. */
+.hm-section-title::after {
+  background: var(--accent);
+  border-radius: 3px;
+  bottom: -0.08em;
+  box-shadow: 0 0 20px var(--glow);
+  content: "";
+  left: 0;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  top: -0.08em;
+  width: 3px;
+}
+
+#home-root.hm-anim .hm-reveal.is-in .hm-section-title::after {
+  animation: hmWipe 1s var(--ease) 0.12s;
+}
+
+@keyframes hmWipe {
+  0%   { left: 0;    opacity: 0; }
+  18%  { opacity: 1; }
+  82%  { opacity: 1; }
+  100% { left: 100%; opacity: 0; }
 }
 
 .hm-section-sub {
   color: var(--muted);
   font-size: 0.92rem;
+  line-height: 1.6;
   margin: 0;
-  max-width: 46ch;
+  max-width: 44ch;
 }
 
 .hm-rule {
   background: linear-gradient(90deg, var(--border-hi), transparent);
   height: 1px;
   margin-top: 0.9rem;
+  transform-origin: left;
+  transition: transform 0.9s var(--ease) 0.28s;
 }
+
+#home-root.hm-anim .hm-rule { transform: scaleX(0); }
+#home-root.hm-anim .is-in .hm-rule { transform: scaleX(1); }
 
 /* ── Bento card grid ────────────────────────────────────────────────── */
 
@@ -498,15 +1227,12 @@
 }
 
 .hm-card {
-  --hm-tilt-x: 0deg;
-  --hm-tilt-y: 0deg;
   appearance: none;
   background: linear-gradient(168deg, rgba(27, 31, 38, 0.9), rgba(13, 15, 18, 0.94));
   border: 1px solid var(--border);
   border-radius: var(--r);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
   color: inherit;
-  cursor: pointer;
   display: flex;
   flex-direction: column;
   font: inherit;
@@ -516,11 +1242,16 @@
   padding: 1.5rem;
   position: relative;
   text-align: left;
-  transform: perspective(900px) rotateX(var(--hm-tilt-x)) rotateY(var(--hm-tilt-y));
-  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
-              box-shadow 0.35s ease, border-color 0.35s ease;
-  will-change: transform;
+  transform:
+    perspective(1100px)
+    rotateX(var(--rx, 0deg))
+    rotateY(var(--ry, 0deg))
+    translate3d(0, var(--lift, 0px), 0);
+  transform-style: preserve-3d;
+  transition: transform 0.3s var(--ease), box-shadow 0.4s ease, border-color 0.4s ease;
 }
+
+button.hm-card { cursor: pointer; }
 
 /* Cursor-tracked spotlight. app.js writes --mx/--my in percent; the layer is
    invisible until hover so an untouched card stays flat. */
@@ -529,58 +1260,71 @@
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: radial-gradient(340px circle at var(--mx, 50%) var(--my, 0%),
-    rgba(68, 214, 44, 0.16), transparent 66%);
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%),
+    rgba(68, 214, 44, 0.15), transparent 66%);
   opacity: 0;
-  transition: opacity 0.35s ease;
+  transition: opacity 0.4s ease;
   pointer-events: none;
 }
 
-/* Top hairline that lights up on hover — reads as the card "powering on". */
-.hm-card::after {
-  content: "";
+/* A border that lights on the side the cursor is on. Painted as a masked
+   radial ring so it follows the pointer instead of glowing uniformly. */
+.hm-card-frame {
   position: absolute;
-  top: 0;
-  left: 12%;
-  right: 12%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: radial-gradient(280px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(123, 247, 101, 0.85), rgba(68, 214, 44, 0.12) 45%, transparent 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
   opacity: 0;
-  transition: opacity 0.35s ease, left 0.45s ease, right 0.45s ease;
+  transition: opacity 0.4s ease;
   pointer-events: none;
-}
-
-.hm-card:hover,
-.hm-card:focus-visible {
-  border-color: var(--border-hi);
-  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.55), 0 0 42px rgba(68, 214, 44, 0.12);
-  outline: none;
+  z-index: 3;
 }
 
 .hm-card:hover::before,
-.hm-card:focus-visible::before { opacity: 1; }
+.hm-card:focus-visible::before,
+.hm-card:focus-within::before { opacity: 1; }
 
-.hm-card:hover::after,
-.hm-card:focus-visible::after { opacity: 1; left: 0; right: 0; }
+.hm-card:hover .hm-card-frame,
+.hm-card:focus-visible .hm-card-frame,
+.hm-card:focus-within .hm-card-frame { opacity: 1; }
 
-.hm-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* The lift is a variable rather than a transform of its own: the pointer tilt
+   writes `--rx`/`--ry` on the same element every frame, and two rules setting
+   `transform` means the last one wins and the other silently does nothing. */
+.hm-card:hover,
+.hm-card:focus-visible,
+.hm-card:focus-within {
+  --lift: -6px;
+  border-color: rgba(68, 214, 44, 0.18);
+  box-shadow: 0 34px 78px rgba(0, 0, 0, 0.58), 0 0 48px rgba(68, 214, 44, 0.1);
+}
 
-.hm-card:active { transform: perspective(900px) translateY(2px); }
+button.hm-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+button.hm-card:active { --lift: -2px; }
 
 .hm-card--wide { grid-column: span 4; }
 .hm-card--half { grid-column: span 3; }
 .hm-card--third { grid-column: span 2; }
+.hm-card--duel { grid-column: span 6; }
 
 @media (max-width: 1080px) {
   .hm-card--wide { grid-column: span 6; }
   .hm-card--third { grid-column: span 3; }
+  .hm-card--half { grid-column: span 3; }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 760px) {
   .hm-grid { grid-template-columns: minmax(0, 1fr); }
   .hm-card--wide,
   .hm-card--half,
-  .hm-card--third { grid-column: span 1; }
+  .hm-card--third,
+  .hm-card--duel { grid-column: span 1; }
   .hm-card { padding: 1.2rem; }
 }
 
@@ -600,11 +1344,16 @@
   flex: none;
   height: 44px;
   justify-content: center;
+  transition: box-shadow 0.35s ease, transform 0.35s var(--ease);
   width: 44px;
+  /* Rides slightly against the tilt so the card has depth rather than just
+     rotating as one flat plate. */
+  transform: translate3d(var(--px, 0px), calc(var(--py, 0px) + var(--icon-lift, 0px)), 0);
 }
 
 .hm-card:hover .hm-card-icon {
-  box-shadow: 0 0 24px rgba(68, 214, 44, 0.28);
+  --icon-lift: -2px;
+  box-shadow: 0 0 26px rgba(68, 214, 44, 0.3);
 }
 
 .hm-card-icon svg { display: block; height: 22px; width: 22px; }
@@ -612,7 +1361,7 @@
 .hm-card-kicker {
   color: var(--accent);
   display: block;
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   font-weight: 800;
   letter-spacing: 0.17em;
   text-transform: uppercase;
@@ -627,7 +1376,7 @@
 
 .hm-card-body {
   color: var(--muted);
-  font-size: 0.92rem;
+  font-size: 0.9rem;
   line-height: 1.62;
   margin: 0;
 }
@@ -646,7 +1395,7 @@
   align-items: baseline;
   color: var(--muted);
   display: flex;
-  font-size: 0.85rem;
+  font-size: 0.84rem;
   gap: 0.55rem;
   line-height: 1.5;
 }
@@ -672,64 +1421,435 @@
 .hm-card-foot svg { transition: transform 0.22s ease; }
 .hm-card:hover .hm-card-foot svg { transform: translateX(4px); }
 
-/* The wide review card carries a live inline demo beside its copy. */
 .hm-card--wide .hm-card-inner {
+  align-items: stretch;
   display: grid;
   gap: 1.4rem;
-  grid-template-columns: minmax(0, 1fr) minmax(190px, 250px);
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 270px);
 }
 
-@media (max-width: 860px) {
+@media (max-width: 900px) {
   .hm-card--wide .hm-card-inner { grid-template-columns: minmax(0, 1fr); }
 }
 
 .hm-card-copy { display: flex; flex-direction: column; gap: 0.85rem; }
 
-/* Volatility demo: three bars that breathe at different rates. */
-.hm-demo-bars {
-  align-items: flex-end;
-  display: flex;
-  gap: 0.55rem;
-  height: 132px;
-  justify-content: center;
-}
+/* ── Card visuals ───────────────────────────────────────────────────── */
 
-.hm-demo-bar {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
-  display: flex;
-  align-items: flex-end;
-  height: 100%;
-  overflow: hidden;
-  position: relative;
-  width: 26px;
-}
+.hm-viz { margin: 0; }
 
-.hm-demo-bar i {
-  border-radius: inherit;
-  display: block;
-  width: 100%;
-  animation: hmBreathe var(--dur, 3.4s) ease-in-out infinite alternate;
-  animation-delay: var(--delay, 0s);
-}
-
-.hm-demo-bar[data-tone="low"] i { background: linear-gradient(180deg, #8ef0bc, #67e8a2); }
-.hm-demo-bar[data-tone="med"] i { background: linear-gradient(180deg, #f2c84a, #e0b330); }
-.hm-demo-bar[data-tone="high"] i { background: linear-gradient(180deg, #ff6358, #e0443a); }
-
-@keyframes hmBreathe {
-  from { height: var(--from, 20%); }
-  to   { height: var(--to, 80%); }
-}
-
-.hm-demo-caption {
+.hm-viz figcaption {
   color: var(--muted-2);
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   letter-spacing: 0.1em;
-  margin-top: 0.7rem;
+  margin-top: 0.6rem;
   text-align: center;
   text-transform: uppercase;
+}
+
+/* Game Review — the Opera Game volatility series, as columns. */
+.hm-viz--cols {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+/* `stretch`, not `flex-end`: the fill inside each column is absolutely
+   positioned to the bottom, so a column shrink-wrapped to its content would
+   measure zero and paint nothing. */
+.hm-cols {
+  align-items: stretch;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 2px;
+  min-height: 168px;
+}
+
+.hm-col {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 2px 2px 1px 1px;
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.hm-col i {
+  background: var(--tone);
+  border-radius: inherit;
+  bottom: 0;
+  display: block;
+  height: var(--h);
+  left: 0;
+  position: absolute;
+  right: 0;
+  transition: height 0.9s var(--ease);
+  transition-delay: calc(var(--i) * 24ms);
+}
+
+#home-root.hm-anim .hm-col i { height: 0; }
+#home-root.hm-anim .is-in .hm-col i { height: var(--h); }
+
+.hm-col.peak i { box-shadow: 0 0 14px rgba(255, 99, 88, 0.8); }
+
+/* The peak is called out in the caption rather than above the bar: at 33
+   columns a per-bar label is narrower than the word it carries, and anything
+   drawn above a 100%-height column is clipped by the card. */
+.hm-viz--cols figcaption b {
+  color: var(--hot);
+  font-weight: 800;
+}
+
+/* Insights — the leak board. */
+.hm-viz--leaks { display: grid; gap: 0.4rem; }
+
+.hm-viz--leaks figcaption {
+  margin: 0 0 0.15rem;
+  text-align: left;
+}
+
+.hm-leak {
+  align-items: center;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 1fr 34% auto;
+}
+
+.hm-leak span { color: var(--muted); font-size: 0.75rem; }
+
+.hm-leak i {
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  height: 5px;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Two stacked backgrounds: the fill, and a highlight that runs along it on a
+   stagger so the board looks like it is being read rather than printed. */
+.hm-leak i::after {
+  background:
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent) 0 0 / 34% 100% no-repeat,
+    linear-gradient(90deg, var(--hot), #ff9d4a);
+  border-radius: inherit;
+  content: "";
+  inset: 0;
+  position: absolute;
+  animation: hmLeakShine 4.2s linear infinite;
+  animation-delay: calc(var(--i) * 320ms);
+  transform: scaleX(var(--w));
+  transform-origin: left;
+  transition: transform 0.85s var(--ease);
+  transition-delay: calc(var(--i) * 110ms + 200ms);
+}
+
+@keyframes hmLeakShine {
+  0%   { background-position: -45% 0, 0 0; }
+  45%  { background-position: 145% 0, 0 0; }
+  100% { background-position: 145% 0, 0 0; }
+}
+
+#home-root.hm-anim .hm-leak i::after { transform: scaleX(0); }
+#home-root.hm-anim .is-in .hm-leak i::after { transform: scaleX(var(--w)); }
+
+.hm-leak b {
+  color: var(--hot);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+/* Puzzles — the coin flip you never see the result of. `flex: 1` so the panel
+   absorbs the card's spare height instead of leaving a gap above the footer
+   when it is stretched to match its taller neighbour. */
+.hm-viz--coin {
+  align-content: center;
+  align-items: center;
+  display: grid;
+  flex: 1 1 auto;
+  gap: 0.5rem;
+  grid-template-columns: 1fr auto 1fr;
+  grid-template-rows: auto;
+}
+
+.hm-coin-face {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.6rem 0.65rem;
+  transition: background 0.5s ease, border-color 0.5s ease, opacity 0.5s ease;
+  animation: hmCoin 5s ease-in-out infinite;
+}
+
+.hm-coin-face[data-face="b"] { animation-delay: 2.5s; }
+
+@keyframes hmCoin {
+  0%, 44%   { opacity: 0.42; border-color: var(--border); background: rgba(255, 255, 255, 0.02); }
+  10%, 34%  { opacity: 1; border-color: var(--border-hi); background: rgba(68, 214, 44, 0.07); }
+  50%, 100% { opacity: 0.42; }
+}
+
+.hm-coin-tag {
+  color: var(--accent);
+  display: block;
+  font-size: 0.54rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.hm-coin-face strong {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-top: 0.15rem;
+}
+
+.hm-coin-q {
+  color: var(--muted-2);
+  font-size: 1.5rem;
+  font-weight: 900;
+  animation: hmCoinQ 5s ease-in-out infinite;
+}
+
+@keyframes hmCoinQ {
+  0%, 100% { transform: rotate(-8deg); color: var(--muted-2); }
+  50%      { transform: rotate(8deg); color: var(--accent); }
+}
+
+/* Training — a selector sweeping the drill list. */
+.hm-viz--drills {
+  display: grid;
+  gap: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.hm-scanline {
+  background: linear-gradient(90deg, rgba(68, 214, 44, 0.16), rgba(68, 214, 44, 0.03));
+  border-left: 2px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  height: 25%;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+  animation: hmScan 7s steps(1, end) infinite;
+  z-index: 0;
+}
+
+@keyframes hmScan {
+  0%   { transform: translateY(0); }
+  25%  { transform: translateY(100%); }
+  50%  { transform: translateY(200%); }
+  75%  { transform: translateY(300%); }
+  100% { transform: translateY(0); }
+}
+
+.hm-drill {
+  align-items: baseline;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.32rem 0.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+.hm-drill b { font-size: 0.78rem; font-weight: 700; white-space: nowrap; }
+.hm-drill span {
+  color: var(--muted-2);
+  font-size: 0.68rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Duels card ─────────────────────────────────────────────────────── */
+
+.hm-card--duel { gap: 1.1rem; }
+
+.hm-duel-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  justify-content: space-between;
+}
+
+/* Segmented control. The thumb is one element that slides, so the two labels
+   never move and the motion reads as a single object rather than two fades. */
+.hm-seg {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  display: flex;
+  padding: 3px;
+  position: relative;
+}
+
+.hm-seg-thumb {
+  background: linear-gradient(180deg, rgba(68, 214, 44, 0.26), rgba(68, 214, 44, 0.1));
+  border: 1px solid rgba(68, 214, 44, 0.55);
+  border-radius: 8px;
+  box-shadow: 0 0 18px rgba(68, 214, 44, 0.2);
+  bottom: 3px;
+  left: 3px;
+  position: absolute;
+  top: 3px;
+  transition: transform 0.45s var(--ease), width 0.45s var(--ease);
+  width: var(--thumb-w, 50%);
+  transform: translateX(var(--thumb-x, 0));
+}
+
+#home-root .hm-seg-btn {
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.42rem 0.85rem;
+  position: relative;
+  transition: color 0.3s ease;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+#home-root .hm-seg-btn.active { color: #ffffff; }
+#home-root .hm-seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Both faces occupy the same grid cell; the inactive one is lifted out. */
+.hm-duel-body { display: grid; }
+
+.hm-duel-face {
+  align-items: center;
+  display: grid;
+  gap: clamp(1.4rem, 4vw, 3rem);
+  grid-area: 1 / 1;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 360px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px);
+  transition: opacity 0.4s ease, transform 0.5s var(--ease);
+  visibility: hidden;
+}
+
+.hm-duel-body[data-duel-active="elo"] .hm-duel-face[data-face="elo"],
+.hm-duel-body[data-duel-active="eval"] .hm-duel-face[data-face="eval"] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+  visibility: visible;
+}
+
+@media (max-width: 760px) {
+  .hm-duel-face { grid-template-columns: minmax(0, 1fr); }
+}
+
+.hm-duel-copy { display: flex; flex-direction: column; gap: 0.8rem; align-items: flex-start; }
+
+/* Elo dial. Capped independently of its grid track: the track has to be wide
+   enough to balance the copy beside it, but a 400px dial reads as a gauge on a
+   dashboard rather than an illustration on a card. */
+.hm-viz--dial,
+.hm-viz--evalbar { margin-inline: auto; max-width: 300px; width: 100%; }
+
+.hm-viz--dial svg { display: block; width: 100%; height: auto; }
+
+.hm-dial-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 12;
+  stroke-linecap: round;
+}
+
+.hm-dial-arc {
+  fill: none;
+  stroke: url(#hmDialGrad);
+  stroke-width: 12;
+  stroke-linecap: round;
+  stroke-dasharray: 258;
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 1.2s var(--ease) 0.2s;
+}
+
+#home-root.hm-anim .hm-dial-arc { stroke-dashoffset: 258; }
+#home-root.hm-anim .is-in .hm-dial-arc { stroke-dashoffset: 0; }
+
+.hm-dial-needle line {
+  stroke: #ffffff;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.hm-dial-needle circle { fill: #ffffff; }
+
+.hm-dial-needle {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  transform: rotate(var(--a, 0deg));
+  transition: transform 1.1s var(--ease);
+}
+
+.hm-viz--dial text {
+  fill: var(--muted-2);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.hm-dial-max { text-anchor: end; }
+
+.hm-viz--dial figcaption b,
+.hm-viz--evalbar figcaption b {
+  color: var(--text);
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Eval bar demo */
+.hm-viz--evalbar { padding: 1.4rem 0 0; }
+
+.hm-ebar {
+  background: linear-gradient(90deg, #232a33, #333c47);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+  height: 40px;
+  overflow: hidden;
+  position: relative;
+}
+
+.hm-ebar i {
+  background: linear-gradient(90deg, #ffffff, #cfd8e0);
+  display: block;
+  height: 100%;
+  transition: width 1s var(--ease);
+  width: var(--w, 50%);
+}
+
+.hm-ebar-mid {
+  background: rgba(68, 214, 44, 0.85);
+  bottom: 0;
+  box-shadow: 0 0 10px var(--glow);
+  left: 50%;
+  position: absolute;
+  top: 0;
+  width: 1px;
+  z-index: 1;
+}
+
+.hm-ebar-scale {
+  color: var(--muted-2);
+  display: flex;
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  justify-content: space-between;
+  letter-spacing: 0.08em;
+  margin-top: 0.35rem;
 }
 
 /* ── Proof strip ────────────────────────────────────────────────────── */
@@ -750,11 +1870,38 @@
 
 .hm-proof-cell {
   background: linear-gradient(180deg, rgba(27, 31, 38, 0.85), rgba(13, 15, 18, 0.9));
+  overflow: hidden;
   padding: 1.4rem 1.2rem;
+  position: relative;
   transition: background 0.3s ease;
 }
 
 .hm-proof-cell:hover { background: rgba(68, 214, 44, 0.06); }
+
+/* An underline that draws in behind each number as its counter runs, left to
+   right across the strip. */
+.hm-proof-cell::after {
+  background: linear-gradient(90deg, var(--accent), transparent);
+  bottom: 0;
+  content: "";
+  height: 2px;
+  left: 0;
+  position: absolute;
+  right: 0;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 1.1s var(--ease);
+  transition-delay: calc(var(--i, 0) * 150ms + 260ms);
+}
+
+.hm-proof.is-in .hm-proof-cell::after { transform: scaleX(1); }
+
+.hm-proof-cell:hover .hm-proof-value {
+  color: var(--accent-hi);
+  text-shadow: 0 0 26px var(--glow);
+}
+
+.hm-proof-value { transition: color 0.3s ease, text-shadow 0.3s ease; }
 
 .hm-proof-value {
   color: var(--text);
@@ -773,42 +1920,79 @@
   margin-top: 0.3rem;
 }
 
-/* ── How it works ───────────────────────────────────────────────────── */
+/* ── How it works — scroll-driven ───────────────────────────────────── */
 
-.hm-steps {
-  counter-reset: hmstep;
+.hm-how-grid {
+  align-items: start;
   display: grid;
-  gap: 1.1rem;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(1.5rem, 4vw, 3.5rem);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);
 }
 
-@media (max-width: 860px) {
-  .hm-steps { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 1000px) {
+  .hm-how-grid { grid-template-columns: minmax(0, 1fr); }
+  .hm-how-stage { position: static !important; }
+}
+
+.hm-steps {
+  display: grid;
+  gap: 0.9rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .hm-step {
-  background: linear-gradient(168deg, rgba(27, 31, 38, 0.7), rgba(13, 15, 18, 0.8));
+  background: linear-gradient(168deg, rgba(27, 31, 38, 0.55), rgba(13, 15, 18, 0.6));
   border: 1px solid var(--border);
   border-radius: 16px;
-  padding: 1.3rem;
+  padding: 1.25rem 1.35rem;
   position: relative;
+  transition: border-color 0.45s ease, background 0.45s ease, transform 0.45s var(--ease);
 }
 
+/* The active step is the one the reader is level with; the visual on the
+   right is keyed off the same state. */
 .hm-step::before {
-  counter-increment: hmstep;
-  content: "0" counter(hmstep);
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 1.25rem;
+  bottom: 1.25rem;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 14px var(--glow);
+  opacity: 0;
+  transform: scaleY(0.3);
+  transform-origin: top;
+  transition: opacity 0.45s ease, transform 0.5s var(--ease);
+}
+
+.hm-step.active {
+  background: linear-gradient(168deg, rgba(34, 44, 36, 0.75), rgba(13, 17, 15, 0.8));
+  border-color: rgba(68, 214, 44, 0.28);
+  transform: translateX(4px);
+}
+
+.hm-step.active::before { opacity: 1; transform: scaleY(1); }
+
+.hm-step-n {
   color: rgba(68, 214, 44, 0.22);
-  font-size: 2.6rem;
+  font-size: 2.4rem;
   font-weight: 900;
   letter-spacing: -0.04em;
   line-height: 1;
   position: absolute;
   right: 1rem;
   top: 0.8rem;
+  transition: color 0.45s ease;
 }
 
+.hm-step.active .hm-step-n { color: rgba(68, 214, 44, 0.5); }
+
 .hm-step h3 {
-  font-size: 1rem;
+  font-size: 1.02rem;
   font-weight: 750;
   margin: 0 0 0.4rem;
   padding-right: 3rem;
@@ -817,9 +2001,269 @@
 .hm-step p {
   color: var(--muted);
   font-size: 0.87rem;
-  line-height: 1.6;
+  line-height: 1.62;
   margin: 0;
 }
+
+.hm-step p b { color: var(--text); font-weight: 650; }
+
+.hm-how-stage {
+  background: linear-gradient(168deg, rgba(27, 31, 38, 0.9), rgba(13, 15, 18, 0.94));
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  padding: 1.1rem;
+  position: sticky;
+  top: calc(var(--shell-header-h, 3.7rem) + 2.5rem);
+}
+
+.hm-how-viz {
+  aspect-ratio: 8 / 5;
+  position: relative;
+  width: 100%;
+}
+
+.hm-how-layer {
+  height: 100%;
+  inset: 0;
+  opacity: 0;
+  position: absolute;
+  transform: scale(0.97);
+  transition: opacity 0.5s ease, transform 0.6s var(--ease);
+  width: 100%;
+}
+
+.hm-how-viz[data-active="1"] .hm-how-layer[data-layer="1"],
+.hm-how-viz[data-active="2"] .hm-how-layer[data-layer="2"],
+.hm-how-viz[data-active="3"] .hm-how-layer[data-layer="3"] {
+  opacity: 1;
+  transform: none;
+}
+
+.hm-ax { stroke: rgba(255, 255, 255, 0.14); stroke-width: 1; }
+
+.hm-lbl {
+  fill: var(--muted-2);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+}
+
+.hm-lbl.accent { fill: var(--accent-hi); }
+
+.hm-tau {
+  fill: rgba(68, 214, 44, 0.1);
+  stroke: rgba(68, 214, 44, 0.4);
+  stroke-dasharray: 4 4;
+}
+
+.hm-dots circle { stroke: rgba(0, 0, 0, 0.5); stroke-width: 1; }
+.hm-dots .best { fill: var(--accent-hi); }
+.hm-dots .ok   { fill: var(--accent); }
+.hm-dots .bad  { fill: #5a636e; }
+
+.hm-curve { fill: none; stroke-width: 2.4; stroke-linecap: round; }
+.hm-curve.raw   { stroke: var(--cool); }
+.hm-curve.ghost { stroke: rgba(88, 168, 255, 0.28); stroke-dasharray: 4 5; }
+.hm-curve.cal   { stroke: var(--accent); }
+.hm-curve-dots circle { fill: var(--cool); }
+
+.hm-rfind { stroke: rgba(123, 247, 101, 0.45); stroke-width: 1; stroke-dasharray: 3 4; }
+.hm-rfind-dot { fill: #ffffff; stroke: var(--accent); stroke-width: 2.5; }
+
+/* ── The three panels, animated on arrival ──────────────────────────────
+   Each animation is bound to the `[data-active]` selector rather than to a
+   class the script toggles, so scrolling back to a step replays it: the
+   animation starts the moment the selector begins matching again. */
+
+.hm-how-viz[data-active="1"] .hm-tau { animation: hmTauBreathe 3.4s ease-in-out infinite; }
+
+@keyframes hmTauBreathe {
+  0%, 100% { fill: rgba(68, 214, 44, 0.08); stroke-dashoffset: 0; }
+  50%      { fill: rgba(68, 214, 44, 0.17); stroke-dashoffset: -16; }
+}
+
+.hm-how-viz[data-active="1"] .hm-dots circle {
+  animation: hmDotIn 0.5s var(--ease) backwards;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+
+.hm-how-viz[data-active="1"] .hm-dots circle:nth-child(1) { animation-delay: 0.05s; }
+.hm-how-viz[data-active="1"] .hm-dots circle:nth-child(2) { animation-delay: 0.15s; }
+.hm-how-viz[data-active="1"] .hm-dots circle:nth-child(3) { animation-delay: 0.25s; }
+.hm-how-viz[data-active="1"] .hm-dots circle:nth-child(4) { animation-delay: 0.35s; }
+.hm-how-viz[data-active="1"] .hm-dots circle:nth-child(5) { animation-delay: 0.45s; }
+
+@keyframes hmDotIn {
+  from { opacity: 0; transform: scale(0.2); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* The acceptable moves keep pulsing after they land; the rejected ones do not,
+   which is the whole point of the panel. */
+.hm-how-viz[data-active="1"] .hm-dots .best,
+.hm-how-viz[data-active="1"] .hm-dots .ok {
+  filter: drop-shadow(0 0 4px rgba(68, 214, 44, 0.8));
+}
+
+/* 300 is comfortably longer than either curve, so one dash covers the whole
+   path and the offset animation reads as a pen drawing it. */
+.hm-how-viz[data-active="2"] .hm-curve.raw,
+.hm-how-viz[data-active="3"] .hm-curve.ghost,
+.hm-how-viz[data-active="3"] .hm-curve.cal {
+  animation: hmDraw 1.1s var(--ease) backwards;
+  stroke-dasharray: 300;
+}
+
+.hm-how-viz[data-active="3"] .hm-curve.cal { animation-delay: 0.3s; }
+
+@keyframes hmDraw {
+  from { stroke-dashoffset: 300; }
+  to   { stroke-dashoffset: 0; }
+}
+
+.hm-how-viz[data-active="2"] .hm-curve-dots circle {
+  animation: hmDotIn 0.4s var(--ease) backwards;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+
+.hm-how-viz[data-active="2"] .hm-curve-dots circle:nth-child(1) { animation-delay: 0.35s; }
+.hm-how-viz[data-active="2"] .hm-curve-dots circle:nth-child(2) { animation-delay: 0.5s; }
+.hm-how-viz[data-active="2"] .hm-curve-dots circle:nth-child(3) { animation-delay: 0.65s; }
+.hm-how-viz[data-active="2"] .hm-curve-dots circle:nth-child(4) { animation-delay: 0.8s; }
+.hm-how-viz[data-active="2"] .hm-curve-dots circle:nth-child(5) { animation-delay: 0.95s; }
+
+.hm-how-viz[data-active="3"] .hm-rfind {
+  animation: hmRfindIn 0.6s var(--ease) 0.9s backwards;
+}
+
+@keyframes hmRfindIn {
+  from { opacity: 0; stroke-dashoffset: 40; }
+  to   { opacity: 1; stroke-dashoffset: 0; }
+}
+
+.hm-how-viz[data-active="3"] .hm-rfind-dot {
+  animation: hmRfindDot 2.4s ease-out 1.1s infinite backwards;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+
+@keyframes hmRfindDot {
+  0%       { opacity: 0; transform: scale(0.2); }
+  14%      { opacity: 1; transform: scale(1); }
+  40%      { transform: scale(1.35); }
+  60%, 100% { opacity: 1; transform: scale(1); }
+}
+
+.hm-how-out {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 0.9rem;
+  justify-content: space-between;
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+}
+
+.hm-how-score { display: flex; align-items: baseline; gap: 0.6rem; }
+
+.hm-how-score strong {
+  color: var(--accent-hi);
+  font-size: 2rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.hm-how-band {
+  background: rgba(68, 214, 44, 0.1);
+  border: 1px solid rgba(68, 214, 44, 0.4);
+  border-radius: 999px;
+  color: var(--accent-hi);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  padding: 0.32rem 0.7rem;
+  text-transform: uppercase;
+}
+
+/* ── Outro ──────────────────────────────────────────────────────────── */
+
+.hm-outro {
+  isolation: isolate;
+  margin-top: clamp(4rem, 11vh, 7rem);
+  position: relative;
+  text-align: center;
+}
+
+/* Two volatility-shaped waves drifting behind the closing line. The path is
+   built once by app.js as three identical periods and simply translated by one
+   period, so the loop is seamless without regenerating geometry per frame. */
+.hm-outro-aura {
+  bottom: -2rem;
+  left: -12%;
+  pointer-events: none;
+  position: absolute;
+  right: -12%;
+  top: -3rem;
+  z-index: 0;
+  -webkit-mask-image: radial-gradient(70% 80% at 50% 50%, #000 20%, transparent 78%);
+  mask-image: radial-gradient(70% 80% at 50% 50%, #000 20%, transparent 78%);
+}
+
+.hm-outro-aura::before {
+  animation: hmAura 11s ease-in-out infinite alternate;
+  background: radial-gradient(52% 66% at 50% 50%, rgba(68, 214, 44, 0.16), transparent 72%);
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+
+@keyframes hmAura {
+  from { opacity: 0.55; transform: scale(0.92); }
+  to   { opacity: 1;    transform: scale(1.14); }
+}
+
+.hm-outro-aura svg { display: block; height: 100%; width: 100%; }
+
+.hm-outro-wave {
+  animation: hmWave 15s linear infinite;
+  fill: none;
+  stroke: rgba(68, 214, 44, 0.4);
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.hm-outro-wave--b {
+  animation-direction: reverse;
+  animation-duration: 23s;
+  stroke: rgba(68, 214, 44, 0.18);
+}
+
+@keyframes hmWave { to { transform: translateX(-400px); } }
+
+.hm-outro h2,
+.hm-outro p,
+.hm-outro .hm-cta { position: relative; z-index: 1; }
+
+.hm-outro h2 {
+  font-size: clamp(1.6rem, 4vw, 2.8rem);
+  font-weight: 850;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+
+.hm-outro p {
+  color: var(--muted);
+  font-size: clamp(1.05rem, 2.4vw, 1.5rem);
+  margin: 0.5rem 0 0;
+}
+
+.hm-outro p em { color: var(--accent); font-style: normal; font-weight: 700; }
+.hm-outro .hm-cta { justify-content: center; }
 
 /* ── Footer ─────────────────────────────────────────────────────────── */
 
@@ -852,19 +2296,7 @@
 
 #home-root .hm-footer-links button:hover { color: var(--accent); }
 
-/* ── Motion opt-out ─────────────────────────────────────────────────── */
-
-@media (prefers-reduced-motion: reduce) {
-  #home-root *,
-  #home-root *::before,
-  #home-root *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-  }
-
-  .hm-reveal { opacity: 1; transform: none; }
-  .hm-spine-path { stroke-dashoffset: 0; }
-  .hm-spine-drop { opacity: 1; }
-  .hm-card { transform: none !important; }
-}
+/* Motion is gated by `.hm-anim` (set from JS), not by the OS
+   `prefers-reduced-motion` query. Chromium on Windows maps the common
+   "turn off window animations" flag to `reduce`, which made this page
+   look dead in Chrome/Edge. */

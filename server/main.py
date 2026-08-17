@@ -152,6 +152,10 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
     @app.get("/game-review/{rest:path}")
     @app.get("/insights")
     @app.get("/insights/{rest:path}")
+    @app.get("/duels")
+    @app.get("/duels/{rest:path}")
+    # Pre-merge aliases: Guess the Elo and Guess the Eval now share the Duels
+    # tab, but old links must keep resolving.
     @app.get("/guess-the-elo")
     @app.get("/guess-the-eval")
     def spa_routes(rest: str = "") -> FileResponse:  # noqa: ARG001

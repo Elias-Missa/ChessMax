@@ -1,26 +1,14 @@
-/* Lichess audio module — preloaded HTMLAudioElements for the four standard
- * board sounds. State (enabled, volume) persists to localStorage.
- *
- * Exposes: window.LichessAudio = {
- *   play(name): void,        // 'move' | 'capture' | 'check' | 'notify'
- *   setEnabled(on): void,
- *   setVolume(v): void,      // 0–1
- *   isEnabled(): boolean,
- *   getVolume(): number,
- * }
+/* Lichess "standard" board sounds — simple wooden move + capture clicks.
+ * Matches lichess.org default: no check stinger, no victory fanfare on moves.
  */
 (function () {
   "use strict";
 
   const SOUND_DIR = "/static/sounds/";
-  const FILES = {
-    move: "Move",
-    capture: "Capture",
-    check: "Check",
-    notify: "GenericNotify",
-  };
+  const FILES = { move: "Move", capture: "Capture" };
   const STORAGE_ENABLED = "cvb.audio.enabled";
   const STORAGE_VOLUME = "cvb.audio.volume";
+  const THROTTLE_MS = 80;
 
   function readBool(key, fallback) {
     try {
@@ -41,41 +29,112 @@
     try { window.localStorage.setItem(key, String(value)); } catch (_) { /* ignore */ }
   }
 
-  // Pick an extension the browser claims it can play. Falls back to mp3.
-  function pickExt() {
-    try {
-      const a = document.createElement("audio");
-      if (a.canPlayType("audio/ogg") !== "") return "ogg";
-    } catch (_) { /* ignore */ }
-    return "mp3";
-  }
-
   let enabled = readBool(STORAGE_ENABLED, true);
-  let volume = Math.min(1, Math.max(0, readNum(STORAGE_VOLUME, 0.6)));
+  let volume = Math.min(1, Math.max(0, readNum(STORAGE_VOLUME, 0.7)));
 
-  // Single HTMLAudioElement per sound; cloned per play so overlapping plays
-  // don't restart mid-fire (e.g. rapid scrubbing through a game).
-  const ext = pickExt();
-  const elements = {};
-  for (const [key, base] of Object.entries(FILES)) {
+  let ctx = null;
+  const buffers = new Map();
+  let resumeBound = false;
+  const lastPlayed = new Map();
+
+  function makeContext() {
     try {
-      const el = new Audio(`${SOUND_DIR}${base}.${ext}`);
-      el.preload = "auto";
-      el.volume = volume;
-      elements[key] = el;
-    } catch (_) { /* ignore */ }
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      return new Ctx({ latencyHint: "interactive" });
+    } catch (_) {
+      return null;
+    }
   }
 
-  function play(name) {
+  async function resumeContext() {
+    if (!ctx) ctx = makeContext();
+    if (!ctx) return false;
+    if (ctx.state === "suspended") {
+      try { await ctx.resume(); } catch (_) { /* ignore */ }
+    }
+    return ctx.state === "running";
+  }
+
+  function bindResumeOnGesture() {
+    if (resumeBound) return;
+    resumeBound = true;
+    const primer = () => { void resumeContext(); };
+    for (const ev of ["pointerdown", "mousedown", "keydown", "touchend"]) {
+      window.addEventListener(ev, primer, { capture: true, once: true });
+    }
+  }
+
+  async function loadBuffer(baseName) {
+    for (const ext of ["mp3", "ogg"]) {
+      try {
+        const res = await fetch(`${SOUND_DIR}${baseName}.${ext}`);
+        if (!res.ok) continue;
+        const audioCtx = ctx || makeContext();
+        if (!audioCtx) return null;
+        ctx = audioCtx;
+        const data = await res.arrayBuffer();
+        if (data.byteLength < 256) continue;
+        const buffer = await new Promise((resolve, reject) => {
+          if (audioCtx.decodeAudioData.length === 1) {
+            audioCtx.decodeAudioData(data).then(resolve).catch(reject);
+          } else {
+            audioCtx.decodeAudioData(data, resolve, reject);
+          }
+        });
+        return buffer;
+      } catch (_) { /* try next ext */ }
+    }
+    return null;
+  }
+
+  async function preload() {
+    bindResumeOnGesture();
+    ctx = ctx || makeContext();
+    if (!ctx) return;
+    await Promise.all(
+      Object.values(FILES).map(async (base) => {
+        const buffer = await loadBuffer(base);
+        if (buffer) buffers.set(base, buffer);
+      }),
+    );
+  }
+
+  function throttled(name, vol = 1) {
+    const now = Date.now();
+    const last = lastPlayed.get(name) || 0;
+    if (now - last < THROTTLE_MS) return;
+    lastPlayed.set(name, now);
+    void play(name, vol);
+  }
+
+  async function play(name, vol = 1) {
+    if (!enabled || volume === 0) return;
+    const base = FILES[name];
+    if (!base) return;
+    if (!(await resumeContext())) return;
+    if (!buffers.has(base)) {
+      const buffer = await loadBuffer(base);
+      if (!buffer) return;
+      buffers.set(base, buffer);
+    }
+    const buffer = buffers.get(base);
+    if (!buffer || !ctx) return;
+    const source = ctx.createBufferSource();
+    const gain = ctx.createGain();
+    source.buffer = buffer;
+    gain.gain.value = Math.min(1, Math.max(0, volume * vol));
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    source.start(0);
+  }
+
+  /** Move or capture only — same rule as lichess.org default (standard set). */
+  function playMove(opts = {}) {
     if (!enabled) return;
-    const src = elements[name];
-    if (!src) return;
-    try {
-      const node = src.cloneNode(true);
-      node.volume = volume;
-      const p = node.play();
-      if (p && typeof p.catch === "function") p.catch(() => { /* autoplay gate */ });
-    } catch (_) { /* ignore */ }
+    const san = opts.san || "";
+    if (san.includes("x")) throttled("capture");
+    else throttled("move");
   }
 
   function setEnabled(on) {
@@ -87,10 +146,19 @@
     if (!Number.isFinite(clamped)) return;
     volume = clamped;
     writeKV(STORAGE_VOLUME, String(volume));
-    for (const el of Object.values(elements)) el.volume = volume;
   }
   function isEnabled() { return enabled; }
   function getVolume() { return volume; }
 
-  window.LichessAudio = { play, setEnabled, setVolume, isEnabled, getVolume };
+  window.LichessAudio = {
+    play: (name) => { if (name === "move" || name === "capture") throttled(name); },
+    playMove,
+    playGameResult() { /* standard set: no game-end stinger on the board */ },
+    setEnabled,
+    setVolume,
+    isEnabled,
+    getVolume,
+  };
+
+  void preload();
 })();
