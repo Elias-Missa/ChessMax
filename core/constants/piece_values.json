@@ -1,0 +1,53 @@
+{
+  "_comment": "Contextual piece values (core/piece_values.py). A piece is worth what the position loses without it: remove it, re-search, read the eval drop. Every number below is a PLACEHOLDER until chess_vol/calibrate_piece_values.py measures it — the convention (see findability.json) is that each constant carries a sibling _comment recording whether it is FITTED, MEASURED or a placeholder, the sample it came from, and what was tried and rejected.",
+
+  "_values_comment": "PLACEHOLDER — the classic table, in centipawns. Deliberately classic rather than the modern N=305/B=333/R=563/Q=950, because chess_vol.game_review._is_brilliant's sacrifice thresholds are calibrated against these in pawn units. Whether the modern table describes real positions better is exactly what `--mode recover` measures: the mean contextual value per piece type over many quiet positions IS the classical value, so if recover does not land near these, either the table or the anchoring is wrong.",
+  "values": {
+    "pawn": 100,
+    "knight": 300,
+    "bishop": 300,
+    "rook": 500,
+    "queen": 900
+  },
+
+  "_probe_depth_comment": "MEASURED at 16, and the depth is load-bearing rather than a performance dial. At depth 12 the ablation noise swamps the signal: on equal-value trades the correlation with the truth swung 0.19 to 0.49 between two samples of ~70, and the best shrinkage landed on 0.0 for one of them, i.e. 'ignore the measurement entirely'. At depth 16 the same test is stable across both seeds (r 0.43 and 0.53) and a blended predictor beats static on both. Depth 12 was tried and rejected; do not lower this to buy speed without re-running --mode trades.",
+  "probe_depth": 16,
+  "probe_multipv": 1,
+
+  "_shrinkage_comment": "MEASURED (Stockfish 16, depth 16, equal-value trades, seeds 3 and 11, ~45 trades each). Ablation is near-unbiased but noisy, because two depth-limited searches enter every comparison. On equal-value trades - where the static table predicts 0 by construction and so has correlation exactly 0 - the measured values correlate 0.43-0.53 with what actually happens, which is real signal a constant cannot have. But pure measurement still loses on mean absolute error to that constant on one of the two seeds, because MAE punishes variance and a constant has none. Blending back toward the static value is the James-Stein trade. Optimal lambda was 0.6 (seed 3) and 0.4 (seed 11); 0.5 is the midpoint and beats static on BOTH seeds - MAE 86.6 vs 105.5 and 87.8 vs 93.3, an 18% and 6% reduction. Applies to shrunk_cp only: anchored_cp keeps the exact reconciliation to the eval, because explaining and predicting want opposite things from noise.",
+  "shrinkage": 0.5,
+
+  "_saturation_cp_comment": "PLACEHOLDER. Above this |eval| the position is decided and every ablation compresses toward zero — removing a rook from a +900 position still leaves it winning, so every piece looks cheap. Results carry saturated=true rather than being silently rescaled; `--mode trades` excludes them for the same reason.",
+  "saturation_cp": 800,
+
+  "_relocation_comment": "PLACEHOLDER. Relocation probes the same piece on other squares to answer 'where does this piece belong'. Candidates are empty squares that survive the Tier-0 safety check, ranked by would-be mobility plus king-zone pressure; only the top `relocate_candidates` are actually searched. Pawns are excluded — moving one to the promotion rank is not a relocation, it is a different position.",
+  "relocate_candidates": 8,
+  "relocate_min_gain_cp": 25,
+
+  "_mate_comment": "Mates route through core.volatility.mate_to_cp (distance-aware, +/-(2000 - 50n)) rather than a flat clamp, so mate-in-1 and mate-in-15 do not ablate identically. terminal_mate_cp is the value of a position that is ALREADY checkmate, where there is no mate distance to speak of.",
+  "terminal_mate_cp": 1950,
+
+  "_type_scale_comment": "MEASURED (Stockfish 16, depth 12, 40 positions, seed 7, --mode recover), then verified on a different seed. Corrects the redundancy bias in leave-one-out marginals: before this, minors measured ~35% ABOVE their static value and rooks ~12% below. That ordering is not noise, it is substitutability — a side usually has two rooks, so removing one leaves the other doing much of its work, while a lone queen has no understudy. This is the Shapley non-additivity the anchoring only partly repairs. A uniform factor WITHIN a piece type fixes the cross-type comparison while leaving every contextual ordering inside that type untouched, which is why it is a per-type scalar and not a per-piece adjustment. Re-running --mode recover composes with the value already here, so the fit converges instead of oscillating.",
+  "type_scale": {
+    "pawn": 1.1199,
+    "knight": 0.7832,
+    "bishop": 0.7093,
+    "rook": 1.122,
+    "queen": 1.1212
+  },
+
+  "_eval_scale_anchors_comment": "MEASURED (Stockfish 16, depth 12, 40 middlegame positions, 750 searches, --mode scale). Maps an evaluation to the material deficit that typically produces it, as (eval_cp, material_cp) pairs for eval >= 0, extended by odd symmetry. WITHOUT THIS, ABLATION IS NOT A PIECE VALUE: removing a queen from the opening moves the eval 773cp while removing a bishop moves it 613, so the queen reads as worth less than a bishop. The engine's eval simply stops being linear in material once you are losing, and no single scale factor fixes a distortion that is not even monotone in the static table. Fitted with pawns as the yardstick (remove k pawns, k=1..6) rather than one piece at a time: the piece-at-a-time version samples only four material levels and put a rook (616) and a knight (467) close enough together that inverting between them amplified noise ~3.6x. Medians rather than means, because an individual removal sometimes uncovers a tactic worth far more than the material. Passed through core.findability.pava (the same isotonic regression the findability curves use, weighted by bucket size) because raw medians are non-monotone around 500-600cp, where the eval has so little resolution left that bucket noise outweighs a whole pawn. Read it as: 159cp of evaluation is worth about a pawn, but by 616cp you need a rook to move the number that far.",
+  "eval_scale_anchors": [
+    [0.0, 0.0],
+    [159.0, 100.0],
+    [294.0, 200.0],
+    [467.0, 300.0],
+    [519.5, 400.0],
+    [616.0, 500.0],
+    [659.0, 600.0],
+    [717.0, 700.0],
+    [779.5, 900.0],
+    [916.0, 1100.0],
+    [10000.0, 14409.9]
+  ]
+}
