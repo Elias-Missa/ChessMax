@@ -40,6 +40,7 @@
   const readyLeak = $("insights-ready-leak");
   const openBtn = $("insights-open");
   const deepBtn = $("insights-open-deep");
+  const playBtn = $("insights-play");
 
   const dashboard = $("insights-dashboard");
   const dashClose = $("dash-close");
@@ -496,6 +497,16 @@
     // the report blank until the next interaction.
     void dashboard.offsetWidth;
     renderDashboard();
+  }
+
+  /** Roll the film. Falls back to the written story if cinema.js is absent. */
+  function playReport(opts) {
+    if (!currentMetrics) return;
+    if (isStale(currentMetrics)) { rebuildRun(); return; }
+    if (!window.__insightsCinema) { openStory("verdict"); return; }
+    closeDashboard();
+    if (window.__postmortemClose) window.__postmortemClose({ silent: true });
+    window.__insightsCinema.open(currentMetrics, currentRunMeta, opts);
   }
 
   function openStory(tab) {
@@ -1756,14 +1767,23 @@
         openBtn.querySelector("span").textContent = "Rebuild report";
         openBtn.onclick = rebuildRun;
       }
+      if (playBtn) {
+        playBtn.querySelector("span").textContent = "Rebuild report";
+        playBtn.onclick = rebuildRun;
+      }
       if (deepBtn) deepBtn.classList.add("hidden");
       return;
     }
 
+    if (playBtn) {
+      playBtn.querySelector("span").textContent = "Play your report";
+      playBtn.onclick = () => playReport();
+    }
     if (openBtn) {
       openBtn.querySelector("span").textContent = "Why you lose";
       openBtn.onclick = () => openStory("verdict");
     }
+    if (window.__insightsCinema) window.__insightsCinema.adopt(metrics, meta);
     if (deepBtn) {
       deepBtn.classList.remove("hidden");
       deepBtn.onclick = openDashboard;
@@ -1945,6 +1965,14 @@
     setBusy(true);
     if (capNote) capNote.classList.add("hidden");
     setStatus("Starting…");
+    if (window.__insightsForge) {
+      window.__insightsForge.open(
+        { handle: username, source: (sourceEl && sourceEl.value) || "chesscom" },
+        // "Run in background" only dismisses the overlay — the poll below keeps
+        // going, so the report still lands on the launcher when it finishes.
+        { onBackground: () => setStatus("Still analyzing — this page will update when it lands.") },
+      );
+    }
     try {
       const runId = await startRun(
         username,
@@ -1958,6 +1986,7 @@
       }
     } catch (err) {
       setStatus(err.message);
+      if (window.__insightsForge) window.__insightsForge.fail(err.message);
     } finally {
       setBusy(false);
     }
@@ -1976,6 +2005,15 @@
     setBusy(true);
     if (capNote) capNote.classList.add("hidden");
     setStatus("Refreshing this report — only new games are analyzed…");
+    if (window.__insightsForge) {
+      window.__insightsForge.open(
+        {
+          handle: (currentRunMeta && (currentRunMeta.handle || currentRunMeta.chesscom_handle)) || "",
+          source: (currentRunMeta && currentRunMeta.source) || "chesscom",
+        },
+        { onBackground: () => setStatus("Still refreshing — this page will update when it lands.") },
+      );
+    }
     try {
       const resp = await api(`/api/insights/${activeRunId}/refresh`, { method: "POST" });
       const data = await resp.json();
@@ -1985,6 +2023,7 @@
       }
     } catch (err) {
       setStatus(err.message);
+      if (window.__insightsForge) window.__insightsForge.fail(err.message);
     } finally {
       setBusy(false);
     }
@@ -2015,6 +2054,7 @@
       const progress = Math.round((data.progress || 0) * 100);
       setProgress(Math.max(8, progress));
       setStatus(`${data.status || "running"} — ${data.games_analyzed || 0} games (${progress}%)`);
+      if (window.__insightsForge) window.__insightsForge.update(data);
 
       if (data.status === "complete" || data.status === "done") {
         setProgress(100);
@@ -2025,10 +2065,21 @@
         setStatus(`Done — ${data.games_analyzed || 0} games analyzed. Open the report below.`);
         setBusy(false);
         scheduleRecompute(runId);
+        // The forge does not just vanish — it holds a completion beat and then
+        // rolls the film, which is the whole point of generating a report.
+        if (window.__insightsForge && window.__insightsForge.isOpen()) {
+          window.__insightsForge.update(
+            Object.assign({}, data, { status: "complete", stage: "complete" }),
+          );
+          window.__insightsForge.ready(
+            `${data.games_analyzed || 0} games analyzed`,
+            () => playReport(),
+          );
+        }
         return;
       }
       if (data.status === "error") {
-        throw new Error(data.detail || data.message || "Insights run failed");
+        throw new Error(runErrorText(data.detail) || data.message || "Insights run failed");
       }
       await new Promise((r) => setTimeout(r, 1000));
     }
@@ -2067,10 +2118,26 @@
   window.__insightsSetActive = (active, path) => {
     if (active) {
       loadRuns();
-      if (window.__postmortemRoute) window.__postmortemRoute(path || window.location.pathname);
+      const here = path || window.location.pathname;
+      // The film claims the path first; the story only sees what is left.
+      // A hard load on either deep link arrives before any run is in memory,
+      // so fetch the one the URL names and re-route once it lands.
+      const wanted = String(here).match(/^\/insights\/([^/]+)\//);
+      if (wanted && (!currentMetrics || activeRunId !== wanted[1])) {
+        loadRun(wanted[1]).then((data) => {
+          if (!data || !data.metrics) return;
+          const claimedLate = window.__insightsCinema && window.__insightsCinema.route(here);
+          if (!claimedLate && window.__postmortemRoute) window.__postmortemRoute(here);
+        });
+        return;
+      }
+      const claimed = window.__insightsCinema && window.__insightsCinema.route(here);
+      if (!claimed && window.__postmortemRoute) window.__postmortemRoute(here);
     } else {
       closeDashboard();
       if (window.__postmortemClose) window.__postmortemClose({ silent: true });
+      if (window.__insightsCinema) window.__insightsCinema.close();
+      if (window.__insightsForge) window.__insightsForge.close();
     }
   };
 
@@ -2078,6 +2145,9 @@
   window.__insightsLoadRun = loadRun;
   window.__insightsActiveRunId = () => activeRunId;
   window.__insightsOpenDeepDive = openDashboard;
+  window.__insightsOpenStory = openStory;
+  window.__insightsPlayReport = playReport;
+  window.__insightsShowPosition = showPositionModal;
   window.__insightsGoPractice = goPractice;
   window.__insightsGoReview = goReview;
 

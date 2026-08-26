@@ -119,7 +119,39 @@ Spec: [`Insights.md`](Insights.md). Six top-level shell tabs (Home / Puzzles / T
 
 **`metrics["game_explorer"]` is a contract, not a list view.** It is a per-game fact table (`insights_pro.build_game_facts`) carrying per-phase moves/loss/accuracy, classification counts, critical/quiet splits, scramble counts, castling, rating band and the biggest miss. The dashboard's colour/result/opponent filters **re-aggregate the whole page client-side from these rows** — `test_insights_pro.py::test_game_facts_reaggregate_to_the_server_totals` pins that summing the facts reproduces the server aggregates. Panels whose inputs only exist per move (loss taxonomy, scramble decay, session tilt, steering) carry an "All games" badge instead of silently ignoring the filter.
 
-**UI (`frontend/insights/`).** The tab is a *launcher* — run form, prior runs, and a ready card whose primary button is **Why you lose**. That opens the narrative overlay (`#postmortem`, `postmortem.js` / `postmortem.css`): Verdict → Why you lose → How to fix it, with Deep Dive handing off to the existing seven-section dashboard. Routes: `/insights/:runId/verdict|why-you-lose|how-you-win|deep-dive`. The server owns the story (`metrics.narrative` from `server/insights_narrative.py`); the frontend only renders. Verdict / Why / How copy must not contain Δw, volatility, findability, or "expectation-adjusted". Signature visuals are custom SVG (eval spine, loss funnel, trajectory overlay, opening heat table) plus lazy Chessground boards. Two overlay traps: `#insights-root > *` sets `position: relative` at ID specificity, so `#insights-root > .pm-overlay` and `#insights-root > .insights-dashboard` need their own `position: fixed`; a `<button>` cannot contain a `<button>` (funnel chips are siblings). Old runs without `narrative` get it attached on GET (pure over the stored blob, no engine).
+**Insights Cinema (`frontend/insights/cinema.{js,css}`).** Two full-screen surfaces that
+front the whole tab, both children of `#insights-root` and both **empty in `index.html`** —
+`cinema.js` builds their markup:
+
+- **The Forge** (`#insights-forge`) is what a run looks like *while it computes*: a
+  determinate ring, a stage line, a step rail, and a card per analyzed game. It narrates
+  **real server phases**, not a fake timeline — `insights_run._set_stage` writes
+  `insight_runs.stage` / `stage_detail` / `games_total` at each phase (`fetching` →
+  `analyzing` → `measuring` → `practice` → `story` → `complete`) and the GET returns them.
+  `progress` alone cannot tell "fetching games" from "computing metrics after the last
+  game landed"; both sit at a number the client cannot interpret. Pinned by
+  `test_insights_run_records_its_stage`.
+- **The film** (`#insights-cinema`) is a scene player: `buildScenes()` returns a list of
+  `{ id, chapter, dur, build, enter }`, auto-advancing with story-style segments, Space to
+  pause, ←/→ to scrub, Esc to bail into the Atlas. **Scenes are data and every one guards
+  its own inputs** — a 5-game run plays 3 scenes rather than 16 full of em-dashes. It ends
+  on the **Atlas**: the practice set as a board gallery, a chapter-replay grid, and the
+  hand-offs into the story / Deep Dive / trainers.
+- It reads only `metrics.pro`, `metrics.narrative` and `metrics.game_explorer` — the same
+  contract the dashboard and post-mortem read, so the film can never disagree with the
+  tables behind it. Route `/insights/:runId/cinema`; the post-mortem's `parsePath` returns
+  null for it and closes itself, which is the hand-off.
+- `build_game_facts` **normalizes `sparkline` to White** before sampling.
+  `review_moves.win_prob` is *mover-relative*, so walking every ply straight out of the
+  table alternates perspective and averages to a flat line at 0.5 — which is what the eval
+  spine and the trajectory overlay were drawing. `_user_curve` flips the whole curve for a
+  Black player and must not be double-corrected.
+- Two traps worth keeping: a gradient `background-clip: text` on an inline `<em>` paints
+  across the *whole headline's* box, so a two-word `<em>` renders half white and half
+  green (solid ink + glow instead); and `preserveAspectRatio="none"` on a chart SVG
+  squashes every `<text>` node into unreadable condensed type.
+
+**UI (`frontend/insights/`).** The tab is a *launcher* — run form, prior runs, and a ready card whose primary button is **Play your report** (the film), with *Why you lose* and *Deep dive* alongside. That opens the narrative overlay (`#postmortem`, `postmortem.js` / `postmortem.css`): Verdict → Why you lose → How to fix it, with Deep Dive handing off to the existing seven-section dashboard. Routes: `/insights/:runId/verdict|why-you-lose|how-you-win|deep-dive`. The server owns the story (`metrics.narrative` from `server/insights_narrative.py`); the frontend only renders. Verdict / Why / How copy must not contain Δw, volatility, findability, or "expectation-adjusted". Signature visuals are custom SVG (eval spine, loss funnel, trajectory overlay, opening heat table) plus lazy Chessground boards. Two overlay traps: `#insights-root > *` sets `position: relative` at ID specificity, so `#insights-root > .pm-overlay` and `#insights-root > .insights-dashboard` need their own `position: fixed`; a `<button>` cannot contain a `<button>` (funnel chips are siblings). Old runs without `narrative` get it attached on GET (pure over the stored blob, no engine).
 
 Every "Review"/"Open game" hand-off carries the **ply** as well as the game id — `goReview(gameId, ply)` → `window.__volOpenGameById(gameId, {ply})` → `openSavedGame` jumps straight to that move (1-based, as stored in `review_moves.ply`). A flagged miss that dumps the user at move 1 makes them hunt for it, so `insights_narrative` moments carry `ply` for exactly this.
 
@@ -137,7 +169,7 @@ Every "Review"/"Open game" hand-off carries the **ply** as well as the game id �
 | `pipeline/` | Offline puzzle data: `import_puzzles.py` (Lichess CSV → DB, also owns the `positions` schema), `mine_quiet.py` (PGN → quiet positions via Stockfish), `seed_demo.py`, `download_data.py`, `chesscom.py` / `lichess.py` (Insights ingest) |
 | `chess_vol/` | Vol package: `volatility.py` (re-export shim → `core.volatility`), `engine.py`, `analyze.py`, `config.py`, `cli.py`, `server.py`, `calibrate.py`, `classify.py`, `explain.py`, `game_review.py` (expected-points review + opening/key-moments), `findability_review.py` (attaches findability), `calibrate_findability.py` (Phase 3 driver: DB puzzles → full/line calibration) |
 | `core/` | Shared, FastAPI-free primitives (Game Review 2.0): `volatility.py`, `evaluation.py`, `acceptable.py`, `features.py`, `findability.py`, `human.py`, `engine.py`, `cache.py`, `calibration.py`, `constants/findability.json` |
-| `frontend/` | Single page: `index.html` + `shell.js`/`shell.css` (tab shell), `auth.js` (login/signup overlay gate), `app.js` (puzzles), `home/` (landing page — see below), `vol/` (vol UI; `vol/library.js` merges `/api/reviews` + `/api/vol/games`), `insights/` (launcher + Deep Dive dashboard; `postmortem.js`/`postmortem.css` are the narrative overlay), `elo/`, `eval/`, `vendor/` (vol's vendored chessground bundle) |
+| `frontend/` | Single page: `index.html` + `shell.js`/`shell.css` (tab shell), `auth.js` (login/signup overlay gate), `app.js` (puzzles), `home/` (landing page — see below), `vol/` (vol UI; `vol/library.js` merges `/api/reviews` + `/api/vol/games`), `insights/` (launcher + Deep Dive dashboard; `postmortem.js`/`postmortem.css` are the narrative overlay; `cinema.js`/`cinema.css` are the generation Forge + the auto-playing film), `elo/`, `eval/`, `vendor/` (vol's vendored chessground bundle) |
 | `tests/puzzles/`, `tests/vol/`, `tests/core/` | The three suites; `tests/vol/conftest.py` holds `FakeEngine` and fixtures; `tests/core/` covers the shared primitives + findability (engine-free, plus `@integration` real-engine capture tests) |
 | `data/` | Runtime only (gitignored): `trainer.db`, Stockfish/lc0 binaries, Maia weights, raw downloads |
 

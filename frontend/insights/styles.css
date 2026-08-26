@@ -504,6 +504,41 @@
 .insights-open-btn svg { transition: transform 0.15s ease; }
 .insights-open-btn:hover svg { transform: translateX(3px); }
 
+/* The play button leads with a triangle, so the arrow nudge reads wrong on it
+   — a play head that slides right looks like it is scrubbing, not starting. */
+.insights-play-btn:hover svg { transform: scale(1.12); }
+
+.insights-play-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+/* A single slow sheen. It is the primary action on the page; this is the only
+   thing on the launcher that moves on its own. */
+@media (prefers-reduced-motion: no-preference) {
+  .insights-play-btn::after {
+    animation: ins-sheen 4.2s ease-in-out infinite;
+    background: linear-gradient(105deg, transparent 38%, rgba(255, 255, 255, 0.5) 50%, transparent 62%);
+    content: "";
+    inset: 0;
+    pointer-events: none;
+    position: absolute;
+    transform: translateX(-120%);
+  }
+}
+
+@keyframes ins-sheen {
+  0%, 62%  { transform: translateX(-120%); }
+  86%, 100% { transform: translateX(120%); }
+}
+
+.insights-ready-alt {
+  display: flex;
+  gap: 8px;
+}
+
+.insights-ready-alt > * { flex: 1; }
+
 .insights-ready-hint {
   margin: 0;
   text-align: center;

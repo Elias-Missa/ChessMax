@@ -3,7 +3,7 @@
  * Exposes window.Chessboard(idOrEl, options) returning an object with the
  * subset of the chessboard.js API the app uses: position(), fen(), flip(),
  * resize(), clear(), orientation(), destroy(). Internally backed by
- * Chessground, so the board looks/feels like lichess.org without rewriting
+ * Chessground, so the board uses the shared ChessMax theme without rewriting
  * the 2600-line app.js controller.
  *
  * Spare pieces (sparePieces:true) are rendered as two HTML rows above and
@@ -77,10 +77,9 @@
 
   // ── Spare-piece tray ──────────────────────────────────────────────────── //
 
-  // Cburnett SVG URLs are defined inside the bundled chessground.css under
-  // selectors like `.cg-wrap piece.pawn.white`. We pull them out of the loaded
-  // stylesheet once and reuse them for the spare tray (which lives outside
-  // any `.cg-wrap`, so the original selectors don't apply).
+  // Piece SVG URLs live on `.cg-wrap piece.{role}.{color}` in the board
+  // theme stylesheet. Walk every sheet and keep the last match so the
+  // ChessMax theme (loaded after chessground) wins over the bundled default.
   const _pieceUrlCache = {};
   function getPieceImageUrl(color, role) {
     const key = `${color}.${role}`;
@@ -97,11 +96,10 @@
           const bg = rule.style && rule.style.backgroundImage;
           if (bg) {
             const m = bg.match(/url\(\s*(['"]?)([^'")]+)\1\s*\)/);
-            if (m) { found = m[2]; break; }
+            if (m) found = m[2];
           }
         }
       }
-      if (found) break;
     }
     _pieceUrlCache[key] = found;
     return found;

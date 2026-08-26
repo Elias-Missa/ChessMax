@@ -1,0 +1,4 @@
+Merida piece set (frontend/board/pieces/*.svg)
+Author: Armando Hernandez Marroquin
+License: GPLv2+
+Vendored via lichess-org/lila public/piece/merida.

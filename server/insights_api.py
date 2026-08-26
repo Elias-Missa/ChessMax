@@ -190,10 +190,16 @@ def build_insights_router(app: FastAPI) -> APIRouter:
             from server.insights_narrative import ensure_narrative
             metrics = ensure_narrative(metrics)
         source = row["source"] if "source" in row.keys() else "chesscom"
+        keys = row.keys()
         return {
             "run_id": row["run_id"],
             "status": row["status"],
             "progress": row["progress"],
+            # Phase narration for the generation animation — see
+            # insights_run._set_stage. Absent on runs that predate the columns.
+            "stage": row["stage"] if "stage" in keys else None,
+            "stage_detail": row["stage_detail"] if "stage_detail" in keys else None,
+            "games_total": (row["games_total"] or 0) if "games_total" in keys else 0,
             "games_analyzed": row["games_analyzed"],
             "games_capped": bool(row["games_capped"]),
             "chesscom_handle": row["chesscom_handle"],

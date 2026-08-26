@@ -340,7 +340,17 @@ def build_game_facts(
         win_probs = [
             float(m["win_prob"]) for m in user_moves if m["win_prob"] is not None
         ]
-        traj = [float(m["win_prob"]) for m in all_moves if m["win_prob"] is not None]
+        # `review_moves.win_prob` is *mover-relative*, so walking every ply
+        # straight out of the table alternates perspective move by move. The
+        # resulting curve oscillates around 0.5 and averages to a flat line —
+        # which is what the eval spine and the trajectory overlay were drawing.
+        # Normalize to White here (odd ply = White to move); `_user_curve`
+        # already flips the whole curve for a Black player.
+        traj = [
+            float(m["win_prob"]) if int(m["ply"]) % 2 == 1 else 1.0 - float(m["win_prob"])
+            for m in all_moves
+            if m["win_prob"] is not None
+        ]
         if len(traj) > 20:
             step = len(traj) / 20.0
             sparkline = [round(traj[int(i * step)], 3) for i in range(20)]

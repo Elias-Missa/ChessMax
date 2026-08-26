@@ -385,6 +385,11 @@ CREATE TABLE IF NOT EXISTS insight_runs (
     games_capped    INTEGER DEFAULT 0,
     status          TEXT NOT NULL,
     progress        REAL DEFAULT 0,
+    -- Narration for the generation animation: which phase of the run is live,
+    -- a human-readable line about it, and the denominator progress is against.
+    stage           TEXT,
+    stage_detail    TEXT,
+    games_total     INTEGER DEFAULT 0,
     metrics         TEXT,
     detail          TEXT,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -501,6 +506,16 @@ def _migrate_add_columns(connection: sqlite3.Connection) -> None:
         connection.execute(
             "ALTER TABLE insight_runs ADD COLUMN source TEXT NOT NULL DEFAULT 'chesscom'"
         )
+    if insight_cols:
+        for column, decl in (
+            ("stage", "TEXT"),
+            ("stage_detail", "TEXT"),
+            ("games_total", "INTEGER DEFAULT 0"),
+        ):
+            if column not in insight_cols:
+                connection.execute(
+                    f"ALTER TABLE insight_runs ADD COLUMN {column} {decl}"
+                )
     connection.commit()
 
 

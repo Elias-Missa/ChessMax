@@ -1,0 +1,102 @@
+/* ChessMax board theme.
+ *
+ * Chess.com-style green/cream board plus the Merida piece set (GPLv2+,
+ * Armando Hernandez Marroquin) — a quiet tournament Staunton. Chessnut's
+ * heavy outlines read as flashy on this board; Merida does not.
+ * Chess.com's own Neo sprites are proprietary and are not used.
+ *
+ * Loaded after chessground so these selectors win on every board
+ * (puzzles, review, duels, insights, home).
+ */
+
+cg-board {
+  background-color: #ebecd0;
+  background-image: url("/static/board/squares.svg");
+  background-size: cover;
+}
+
+.cg-wrap piece {
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-size: 94%;
+}
+
+.cg-wrap piece.pawn.white { background-image: url("/static/board/pieces/wP.svg?v=merida"); }
+.cg-wrap piece.knight.white { background-image: url("/static/board/pieces/wN.svg?v=merida"); }
+.cg-wrap piece.bishop.white { background-image: url("/static/board/pieces/wB.svg?v=merida"); }
+.cg-wrap piece.rook.white { background-image: url("/static/board/pieces/wR.svg?v=merida"); }
+.cg-wrap piece.queen.white { background-image: url("/static/board/pieces/wQ.svg?v=merida"); }
+.cg-wrap piece.king.white { background-image: url("/static/board/pieces/wK.svg?v=merida"); }
+.cg-wrap piece.pawn.black { background-image: url("/static/board/pieces/bP.svg?v=merida"); }
+.cg-wrap piece.knight.black { background-image: url("/static/board/pieces/bN.svg?v=merida"); }
+.cg-wrap piece.bishop.black { background-image: url("/static/board/pieces/bB.svg?v=merida"); }
+.cg-wrap piece.rook.black { background-image: url("/static/board/pieces/bR.svg?v=merida"); }
+.cg-wrap piece.queen.black { background-image: url("/static/board/pieces/bQ.svg?v=merida"); }
+.cg-wrap piece.king.black { background-image: url("/static/board/pieces/bK.svg?v=merida"); }
+
+/* Last-move / selected: chess.com yellow-green wash, not Lichess lime or
+   Razer neon. Review classification tints still override this in vol CSS. */
+cg-board square.last-move,
+cg-board square.selected {
+  background-color: rgba(245, 246, 130, 0.71);
+}
+
+/* Legal-move dots: dark disc on empty squares, ring on captures. */
+cg-board square.move-dest {
+  background: radial-gradient(rgba(0, 0, 0, 0.22) 19%, transparent 20%);
+}
+cg-board square.oc.move-dest {
+  background: radial-gradient(transparent 0 78%, rgba(0, 0, 0, 0.22) 79%);
+}
+cg-board square.move-dest:hover,
+cg-board square.move-dest.hover {
+  background: rgba(0, 0, 0, 0.12);
+}
+cg-board square.premove-dest {
+  background: radial-gradient(rgba(20, 30, 85, 0.45) 19%, transparent 20%);
+}
+cg-board square.oc.premove-dest {
+  background: radial-gradient(transparent 0 78%, rgba(20, 30, 85, 0.35) 79%);
+}
+
+cg-board square.check {
+  background: radial-gradient(ellipse at center, rgba(255, 0, 0, 0.72) 0%, rgba(231, 0, 0, 0.55) 28%, transparent 72%);
+}
+
+/* Edge coordinates sit inside the board, chess.com-style: cream on dark
+   squares, green on light. */
+.cg-wrap coords {
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 1;
+}
+.cg-wrap coords.ranks {
+  left: 2px;
+  top: 0;
+  height: 100%;
+}
+.cg-wrap coords.files {
+  bottom: 1px;
+  left: 0;
+  width: 100%;
+  height: 14px;
+}
+
+.orientation-white .ranks :nth-child(odd),
+.orientation-white .files :nth-child(even),
+.orientation-black .ranks :nth-child(even),
+.orientation-black .files :nth-child(odd),
+coords.squares:nth-of-type(odd) :nth-child(even),
+coords.squares:nth-of-type(even) :nth-child(odd) {
+  color: #739552;
+}
+
+.orientation-white .ranks :nth-child(even),
+.orientation-white .files :nth-child(odd),
+.orientation-black .ranks :nth-child(odd),
+.orientation-black .files :nth-child(even),
+coords.squares:nth-of-type(odd) :nth-child(odd),
+coords.squares:nth-of-type(even) :nth-child(even) {
+  color: #ebecd0;
+}

@@ -49,7 +49,7 @@ if (root) {
     bgBoard.appendChild(frag);
 
     if (!reduceMotion) {
-      // `.cg-wrap` is here purely to pull in the vendored cburnett sprite —
+      // `.cg-wrap` is here purely to pull in the board-theme sprite —
       // the same reason the hero board carries it.
       bgKnight = document.createElement("div");
       bgKnight.className = "hm-bg-knight cg-wrap";

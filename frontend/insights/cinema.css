@@ -1,0 +1,1386 @@
+/* Insights Cinema — the generation forge and the auto-playing report.
+ *
+ * Two full-screen surfaces live here:
+ *   • #insights-forge  — what a run looks like while it is being computed
+ *   • #insights-cinema — the scene player, plus the Atlas it lands on
+ *
+ * Both are children of #insights-root, which sets `position: relative` on its
+ * direct children at ID specificity (see CLAUDE.md). The double-ID selectors
+ * below are deliberate: a bare `.cine-overlay { position: fixed }` loses that
+ * fight and the overlay renders inline, halfway down the launcher.
+ *
+ * Motion is opt-in the same way the home page does it: everything is authored
+ * in its resting state, and the entry state lives under `[data-anim="on"]`.
+ * If a script throws, the page is still readable rather than blank.
+ */
+
+/* ── Palette ─────────────────────────────────────────────────────────────── */
+
+#insights-forge,
+#insights-cinema {
+  --cine-accent: #44d62c;
+  --cine-accent-soft: rgba(68, 214, 44, 0.16);
+  --cine-accent-line: rgba(68, 214, 44, 0.32);
+  --cine-cool: #5ad2ff;
+  --cine-violet: #a97bff;
+  --cine-warn: #ffb547;
+  --cine-bad: #ff4d5e;
+  --cine-ink: #f2f5f7;
+  --cine-dim: rgba(242, 245, 247, 0.6);
+  --cine-faint: rgba(242, 245, 247, 0.34);
+  --cine-panel: rgba(255, 255, 255, 0.045);
+  --cine-edge: rgba(255, 255, 255, 0.1);
+  --cine-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  color: var(--cine-ink);
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+}
+
+/* ── Shared: ambient backdrop ────────────────────────────────────────────── */
+
+.cine-bg {
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  z-index: 0;
+}
+
+.cine-bg::before {
+  background:
+    radial-gradient(48vw 48vw at 18% 14%, rgba(68, 214, 44, 0.2), transparent 62%),
+    radial-gradient(52vw 52vw at 84% 26%, rgba(90, 210, 255, 0.14), transparent 64%),
+    radial-gradient(44vw 44vw at 62% 92%, rgba(169, 123, 255, 0.13), transparent 66%);
+  content: "";
+  filter: blur(28px);
+  inset: -22%;
+  position: absolute;
+  will-change: transform;
+}
+
+/* One slow drift, no keyframe jump: the aurora is never meant to be *noticed*,
+   only to keep the black from reading as a dead screen. */
+@media (prefers-reduced-motion: no-preference) {
+  .cine-bg::before {
+    animation: cine-drift 46s var(--cine-ease) infinite alternate;
+  }
+}
+
+@keyframes cine-drift {
+  0%   { transform: translate3d(-3%, -2%, 0) scale(1.02) rotate(0deg); }
+  50%  { transform: translate3d(4%, 3%, 0) scale(1.12) rotate(6deg); }
+  100% { transform: translate3d(-2%, 4%, 0) scale(1.05) rotate(-4deg); }
+}
+
+/* Faint board lattice — the surface is a chess app, not a BI tool. */
+.cine-bg::after {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size: 76px 76px, 76px 76px;
+  content: "";
+  inset: 0;
+  mask-image: radial-gradient(70% 70% at 50% 45%, #000 20%, transparent 78%);
+  -webkit-mask-image: radial-gradient(70% 70% at 50% 45%, #000 20%, transparent 78%);
+  position: absolute;
+}
+
+/* Grain sells "film" more cheaply than any blur. Static, so it costs nothing. */
+.cine-grain {
+  background-image: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'>\
+<filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/>\
+<feColorMatrix type='saturate' values='0'/></filter>\
+<rect width='140' height='140' filter='url(%23n)' opacity='0.5'/></svg>");
+  inset: 0;
+  mix-blend-mode: overlay;
+  opacity: 0.32;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+}
+
+.cine-vignette {
+  background: radial-gradient(120% 92% at 50% 46%, transparent 44%, rgba(0, 0, 0, 0.62) 100%);
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   FORGE — the generation animation
+   ══════════════════════════════════════════════════════════════════════════ */
+
+#insights-root > #insights-forge {
+  background:
+    radial-gradient(90vw 70vh at 50% 0%, rgba(68, 214, 44, 0.07), transparent 60%),
+    linear-gradient(180deg, #090b0d 0%, #06080a 62%, #050607 100%);
+  bottom: 0;
+  display: grid;
+  left: 0;
+  place-items: center;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 90;
+}
+
+#insights-root > #insights-forge.hidden { display: none; }
+
+.forge-core {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 1.6rem;
+  max-width: min(880px, 92vw);
+  padding: 2rem 1rem;
+  position: relative;
+  text-align: center;
+  z-index: 2;
+}
+
+/* ── The ring ────────────────────────────────────────────────────────────── */
+
+.forge-ring {
+  height: clamp(190px, 26vh, 250px);
+  position: relative;
+  width: clamp(190px, 26vh, 250px);
+}
+
+.forge-ring svg {
+  height: 100%;
+  overflow: visible;
+  transform: rotate(-90deg);
+  width: 100%;
+}
+
+.forge-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.07);
+  stroke-width: 3;
+}
+
+.forge-arc {
+  fill: none;
+  stroke: url(#forge-grad);
+  stroke-linecap: round;
+  stroke-width: 4.5;
+  transition: stroke-dashoffset 0.7s var(--cine-ease);
+}
+
+/* A second, offset arc turns a determinate ring into something that still
+   reads as *working* while the server sits on one game for eight seconds. */
+.forge-sweep {
+  fill: none;
+  opacity: 0.5;
+  stroke: var(--cine-accent);
+  stroke-linecap: round;
+  stroke-width: 1.6;
+  transform-origin: 50% 50%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .forge-sweep { animation: forge-spin 3.4s linear infinite; }
+  .forge-ring::after {
+    animation: forge-pulse 2.8s ease-in-out infinite;
+    background: radial-gradient(circle, rgba(68, 214, 44, 0.22), transparent 68%);
+    border-radius: 50%;
+    content: "";
+    inset: 12%;
+    position: absolute;
+  }
+}
+
+@keyframes forge-spin { to { transform: rotate(360deg); } }
+@keyframes forge-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.94); }
+  50%      { opacity: 0.75; transform: scale(1.06); }
+}
+
+.forge-readout {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  inset: 0;
+  justify-content: center;
+  position: absolute;
+}
+
+.forge-pct {
+  font-size: clamp(2.4rem, 6vw, 3.4rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.forge-pct sup {
+  font-size: 0.42em;
+  font-weight: 700;
+  margin-left: 0.12em;
+  opacity: 0.5;
+  top: -0.85em;
+}
+
+.forge-count {
+  color: var(--cine-faint);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.14em;
+  margin-top: 0.5rem;
+  text-transform: uppercase;
+}
+
+/* ── Stage narration ─────────────────────────────────────────────────────── */
+
+.forge-stage { min-height: 5.4rem; }
+
+.forge-kicker {
+  color: var(--cine-accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  margin: 0 0 0.6rem;
+  text-transform: uppercase;
+}
+
+.forge-line {
+  font-size: clamp(1.35rem, 3.2vw, 2rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.forge-detail {
+  color: var(--cine-dim);
+  font-size: 0.92rem;
+  margin: 0.55rem 0 0;
+  min-height: 1.2em;
+}
+
+/* Cross-fade between stage lines rather than a hard swap. */
+.forge-swap {
+  animation: forge-in 0.5s var(--cine-ease) both;
+}
+
+@keyframes forge-in {
+  from { filter: blur(6px); opacity: 0; transform: translateY(10px); }
+  to   { filter: blur(0); opacity: 1; transform: none; }
+}
+
+/* ── Step rail ───────────────────────────────────────────────────────────── */
+
+.forge-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: center;
+}
+
+.forge-step {
+  align-items: center;
+  border: 1px solid var(--cine-edge);
+  border-radius: 999px;
+  color: var(--cine-faint);
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 600;
+  gap: 0.42rem;
+  letter-spacing: 0.04em;
+  padding: 0.34rem 0.78rem;
+  transition: color 0.4s ease, border-color 0.4s ease, background 0.4s ease;
+}
+
+.forge-step i {
+  background: currentColor;
+  border-radius: 50%;
+  display: block;
+  height: 5px;
+  width: 5px;
+}
+
+.forge-step.is-done {
+  border-color: var(--cine-accent-line);
+  color: var(--cine-accent);
+}
+
+.forge-step.is-live {
+  background: var(--cine-accent-soft);
+  border-color: var(--cine-accent);
+  box-shadow: 0 0 22px rgba(68, 214, 44, 0.22);
+  color: #eaffe4;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .forge-step.is-live i { animation: forge-blink 1.1s ease-in-out infinite; }
+}
+
+@keyframes forge-blink { 50% { opacity: 0.25; } }
+
+/* ── Game stream ─────────────────────────────────────────────────────────── */
+/*
+ * Each analyzed game gets a card that flies in and settles. This is the part
+ * that makes a four-minute run feel like something is happening: the number
+ * on the ring moves once per game, but the stream moves every time.
+ */
+
+.forge-stream {
+  display: flex;
+  gap: 0.5rem;
+  height: 3.1rem;
+  justify-content: center;
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  overflow: hidden;
+  width: min(760px, 92vw);
+}
+
+.forge-card {
+  align-items: center;
+  background: var(--cine-panel);
+  border: 1px solid var(--cine-edge);
+  border-left: 2px solid var(--cine-faint);
+  border-radius: 8px;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 0.12rem;
+  justify-content: center;
+  max-width: 160px;
+  padding: 0.4rem 0.7rem;
+}
+
+.forge-card.is-win { border-left-color: var(--cine-accent); }
+.forge-card.is-loss { border-left-color: var(--cine-bad); }
+.forge-card.is-draw { border-left-color: var(--cine-warn); }
+
+.forge-card b {
+  font-size: 0.78rem;
+  font-weight: 650;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.forge-card span {
+  color: var(--cine-faint);
+  font-size: 0.64rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .forge-card { animation: forge-fly 0.55s var(--cine-ease) both; }
+}
+
+@keyframes forge-fly {
+  from { opacity: 0; transform: translateX(34px) scale(0.9); }
+  to   { opacity: 1; transform: none; }
+}
+
+.forge-foot {
+  align-items: center;
+  display: flex;
+  gap: 0.8rem;
+  justify-content: center;
+}
+
+.forge-hint {
+  color: var(--cine-faint);
+  font-size: 0.78rem;
+  margin: 0;
+}
+
+.forge-quit {
+  background: transparent;
+  border: 1px solid var(--cine-edge);
+  border-radius: 999px;
+  color: var(--cine-dim);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.34rem 0.9rem;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.forge-quit:hover { border-color: var(--cine-faint); color: var(--cine-ink); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CINEMA — the scene player
+   ══════════════════════════════════════════════════════════════════════════ */
+
+#insights-root > #insights-cinema {
+  background: linear-gradient(180deg, #08090b 0%, #060709 58%, #040506 100%);
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  left: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 95;
+}
+
+#insights-root > #insights-cinema.hidden { display: none; }
+
+/* ── Chapter progress ────────────────────────────────────────────────────── */
+
+.cine-progress {
+  display: flex;
+  gap: 3px;
+  left: 0;
+  padding: 0.55rem clamp(0.8rem, 3vw, 1.6rem) 0;
+  position: relative;
+  right: 0;
+  z-index: 6;
+}
+
+.cine-seg {
+  background: rgba(255, 255, 255, 0.11);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  flex: 1;
+  height: 3px;
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+}
+
+.cine-seg::after {
+  background: linear-gradient(90deg, var(--cine-accent), #7dfb63);
+  border-radius: 999px;
+  bottom: 0;
+  content: "";
+  left: 0;
+  position: absolute;
+  top: 0;
+  transform: scaleX(var(--fill, 0));
+  transform-origin: left center;
+  width: 100%;
+}
+
+.cine-seg.is-live::after { box-shadow: 0 0 12px rgba(68, 214, 44, 0.6); }
+.cine-seg:hover { background: rgba(255, 255, 255, 0.22); }
+
+/* ── Top bar ─────────────────────────────────────────────────────────────── */
+
+.cine-top {
+  align-items: center;
+  display: flex;
+  gap: 0.7rem;
+  padding: 0.7rem clamp(0.8rem, 3vw, 1.6rem);
+  position: relative;
+  z-index: 6;
+}
+
+.cine-id {
+  align-items: baseline;
+  display: flex;
+  flex: 1;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.cine-id b {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cine-id span {
+  color: var(--cine-faint);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.cine-btn {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--cine-edge);
+  border-radius: 999px;
+  color: var(--cine-dim);
+  cursor: pointer;
+  display: inline-flex;
+  flex: none;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  gap: 0.4rem;
+  padding: 0.36rem 0.85rem;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.cine-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: var(--cine-faint);
+  color: var(--cine-ink);
+}
+
+.cine-btn--icon { padding: 0.36rem 0.5rem; }
+
+.cine-btn--go {
+  background: linear-gradient(120deg, rgba(68, 214, 44, 0.22), rgba(68, 214, 44, 0.1));
+  border-color: var(--cine-accent-line);
+  color: #d9ffd0;
+}
+
+.cine-btn--go:hover {
+  background: linear-gradient(120deg, rgba(68, 214, 44, 0.34), rgba(68, 214, 44, 0.16));
+  border-color: var(--cine-accent);
+  color: #fff;
+}
+
+/* ── Stage ───────────────────────────────────────────────────────────────── */
+
+.cine-stage {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  place-items: center;
+  position: relative;
+  z-index: 3;
+}
+
+/* Click zones: left third goes back, right third goes forward. They sit under
+   the scene content so a button inside a scene still wins the click. */
+.cine-zone {
+  background: transparent;
+  border: 0;
+  bottom: 0;
+  cursor: pointer;
+  padding: 0;
+  position: absolute;
+  top: 0;
+  width: 22%;
+  z-index: 2;
+}
+
+.cine-zone--prev { left: 0; }
+.cine-zone--next { right: 0; }
+.cine-zone:focus-visible { outline: 2px solid var(--cine-accent-line); }
+
+.cine-slide {
+  display: grid;
+  height: 100%;
+  max-width: min(1180px, 92vw);
+  padding: clamp(0.5rem, 2vh, 1.4rem) 0 clamp(0.8rem, 2vh, 1.6rem);
+  place-items: center;
+  position: relative;
+  width: 100%;
+  z-index: 3;
+}
+
+/* ── Scene primitives ────────────────────────────────────────────────────── */
+
+.scn {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.8rem, 2.2vh, 1.6rem);
+  max-height: 100%;
+  width: 100%;
+}
+
+.scn-head { max-width: 60ch; }
+
+.scn-kicker {
+  color: var(--cine-accent);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+}
+
+.scn-title {
+  font-size: clamp(1.6rem, 4.4vw, 3.1rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.04;
+  margin: 0;
+}
+
+.scn-title em {
+  color: #7cf263;
+  font-style: normal;
+  text-shadow: 0 0 34px rgba(68, 214, 44, 0.45);
+}
+
+.scn-title .bad {
+  color: #ff7d8b;
+  text-shadow: 0 0 34px rgba(255, 77, 94, 0.4);
+}
+
+.scn-sub {
+  color: var(--cine-dim);
+  font-size: clamp(0.94rem, 1.6vw, 1.12rem);
+  line-height: 1.55;
+  margin: 0.7rem 0 0;
+  max-width: 58ch;
+}
+
+.scn-note {
+  color: var(--cine-faint);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.scn-body { min-height: 0; width: 100%; }
+
+.scn-split {
+  align-items: center;
+  display: grid;
+  gap: clamp(1rem, 3vw, 2.6rem);
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+}
+
+@media (max-width: 900px) {
+  .scn-split { grid-template-columns: 1fr; }
+}
+
+/* Line-by-line mask reveal. Authored in the resting state; the entry state is
+   only applied while the scene is animating in. */
+.rise { display: block; }
+
+[data-anim="on"] .scn.is-entering .rise {
+  animation: cine-rise 0.72s var(--cine-ease) both;
+  animation-delay: calc(var(--i, 0) * 90ms);
+}
+
+@keyframes cine-rise {
+  from { filter: blur(10px); opacity: 0; transform: translateY(22px); }
+  to   { filter: blur(0); opacity: 1; transform: none; }
+}
+
+[data-anim="on"] .scn.is-entering .pop {
+  animation: cine-pop 0.62s var(--cine-ease) both;
+  animation-delay: calc(140ms + var(--i, 0) * 70ms);
+}
+
+@keyframes cine-pop {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── Big number ──────────────────────────────────────────────────────────── */
+
+.big {
+  font-size: clamp(3.4rem, 12vw, 8.5rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  letter-spacing: -0.055em;
+  line-height: 0.88;
+}
+
+.big--accent {
+  background: linear-gradient(160deg, #ffffff 0%, #9bff84 46%, var(--cine-accent) 88%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 34px rgba(68, 214, 44, 0.28));
+}
+
+.big--bad {
+  background: linear-gradient(160deg, #ffffff 0%, #ffa4ad 46%, var(--cine-bad) 88%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 34px rgba(255, 77, 94, 0.24));
+}
+
+.big-unit {
+  font-size: 0.3em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-left: 0.14em;
+  opacity: 0.55;
+}
+
+.big-cap {
+  color: var(--cine-faint);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  margin-top: 0.8rem;
+  text-transform: uppercase;
+}
+
+/* ── Stat tiles ──────────────────────────────────────────────────────────── */
+
+.tiles {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.tile {
+  background: var(--cine-panel);
+  border: 1px solid var(--cine-edge);
+  border-radius: 12px;
+  padding: 0.85rem 0.95rem;
+}
+
+.tile .k {
+  color: var(--cine-faint);
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.tile .v {
+  display: block;
+  font-size: clamp(1.4rem, 2.6vw, 1.9rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin-top: 0.3rem;
+}
+
+.tile .s {
+  color: var(--cine-dim);
+  display: block;
+  font-size: 0.76rem;
+  margin-top: 0.15rem;
+}
+
+.tile.is-good .v { color: var(--cine-accent); }
+.tile.is-bad .v { color: var(--cine-bad); }
+.tile.is-warn .v { color: var(--cine-warn); }
+
+/* ── Segmented result bar ────────────────────────────────────────────────── */
+
+.segbar {
+  border-radius: 10px;
+  display: flex;
+  gap: 3px;
+  height: clamp(46px, 8vh, 72px);
+  overflow: hidden;
+  width: 100%;
+}
+
+.segbar > i {
+  align-items: center;
+  border-radius: 6px;
+  display: flex;
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 800;
+  justify-content: center;
+  min-width: 0;
+  transform-origin: left center;
+  transition: flex-grow 0.9s var(--cine-ease);
+}
+
+.segbar .w { background: linear-gradient(120deg, #3fb92c, #6bf34f); color: #06210b; }
+.segbar .d { background: linear-gradient(120deg, #6a7078, #9aa2ab); color: #14181c; }
+.segbar .l { background: linear-gradient(120deg, #c8354a, #ff5f70); color: #2a060b; }
+
+.segkey {
+  color: var(--cine-dim);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  gap: 1rem;
+}
+
+.segkey b { color: var(--cine-ink); font-variant-numeric: tabular-nums; }
+
+/* ── Column pair (White / Black) ─────────────────────────────────────────── */
+
+.cols {
+  align-items: end;
+  display: grid;
+  gap: clamp(1.5rem, 5vw, 4rem);
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  height: clamp(230px, 38vh, 360px);
+  margin-inline: auto;
+  max-width: 640px;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  height: 100%;
+  justify-content: flex-end;
+  text-align: center;
+}
+
+.col-bar {
+  border-radius: 12px 12px 4px 4px;
+  height: var(--h, 0%);
+  position: relative;
+  transition: height 1.1s var(--cine-ease);
+  width: 100%;
+}
+
+.col-bar::after {
+  border-radius: inherit;
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+
+.col--white .col-bar {
+  background: linear-gradient(180deg, #ffffff, #b9c2c9);
+  box-shadow: 0 -10px 44px rgba(255, 255, 255, 0.18);
+}
+
+.col--black .col-bar {
+  background: linear-gradient(180deg, #4a5158, #23282d);
+  box-shadow: 0 -10px 44px rgba(90, 210, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.col-val {
+  font-size: clamp(1.5rem, 3.4vw, 2.4rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.col-lab {
+  color: var(--cine-faint);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.col-sub { color: var(--cine-dim); font-size: 0.78rem; }
+
+/* ── Ranked rows (openings, tactics, leaks, shapes) ──────────────────────── */
+
+.rows { display: flex; flex-direction: column; gap: 0.45rem; }
+
+.row {
+  align-items: center;
+  background: var(--cine-panel);
+  border: 1px solid var(--cine-edge);
+  border-radius: 11px;
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  overflow: hidden;
+  padding: 0.7rem 0.9rem;
+  position: relative;
+}
+
+/* The fill is the measurement; the text sits on top of it. */
+.row::before {
+  background: linear-gradient(90deg, var(--fill-c, var(--cine-accent-soft)), transparent);
+  bottom: 0;
+  content: "";
+  left: 0;
+  opacity: 0.85;
+  position: absolute;
+  top: 0;
+  transform: scaleX(var(--fill, 0));
+  transform-origin: left center;
+  transition: transform 1s var(--cine-ease);
+  width: 100%;
+}
+
+.row > * { position: relative; z-index: 1; }
+
+.row-main { min-width: 0; }
+
+.row-name {
+  font-size: 0.94rem;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-sub {
+  color: var(--cine-dim);
+  font-size: 0.76rem;
+  margin-top: 0.16rem;
+}
+
+.row-val {
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.row.is-bad { --fill-c: rgba(255, 77, 94, 0.24); }
+.row.is-bad .row-val { color: #ff8f9b; }
+.row.is-good { --fill-c: rgba(68, 214, 44, 0.2); }
+.row.is-good .row-val { color: var(--cine-accent); }
+.row.is-warn { --fill-c: rgba(255, 181, 71, 0.2); }
+.row.is-warn .row-val { color: var(--cine-warn); }
+
+/* ── Radial gauges ───────────────────────────────────────────────────────── */
+
+.gauges {
+  display: grid;
+  gap: clamp(0.8rem, 3vw, 2rem);
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+}
+
+@media (max-width: 720px) {
+  .gauges { grid-auto-flow: row; grid-template-columns: repeat(3, 1fr); }
+}
+
+.gauge { text-align: center; }
+
+.gauge-ring {
+  aspect-ratio: 1;
+  margin: 0 auto;
+  max-width: 168px;
+  position: relative;
+  width: 100%;
+}
+
+.gauge-ring svg { height: 100%; transform: rotate(-90deg); width: 100%; }
+
+.gauge-ring .t { fill: none; stroke: rgba(255, 255, 255, 0.08); stroke-width: 7; }
+
+.gauge-ring .a {
+  fill: none;
+  stroke: var(--g, var(--cine-accent));
+  stroke-linecap: round;
+  stroke-width: 7;
+  transition: stroke-dashoffset 1.1s var(--cine-ease);
+}
+
+.gauge-num {
+  align-items: center;
+  display: flex;
+  font-size: clamp(1.3rem, 3vw, 1.9rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  inset: 0;
+  justify-content: center;
+  letter-spacing: -0.03em;
+  position: absolute;
+}
+
+.gauge-lab {
+  font-size: 0.82rem;
+  font-weight: 650;
+  margin-top: 0.6rem;
+}
+
+.gauge-sub { color: var(--cine-faint); font-size: 0.73rem; margin-top: 0.12rem; }
+
+/* ── Line chart (rating arc, win% trajectory) ────────────────────────────── */
+
+.chart {
+  aspect-ratio: 1000 / 420;
+  margin-inline: auto;
+  max-height: 42vh;
+  position: relative;
+  width: min(100%, calc(42vh * (1000 / 420)));
+}
+
+.chart svg { height: 100%; overflow: visible; width: 100%; }
+
+.chart .grid-line { stroke: rgba(255, 255, 255, 0.07); stroke-width: 1; }
+.chart .mid-line { stroke: rgba(255, 255, 255, 0.16); stroke-dasharray: 4 6; stroke-width: 1; }
+
+.chart .plot {
+  fill: none;
+  stroke: var(--cine-accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.6;
+  filter: drop-shadow(0 0 10px rgba(68, 214, 44, 0.4));
+}
+
+.chart .plot--cool { stroke: var(--cine-cool); filter: drop-shadow(0 0 10px rgba(90, 210, 255, 0.35)); }
+.chart .plot--ghost { opacity: 0.3; stroke: rgba(255, 255, 255, 0.5); filter: none; stroke-width: 1.6; }
+
+.chart .area { stroke: none; }
+
+/* Draw-on: the dash offset is set inline, then transitioned to 0. */
+.chart .draw { transition: stroke-dashoffset 1.5s var(--cine-ease); }
+
+.chart .dot {
+  fill: var(--cine-accent);
+  filter: drop-shadow(0 0 8px rgba(68, 214, 44, 0.8));
+}
+
+.chart .dot--bad { fill: var(--cine-bad); filter: drop-shadow(0 0 10px rgba(255, 77, 94, 0.8)); }
+
+.chart .marker-line { stroke: var(--cine-bad); stroke-dasharray: 3 4; stroke-width: 1.2; }
+
+.chart text {
+  fill: var(--cine-faint);
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.chart .lab-bad { fill: #ff8f9b; }
+
+/* ── Board figure ────────────────────────────────────────────────────────── */
+
+.fig {
+  align-self: center;
+  background: var(--cine-panel);
+  max-width: 560px;
+  width: 100%;
+  border: 1px solid var(--cine-edge);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.8rem;
+}
+
+.fig-board {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  margin: 0 auto;
+  max-height: 46vh;
+  max-width: min(100%, 46vh);
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.fig-board .cg-wrap { height: 100%; width: 100%; }
+
+.fig-cap { color: var(--cine-dim); font-size: 0.82rem; line-height: 1.5; margin: 0; }
+
+.fig-moves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip {
+  align-items: center;
+  border: 1px solid var(--cine-edge);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 650;
+  gap: 0.35rem;
+  padding: 0.24rem 0.66rem;
+}
+
+.chip i {
+  border-radius: 2px;
+  display: block;
+  font-style: normal;
+  height: 8px;
+  width: 8px;
+}
+
+.chip--played { border-color: rgba(255, 77, 94, 0.4); color: #ff9aa5; }
+.chip--played i { background: var(--cine-bad); }
+.chip--best { border-color: var(--cine-accent-line); color: #a7f292; }
+.chip--best i { background: var(--cine-accent); }
+
+/* ── Tag cloud (missed tactics) ──────────────────────────────────────────── */
+
+.tags { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+
+.tag {
+  align-items: baseline;
+  background: var(--cine-panel);
+  border: 1px solid var(--cine-edge);
+  border-radius: 12px;
+  display: inline-flex;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem;
+}
+
+.tag b {
+  font-size: clamp(1.2rem, 2.4vw, 1.7rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.tag span { color: var(--cine-dim); font-size: 0.86rem; font-weight: 600; }
+.tag.is-hot { border-color: rgba(255, 77, 94, 0.36); }
+.tag.is-hot b { color: #ff8f9b; }
+
+/* ── Foot ────────────────────────────────────────────────────────────────── */
+
+.cine-foot {
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  gap: 0.8rem;
+  padding: 0.6rem clamp(0.8rem, 3vw, 1.6rem);
+  position: relative;
+  z-index: 6;
+}
+
+.cine-chapter {
+  color: var(--cine-faint);
+  flex: 1;
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cine-chapter b { color: var(--cine-dim); font-weight: 650; }
+
+.cine-keys {
+  color: var(--cine-faint);
+  display: flex;
+  font-size: 0.7rem;
+  gap: 0.75rem;
+}
+
+.cine-keys kbd {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--cine-edge);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.66rem;
+  padding: 0.06rem 0.32rem;
+}
+
+@media (max-width: 780px) {
+  .cine-keys { display: none; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ATLAS — where the movie lands
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.cine-atlas {
+  display: none;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 clamp(0.8rem, 3vw, 1.6rem) 4rem;
+  position: relative;
+  scroll-behavior: smooth;
+  z-index: 4;
+}
+
+#insights-cinema[data-mode="atlas"] .cine-atlas { display: block; }
+#insights-cinema[data-mode="atlas"] .cine-stage,
+#insights-cinema[data-mode="atlas"] .cine-progress { display: none; }
+
+.atlas-inner {
+  margin: 0 auto;
+  max-width: 1180px;
+}
+
+.atlas-hero {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding: clamp(1.4rem, 5vh, 3rem) 0 clamp(1.2rem, 3vh, 2rem);
+}
+
+.atlas-hero h2 {
+  font-size: clamp(1.8rem, 4.6vw, 3rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  margin: 0.5rem 0 0;
+}
+
+.atlas-hero p {
+  color: var(--cine-dim);
+  font-size: 1rem;
+  line-height: 1.6;
+  margin: 0.8rem 0 0;
+  max-width: 64ch;
+}
+
+.atlas-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1.2rem;
+}
+
+.atlas-sec { padding: clamp(1.4rem, 4vh, 2.4rem) 0 0; }
+
+.atlas-sec-head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.atlas-sec-head h3 {
+  font-size: 1.24rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.atlas-sec-head p {
+  color: var(--cine-faint);
+  font-size: 0.84rem;
+  margin: 0;
+}
+
+/* ── Practice arena ──────────────────────────────────────────────────────── */
+
+.arena {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+
+.arena-card {
+  background: var(--cine-panel);
+  border: 1px solid var(--cine-edge);
+  border-radius: 13px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  overflow: hidden;
+  padding: 0.6rem;
+  text-align: left;
+  transition: border-color 0.2s ease, transform 0.2s var(--cine-ease), box-shadow 0.2s ease;
+}
+
+.arena-card:hover {
+  border-color: var(--cine-accent-line);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--cine-accent-soft);
+  transform: translateY(-3px);
+}
+
+.arena-board {
+  aspect-ratio: 1;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 7px;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.arena-board .cg-wrap { height: 100%; width: 100%; }
+
+.arena-turn {
+  border: 1px solid var(--cine-edge);
+  border-radius: 5px;
+  color: var(--cine-faint);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0.1rem 0.36rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.arena-meta {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.arena-cost {
+  color: #ff8f9b;
+  font-size: 0.92rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.arena-find {
+  border: 1px solid var(--cine-accent-line);
+  border-radius: 999px;
+  color: var(--cine-accent);
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 0.1rem 0.44rem;
+}
+
+.arena-meta + .arena-meta {
+  margin-top: -0.25rem;
+  min-height: 1.35rem;
+}
+
+.arena-line {
+  color: var(--cine-faint);
+  font-size: 0.74rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena-line b { color: var(--cine-dim); font-weight: 650; }
+
+/* ── Chapter grid ────────────────────────────────────────────────────────── */
+
+.chapters {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.chapter {
+  background: var(--cine-panel);
+  border: 1px solid var(--cine-edge);
+  border-radius: 11px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0.75rem 0.85rem;
+  text-align: left;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.chapter:hover { background: rgba(255, 255, 255, 0.075); border-color: var(--cine-accent-line); }
+
+.chapter .n {
+  color: var(--cine-faint);
+  display: block;
+  font-size: 0.64rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.chapter .t {
+  display: block;
+  font-size: 0.92rem;
+  font-weight: 650;
+  margin-top: 0.25rem;
+}
+
+.atlas-empty {
+  border: 1px dashed var(--cine-edge);
+  border-radius: 12px;
+  color: var(--cine-faint);
+  font-size: 0.9rem;
+  padding: 1.4rem;
+  text-align: center;
+}
+
+/* ── Reduced motion: strip transitions, keep every value visible ─────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .forge-arc, .forge-card, .segbar > i, .col-bar, .row::before,
+  .gauge-ring .a, .chart .draw, .arena-card {
+    animation: none !important;
+    transition: none !important;
+  }
+}

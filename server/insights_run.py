@@ -98,6 +98,38 @@ def _trim_old_runs(connection: sqlite3.Connection, user_id: int) -> None:
     connection.commit()
 
 
+def _set_stage(
+    connection: sqlite3.Connection,
+    run_id: str,
+    stage: str,
+    detail: str = "",
+    *,
+    games_total: int | None = None,
+) -> None:
+    """Record which phase of the run is live.
+
+    The generation animation narrates real work rather than a spinner, so the
+    phase has to survive the poll round-trip. ``progress`` alone cannot say
+    whether the run is fetching games, walking them through Stockfish, or
+    computing metrics after the last game landed — all three sit at a progress
+    number the client cannot interpret.
+    """
+
+    if games_total is None:
+        connection.execute(
+            "UPDATE insight_runs SET stage = ?, stage_detail = ?, "
+            "updated_at = CURRENT_TIMESTAMP WHERE run_id = ?",
+            (stage, detail, run_id),
+        )
+    else:
+        connection.execute(
+            "UPDATE insight_runs SET stage = ?, stage_detail = ?, games_total = ?, "
+            "updated_at = CURRENT_TIMESTAMP WHERE run_id = ?",
+            (stage, detail, int(games_total), run_id),
+        )
+    connection.commit()
+
+
 def run_insights(
     connection: sqlite3.Connection,
     *,
@@ -153,6 +185,13 @@ def run_insights(
         )
     connection.commit()
     emit("start", {"run_id": run_id, "username": username, "source": source})
+    _set_stage(
+        connection,
+        run_id,
+        "fetching",
+        f"Pulling {username}'s games from "
+        f"{'Lichess' if source == 'lichess' else 'Chess.com'}",
+    )
 
     review_ids: list[str] = []
     analyzed = 0
@@ -184,6 +223,13 @@ def run_insights(
         connection.commit()
 
         total = max(1, len(games))
+        _set_stage(
+            connection,
+            run_id,
+            "analyzing",
+            f"{len(games)} games to walk through the engine",
+            games_total=len(games),
+        )
         # Practice puzzles come from persist_practice_flags after metrics — not a
         # second full Stockfish/Maia pass per game (that made 30-day runs unusable).
         mistake_run_id = _start_run(connection, user_id, username, since)
@@ -239,10 +285,18 @@ def run_insights(
                 analyzed += 1
 
             progress = (idx + 1) / total
+            opponent = (
+                meta.get("black_name") if user_color == "white" else meta.get("white_name")
+            ) or "opponent"
             connection.execute(
-                "UPDATE insight_runs SET progress = ?, games_analyzed = ?, updated_at = CURRENT_TIMESTAMP "
-                "WHERE run_id = ?",
-                (progress, analyzed + skipped_cached, run_id),
+                "UPDATE insight_runs SET progress = ?, games_analyzed = ?, stage = 'analyzing', "
+                "stage_detail = ?, updated_at = CURRENT_TIMESTAMP WHERE run_id = ?",
+                (
+                    progress,
+                    analyzed + skipped_cached,
+                    f"{user_color[:1].upper()}{user_color[1:]} vs {opponent}",
+                    run_id,
+                ),
             )
             connection.commit()
             emit("progress", {
@@ -263,7 +317,11 @@ def run_insights(
                 games_eligible=len(games),
             )
 
+        _set_stage(
+            connection, run_id, "measuring", "Measuring every move you played"
+        )
         metrics = compute_tier1_metrics(connection, review_ids=review_ids)
+        _set_stage(connection, run_id, "practice", "Selecting positions worth drilling")
         flags_written = persist_practice_flags(
             connection,
             run_id=run_id,
@@ -276,6 +334,7 @@ def run_insights(
             "persisted": flags_written,
             "full_tier_queued": 0,
         }
+        _set_stage(connection, run_id, "story", "Writing your report")
         trend = compute_run_trend(
             connection,
             user_id=user_id,
@@ -295,7 +354,8 @@ def run_insights(
             """
             UPDATE insight_runs SET
                 status = ?, progress = 1, games_analyzed = ?, games_capped = ?,
-                metrics = ?, updated_at = CURRENT_TIMESTAMP
+                metrics = ?, stage = 'complete', stage_detail = ?,
+                updated_at = CURRENT_TIMESTAMP
             WHERE run_id = ?
             """,
             (
@@ -303,6 +363,7 @@ def run_insights(
                 analyzed + skipped_cached,
                 1 if games_capped else 0,
                 json.dumps(metrics),
+                f"{analyzed + skipped_cached} games analyzed",
                 run_id,
             ),
         )
@@ -349,8 +410,8 @@ def run_insights(
 
     except Exception as exc:  # noqa: BLE001
         connection.execute(
-            "UPDATE insight_runs SET status = 'error', detail = ?, updated_at = CURRENT_TIMESTAMP "
-            "WHERE run_id = ?",
+            "UPDATE insight_runs SET status = 'error', stage = 'error', detail = ?, "
+            "updated_at = CURRENT_TIMESTAMP WHERE run_id = ?",
             (repr(exc), run_id),
         )
         connection.commit()

@@ -25,8 +25,8 @@
   --border-hi: rgba(68, 214, 44, 0.35);
   --glow: rgba(68, 214, 44, 0.30);
   --r: 20px;
-  --sq-light: #c3ccd4;
-  --sq-dark: #42505c;
+  --sq-light: #ebecd0;
+  --sq-dark: #739552;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 
   color: var(--text);
@@ -145,7 +145,7 @@
   transition: opacity 1.1s linear;
 }
 
-/* The knight itself. `.cg-wrap` is here only to pull in the vendored cburnett
+/* The knight itself. `.cg-wrap` is here only to pull in the board-theme
    sprite; the piece lies in the board's plane, which is what makes it read as
    standing on the tiles rather than floating above them. */
 .hm-bg-knight {
@@ -700,7 +700,7 @@
 }
 
 /* Board. `.cg-wrap` is chessground's own wrapper class, which is what makes
-   the vendored cburnett piece sprites apply to our <piece> elements. */
+   the Merida piece sprites apply to our <piece> elements. */
 .hm-board {
   aspect-ratio: 1;
   border: 1px solid rgba(255, 255, 255, 0.10);
@@ -732,17 +732,13 @@
 }
 
 .hm-hl.on { opacity: 1; }
-.hm-hl--from { background: rgba(68, 214, 44, 0.26); }
-.hm-hl--to {
-  background: rgba(68, 214, 44, 0.34);
-  box-shadow: inset 0 0 0 2px rgba(123, 247, 101, 0.75);
-}
+.hm-hl--from { background: rgba(245, 246, 130, 0.71); }
+.hm-hl--to { background: rgba(245, 246, 130, 0.82); }
 
 .hm-pieces { inset: 0; position: absolute; }
 
 .hm-pieces piece {
   transition: transform 0.42s var(--ease), opacity 0.32s ease, filter 0.32s ease;
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
 }
 
 /* Set on the board while a seek rebuilds the position from the start, so the

@@ -1964,9 +1964,10 @@ body[data-tab="editor"] #vol-root {
   letter-spacing: 0.03em;
 }
 
-/* Last-move highlight — matches ChessMax accent. */
+/* Last-move highlight — chess.com yellow-green by default. Classification
+   tints below still override while a reviewed move is selected. */
 .cg-wrap square.last-move {
-  background-color: rgba(68, 214, 44, 0.28) !important;
+  background-color: rgba(245, 246, 130, 0.71) !important;
 }
 
 .board-frame[data-review-class="brilliant"] .cg-wrap square.last-move { background-color: rgba(27, 172, 166, 0.4) !important; }
@@ -1980,12 +1981,8 @@ body[data-tab="editor"] #vol-root {
 .board-frame[data-review-class="miss"] .cg-wrap square.last-move { background-color: rgba(255, 119, 105, 0.4) !important; }
 .board-frame[data-review-class="blunder"] .cg-wrap square.last-move { background-color: rgba(179, 52, 48, 0.4) !important; }
 
-.cg-wrap square.move-dest {
-  background-color: rgba(68, 214, 44, 0.18) !important;
-}
-
 .cg-wrap square.selected {
-  background-color: rgba(68, 214, 44, 0.34) !important;
+  background-color: rgba(245, 246, 130, 0.71) !important;
 }
 
 /* Drawable arrows (right-click drag) — green by default. */

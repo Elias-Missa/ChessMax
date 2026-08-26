@@ -10,7 +10,7 @@ from typing import Any
 import chess
 import pytest
 
-from server import db
+from server import db, insights_run
 from server.game_identity import pgn_san_hash, resolve_game_id
 from server.insights_metrics import compute_tier1_metrics, recompute_run_metrics
 from server.insights_run import run_insights
@@ -265,6 +265,75 @@ def test_insights_run_incremental(connection: sqlite3.Connection, monkeypatch: p
     assert out2["cached"] == 1
     assert out2["newly_analyzed"] == 0
     assert len(engine.calls) == calls_after_first  # no re-analysis
+
+
+def test_insights_run_records_its_stage(
+    connection: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The generation animation narrates real phases, so they must persist.
+
+    ``progress`` alone cannot distinguish "fetching games" from "computing
+    metrics after the last game landed" — both sit at a number the client
+    cannot interpret. The stage columns are what the Forge reads.
+    """
+
+    user_id = int(connection.execute("SELECT id FROM users").fetchone()["id"])
+    meta = {
+        "user_color": "white",
+        "opponent": "bob",
+        "white_username": "alice",
+        "black_username": "bob",
+        "white_result": "win",
+        "black_result": "checkmated",
+        "game_id": "uuid-stage",
+        "date": "2026-06-01",
+        "time_class": "blitz",
+        "end_time": int(datetime(2026, 6, 1, tzinfo=timezone.utc).timestamp()),
+    }
+    monkeypatch.setattr(
+        "server.insights_run.chesscom.collect_games",
+        lambda *_a, **_k: ([(SHORT_PGN, meta)], False),
+    )
+
+    seen: list[tuple[str, str, int | None]] = []
+    real_set_stage = insights_run._set_stage
+
+    def spy(conn, run_id, stage, detail="", *, games_total=None):
+        real_set_stage(conn, run_id, stage, detail, games_total=games_total)
+        seen.append((stage, detail, games_total))
+
+    monkeypatch.setattr(insights_run, "_set_stage", spy)
+
+    run_insights(
+        connection,
+        user_id=user_id,
+        username="alice",
+        window_days=7,
+        time_class="blitz",
+        engine=FakeEngine(producer=_producer),
+        analysis_fn=None,
+        run_id="run-stage",
+    )
+
+    stages = [s for s, _, _ in seen]
+    assert stages == ["fetching", "analyzing", "measuring", "practice", "story"]
+    # The denominator the ring counts against is written exactly once, at the
+    # only point where the game count is known.
+    assert [(s, t) for s, _, t in seen if t is not None] == [("analyzing", 1)]
+    assert "Chess.com" in seen[0][1]
+    assert (
+        connection.execute(
+            "SELECT games_total FROM insight_runs WHERE run_id = 'run-stage'"
+        ).fetchone()["games_total"]
+        == 1
+    )
+
+    row = connection.execute(
+        "SELECT stage, stage_detail, status FROM insight_runs WHERE run_id = 'run-stage'"
+    ).fetchone()
+    assert row["status"] == "complete"
+    assert row["stage"] == "complete"
+    assert row["stage_detail"] == "1 games analyzed"
 
 
 def test_insights_run_lichess_source(
