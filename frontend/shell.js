@@ -27,6 +27,8 @@ const ROUTES = [
   { path: "/duels/eval", app: "eval", tab: "evalduels", top: "duels" },
   { path: "/guess-the-elo", app: "elo", tab: "eloduels", top: "duels" },
   { path: "/guess-the-eval", app: "eval", tab: "evalduels", top: "duels" },
+  // Internal calibration harness, parked at the right edge of the tab bar.
+  { path: "/dev", app: "dev", tab: "dev", top: "dev" },
 ];
 
 const TAB_TO_PATH = Object.fromEntries(
@@ -41,6 +43,7 @@ TAB_TO_PATH.about = "/game-review/why";
 TAB_TO_PATH.eloduels = "/duels/elo";
 TAB_TO_PATH.evalduels = "/duels/eval";
 TAB_TO_PATH.insights = "/insights";
+TAB_TO_PATH.dev = "/dev";
 
 const TRAINING_TABS = new Set([
   "evalhold", "defense", "forced", "guess", "mistakes", "playout", "stats",
@@ -58,6 +61,7 @@ const volRoot = document.getElementById("vol-root");
 const eloRoot = document.getElementById("elo-root");
 const evalRoot = document.getElementById("eval-root");
 const insightsRoot = document.getElementById("insights-root");
+const devRoot = document.getElementById("dev-root");
 
 let navigating = false;
 let currentRoute = null;
@@ -110,6 +114,7 @@ function showRoots(app, tab) {
   if (eloRoot) eloRoot.classList.toggle("hidden", app !== "elo");
   if (evalRoot) evalRoot.classList.toggle("hidden", app !== "eval");
   if (insightsRoot) insightsRoot.classList.toggle("hidden", app !== "insights");
+  if (devRoot) devRoot.classList.toggle("hidden", app !== "dev");
   if (trainingNav) {
     trainingNav.classList.toggle("hidden", app !== "puzzles" || !TRAINING_TABS.has(tab));
   }
@@ -138,6 +143,7 @@ function applyRoute(route, { push = false } = {}) {
   if (window.__homeSetActive) window.__homeSetActive(app === "home");
   if (window.__eloSetActive) window.__eloSetActive(app === "elo");
   if (window.__evalSetActive) window.__evalSetActive(app === "eval");
+  if (window.__devSetActive) window.__devSetActive(app === "dev");
   if (window.__insightsSetActive) {
     if (app === "insights") window.__insightsSetActive(true, route.path);
     else window.__insightsSetActive(false);

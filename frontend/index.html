@@ -19,6 +19,7 @@
     <link rel="stylesheet" href="/static/insights/styles.css" />
     <link rel="stylesheet" href="/static/insights/postmortem.css?v=story-3" />
     <link rel="stylesheet" href="/static/insights/cinema.css?v=cinema-1" />
+    <link rel="stylesheet" href="/static/dev/styles.css" />
   </head>
   <body>
     <div id="bootError" class="boot-error hidden" role="alert"></div>
@@ -55,6 +56,10 @@
         <button class="shell-tab" type="button" role="tab" data-top="game-review" data-tab="game" data-route="/game-review" aria-selected="false">Game Review</button>
         <button class="shell-tab" type="button" role="tab" data-top="insights" data-tab="insights" data-route="/insights" aria-selected="false">Insights</button>
         <button class="shell-tab shell-tab--accent" type="button" role="tab" data-top="duels" data-tab="eloduels" data-route="/duels" aria-selected="false">Duels</button>
+        <!-- Internal: manual volatility / findability labelling over every
+             stored review position. `margin-left: auto` parks it at the far
+             right, away from the six product tabs. -->
+        <button class="shell-tab shell-tab--dev" type="button" role="tab" data-top="dev" data-tab="dev" data-route="/dev" aria-selected="false" title="Calibration labelling (internal)">Dev</button>
       </nav>
       <div class="shell-user hidden" id="shell-user-wrap">
         <span class="shell-user-email" id="shell-user"></span>
@@ -2767,6 +2772,146 @@
            aria-label="Your report" tabindex="-1"></div>
     </div><!-- /#insights-root -->
 
+    <!-- ═══════════════════ DEV: CALIBRATION LABELLING ═════════════════════ -->
+    <!-- An internal harness, not a product surface. It walks every ply of every
+         completed review the account owns, shows the volatility and findability
+         we stored, and records a human verdict on each so the constants behind
+         them can be refit. Findability scores the BEST move, never the move
+         played — the panel says so and the purple arrow points at it. -->
+    <div id="dev-root" class="hidden">
+      <div class="dv-bar">
+        <div class="dv-bar-left">
+          <span class="dv-brand">Calibration</span>
+          <span class="dv-counter" id="dvCounter">—</span>
+        </div>
+        <div class="dv-bar-mid">
+          <label class="dv-select">
+            Show
+            <select id="dvScope">
+              <option value="all">All positions</option>
+              <option value="unlabeled">Unlabelled only</option>
+              <option value="labeled">Labelled only</option>
+            </select>
+          </label>
+          <label class="dv-select">
+            With
+            <select id="dvRequire">
+              <option value="any">Any score</option>
+              <option value="findability">Findability only</option>
+              <option value="volatility">Volatility only</option>
+            </select>
+          </label>
+        </div>
+        <div class="dv-bar-right">
+          <span class="dv-progress" id="dvProgress"></span>
+          <button type="button" class="dv-ghost" id="dvExportBtn">Export JSON</button>
+        </div>
+      </div>
+
+      <div class="dv-body">
+        <div class="dv-boardcol">
+          <div class="dv-board cg-wrap" id="dvBoard"></div>
+          <div class="dv-boardmeta">
+            <span class="dv-turn" id="dvTurn">—</span>
+            <span class="dv-legend">
+              <i class="dv-key dv-key--best"></i> best move
+              <i class="dv-key dv-key--played"></i> played
+            </span>
+          </div>
+          <div class="dv-nav">
+            <button type="button" class="dv-ghost" id="dvPrev">← Prev</button>
+            <input type="number" class="dv-jump" id="dvJump" min="1" step="1"
+                   aria-label="Jump to position number" />
+            <button type="button" class="dv-ghost" id="dvNext">Next →</button>
+          </div>
+        </div>
+
+        <aside class="dv-panel">
+          <div class="dv-empty hidden" id="dvEmpty">
+            <h2>Nothing to label yet</h2>
+            <p id="dvEmptyText">
+              Run a game review first — this tab walks the positions those
+              reviews stored.
+            </p>
+          </div>
+
+          <div id="dvContent">
+            <header class="dv-head">
+              <div class="dv-game" id="dvGame">—</div>
+              <div class="dv-move">
+                <span class="dv-movenum" id="dvMoveNum"></span>
+                <span class="dv-san" id="dvSan"></span>
+                <span class="dv-chip hidden" id="dvClass"></span>
+                <span class="dv-chip dv-chip--muted" id="dvPhase"></span>
+                <span class="dv-chip dv-chip--muted" id="dvTier"></span>
+              </div>
+              <div class="dv-substats" id="dvSubstats"></div>
+            </header>
+
+            <!-- ── Volatility ─────────────────────────────────────────── -->
+            <section class="dv-metric" id="dvVolSection">
+              <div class="dv-metric-head">
+                <h3>Volatility</h3>
+                <span class="dv-score" id="dvVolScore">—</span>
+              </div>
+              <p class="dv-scope">How much the evaluation swings across the
+                candidate moves in this position.</p>
+              <div class="dv-meter"><i id="dvVolMeter"></i></div>
+              <div class="dv-choices" id="dvVolChoices" role="group"
+                   aria-label="Volatility verdict">
+                <button type="button" data-label="way_lower"><b>Way lower</b><kbd>1</kbd></button>
+                <button type="button" data-label="lower"><b>Lower</b><kbd>2</kbd></button>
+                <button type="button" data-label="about_right"><b>About right</b><kbd>3</kbd></button>
+                <button type="button" data-label="higher"><b>Higher</b><kbd>4</kbd></button>
+                <button type="button" data-label="way_higher"><b>Way higher</b><kbd>5</kbd></button>
+              </div>
+            </section>
+
+            <!-- ── Findability ────────────────────────────────────────── -->
+            <section class="dv-metric" id="dvFindSection">
+              <div class="dv-metric-head">
+                <h3>Findability</h3>
+                <span class="dv-score" id="dvFindScore">—</span>
+              </div>
+              <p class="dv-scope">
+                Of the <b class="dv-bestmove" id="dvBestMove">best move</b> —
+                not the move played. The share of players 1100&ndash;2000 who
+                would find an acceptable move here.
+              </p>
+              <div class="dv-meter"><i id="dvFindMeter"></i></div>
+              <div class="dv-choices" id="dvFindChoices" role="group"
+                   aria-label="Findability verdict">
+                <button type="button" data-label="way_harder"><b>Way harder</b><kbd>Q</kbd></button>
+                <button type="button" data-label="harder"><b>Harder</b><kbd>W</kbd></button>
+                <button type="button" data-label="about_right"><b>About right</b><kbd>E</kbd></button>
+                <button type="button" data-label="easier"><b>Easier</b><kbd>R</kbd></button>
+                <button type="button" data-label="way_easier"><b>Way easier</b><kbd>T</kbd></button>
+              </div>
+              <p class="dv-nofind hidden" id="dvNoFind">
+                No findability stored for this ply — shallow-tier reviews and
+                gated positions (forced or already decided) carry none.
+              </p>
+            </section>
+
+            <section class="dv-lines">
+              <h4>Engine lines</h4>
+              <ol class="dv-linelist" id="dvLines"></ol>
+            </section>
+
+            <label class="dv-notewrap">
+              <span>Note</span>
+              <textarea id="dvNote" rows="2" placeholder="Why? (optional)"></textarea>
+            </label>
+
+            <div class="dv-footer">
+              <span class="dv-saved" id="dvSaved"></span>
+              <button type="button" class="dv-ghost" id="dvClear">Clear labels</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div><!-- /#dev-root -->
+
 
     <!-- Vol app (classic scripts, run before modules) -->
     <script src="/static/auth.js"></script>
@@ -2785,6 +2930,7 @@
     <script src="/static/insights/app.js"></script>
     <script src="/static/insights/postmortem.js?v=story-3"></script>
     <script src="/static/insights/cinema.js?v=cinema-1"></script>
+    <script src="/static/dev/app.js"></script>
     <script src="/static/home/opera.js"></script>
     <script src="/static/home/app.js?v=7"></script>
     <!-- Puzzles app, then the shell tab controller (modules run in order, after classic scripts) -->

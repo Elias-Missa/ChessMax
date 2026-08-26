@@ -153,6 +153,32 @@ body {
   border-color: rgba(68, 214, 44, 0.7);
 }
 
+/* The dev tab is an internal calibration harness, not a product surface. It is
+   pushed to the far right of the bar and coloured amber so it never reads as
+   one of the six real tabs. `margin-left: auto` inside the flex row does the
+   pushing; `.shell-tabs` is `flex: 1 1 auto`, so the free space is there. */
+.shell-tab--dev {
+  border-color: rgba(255, 176, 32, 0.22);
+  color: #b58a3d;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  margin-left: auto;
+  padding: 0.34rem 0.6rem;
+  text-transform: uppercase;
+}
+
+.shell-tab--dev:hover {
+  background: rgba(255, 176, 32, 0.1);
+  color: #ffc457;
+}
+
+.shell-tab--dev.active {
+  background: linear-gradient(180deg, rgba(255, 176, 32, 0.2), rgba(255, 176, 32, 0.06));
+  border-color: rgba(255, 176, 32, 0.6);
+  box-shadow: 0 0 0 1px rgba(255, 176, 32, 0.12), 0 0 16px rgba(255, 176, 32, 0.16);
+  color: #ffd489;
+}
+
 .shell-subnav {
   align-items: center;
   background: rgba(8, 10, 12, 0.92);

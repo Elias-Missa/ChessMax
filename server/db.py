@@ -425,6 +425,31 @@ CREATE TABLE IF NOT EXISTS insight_flags (
 );
 CREATE INDEX IF NOT EXISTS idx_insight_flags_run ON insight_flags(run_id, delta_w DESC);
 
+-- Dev tab: manual calibration labels over stored review positions. One row per
+-- (user, review, ply); both label columns are nullable so volatility and
+-- findability can be judged independently. The scores are snapshotted at
+-- labelling time so a later refit can't silently reinterpret the verdict.
+CREATE TABLE IF NOT EXISTS dev_labels (
+    id                 INTEGER PRIMARY KEY,
+    user_id            INTEGER NOT NULL,
+    review_id          TEXT NOT NULL,
+    ply                INTEGER NOT NULL,
+    fen                TEXT,
+    move_uci           TEXT,
+    best_uci           TEXT,
+    volatility         REAL,
+    findability        INTEGER,
+    volatility_label   TEXT,
+    findability_label  TEXT,
+    note               TEXT,
+    constants_version  TEXT,
+    created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, review_id, ply),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_dev_labels_user ON dev_labels(user_id, updated_at DESC);
+
 -- Shared Zobrist position cache (Insights.md B.3). ``nodes`` stores search
 -- depth when the live path is depth-limited rather than node-limited.
 CREATE TABLE IF NOT EXISTS position_cache (
