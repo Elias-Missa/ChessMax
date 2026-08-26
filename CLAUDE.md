@@ -131,12 +131,33 @@ front the whole tab, both children of `#insights-root` and both **empty in `inde
   `progress` alone cannot tell "fetching games" from "computing metrics after the last
   game landed"; both sit at a number the client cannot interpret. Pinned by
   `test_insights_run_records_its_stage`.
-- **The film** (`#insights-cinema`) is a scene player: `buildScenes()` returns a list of
-  `{ id, chapter, dur, build, enter }`, auto-advancing with story-style segments, Space to
-  pause, ←/→ to scrub, Esc to bail into the Atlas. **Scenes are data and every one guards
-  its own inputs** — a 5-game run plays 3 scenes rather than 16 full of em-dashes. It ends
-  on the **Atlas**: the practice set as a board gallery, a chapter-replay grid, and the
+- **The film** (`frontend/insights/cinema-film.js`) is a **horizontal strip, not a deck**.
+  All 22 panels sit side by side in one flex track that is translated on X, and every
+  transform, blur, bar and counter on them is *scrubbed* — written each frame as a
+  function of `d`, the panel's signed distance from the frame centre in viewport widths.
+  Wheel, trackpad, touch and drag all feed one `target`; `pos` chases it with a
+  frame-rate-normalized lerp; autoplay is just a constant velocity added to that same
+  `target`, which is why taking the wheel mid-cruise blends instead of cutting.
+  `buildPanels()` returns `{ id, chapter, html, hasBoard }` and **every panel guards its
+  own inputs** — a 5-game run plays a handful rather than 22 full of em-dashes. It ends on
+  the **Atlas**: the practice set as a board gallery, a chapter-replay grid, and the
   hand-offs into the story / Deep Dive / trainers.
+- **Four numbers decide the feel**, all in `FEEL` at the top of `cinema-film.js`.
+  `buildWindow` is the load-bearing one: a panel must be *half* built when it is half a
+  screen out, or the midpoint of every transition is two invisible panels and a black
+  frame — which is exactly what a slide deck looks like. `lerp` is the smoothness,
+  `cruiseSecPerScreen` the pace, `depthFade`/`depthBlur` how much a neighbour recedes.
+- **A real scroller (Lenis / ScrollTrigger) was tried and rejected.** Autoplay has to
+  blend with user input rather than fight it, and ScrollTrigger's play/reverse semantics
+  are the slide-deck behaviour being removed. GSAP is still used for everything else:
+  `gsap` + `Observer` (input normalization) + `SplitText` (headline chars) + `DrawSVGPlugin`
+  (charts and gauges), vendored under `frontend/vendor/js/gsap/` — all free under GSAP's
+  standard licence since 3.13. `cinema-film.js` degrades to a static, readable strip if
+  any of them fail to load.
+- **`measure()` reads `offsetLeft`/`offsetWidth`, never `vw * width`.** `.pnl` carries
+  horizontal padding, so without `box-sizing: border-box` (set explicitly — there is no
+  reset on this subtree) each panel is 128px wider than the model thinks, and the strip
+  drifts a whole screen out of register by panel ten while still *looking* plausible.
 - It reads only `metrics.pro`, `metrics.narrative` and `metrics.game_explorer` — the same
   contract the dashboard and post-mortem read, so the film can never disagree with the
   tables behind it. Route `/insights/:runId/cinema`; the post-mortem's `parsePath` returns
@@ -146,10 +167,15 @@ front the whole tab, both children of `#insights-root` and both **empty in `inde
   table alternates perspective and averages to a flat line at 0.5 — which is what the eval
   spine and the trajectory overlay were drawing. `_user_curve` flips the whole curve for a
   Black player and must not be double-corrected.
-- Two traps worth keeping: a gradient `background-clip: text` on an inline `<em>` paints
-  across the *whole headline's* box, so a two-word `<em>` renders half white and half
-  green (solid ink + glow instead); and `preserveAspectRatio="none"` on a chart SVG
-  squashes every `<text>` node into unreadable condensed type.
+- **Colour is a verdict, so magnitude bars default to neutral.** `.bar-col i` and
+  `.row-fill` are slate unless the panel classes them `is-good`/`is-warn`/`is-bad`. On
+  "blunder rate by move number" or "win% given away per move", a taller *green* bar means
+  a worse result — five green bars there read as five good ones.
+- Three rendering traps worth keeping: a gradient `background-clip: text` on an inline
+  `<em>` paints across the *whole headline's* box, so a two-word `<em>` renders half white
+  and half green (solid ink + glow instead); `preserveAspectRatio="none"` on a chart SVG
+  squashes every `<text>` node into unreadable condensed type; and a CSS `transition` on
+  any property the frame loop also writes makes the strip judder, because the two fight.
 
 **UI (`frontend/insights/`).** The tab is a *launcher* — run form, prior runs, and a ready card whose primary button is **Play your report** (the film), with *Why you lose* and *Deep dive* alongside. That opens the narrative overlay (`#postmortem`, `postmortem.js` / `postmortem.css`): Verdict → Why you lose → How to fix it, with Deep Dive handing off to the existing seven-section dashboard. Routes: `/insights/:runId/verdict|why-you-lose|how-you-win|deep-dive`. The server owns the story (`metrics.narrative` from `server/insights_narrative.py`); the frontend only renders. Verdict / Why / How copy must not contain Δw, volatility, findability, or "expectation-adjusted". Signature visuals are custom SVG (eval spine, loss funnel, trajectory overlay, opening heat table) plus lazy Chessground boards. Two overlay traps: `#insights-root > *` sets `position: relative` at ID specificity, so `#insights-root > .pm-overlay` and `#insights-root > .insights-dashboard` need their own `position: fixed`; a `<button>` cannot contain a `<button>` (funnel chips are siblings). Old runs without `narrative` get it attached on GET (pure over the stored blob, no engine).
 
@@ -169,7 +195,7 @@ Every "Review"/"Open game" hand-off carries the **ply** as well as the game id �
 | `pipeline/` | Offline puzzle data: `import_puzzles.py` (Lichess CSV → DB, also owns the `positions` schema), `mine_quiet.py` (PGN → quiet positions via Stockfish), `seed_demo.py`, `download_data.py`, `chesscom.py` / `lichess.py` (Insights ingest) |
 | `chess_vol/` | Vol package: `volatility.py` (re-export shim → `core.volatility`), `engine.py`, `analyze.py`, `config.py`, `cli.py`, `server.py`, `calibrate.py`, `classify.py`, `explain.py`, `game_review.py` (expected-points review + opening/key-moments), `findability_review.py` (attaches findability), `calibrate_findability.py` (Phase 3 driver: DB puzzles → full/line calibration) |
 | `core/` | Shared, FastAPI-free primitives (Game Review 2.0): `volatility.py`, `evaluation.py`, `acceptable.py`, `features.py`, `findability.py`, `human.py`, `engine.py`, `cache.py`, `calibration.py`, `constants/findability.json` |
-| `frontend/` | Single page: `index.html` + `shell.js`/`shell.css` (tab shell), `auth.js` (login/signup overlay gate), `app.js` (puzzles), `home/` (landing page — see below), `vol/` (vol UI; `vol/library.js` merges `/api/reviews` + `/api/vol/games`), `insights/` (launcher + Deep Dive dashboard; `postmortem.js`/`postmortem.css` are the narrative overlay; `cinema.js`/`cinema.css` are the generation Forge + the auto-playing film), `elo/`, `eval/`, `vendor/` (vol's vendored chessground bundle) |
+| `frontend/` | Single page: `index.html` + `shell.js`/`shell.css` (tab shell), `auth.js` (login/signup overlay gate), `app.js` (puzzles), `home/` (landing page — see below), `vol/` (vol UI; `vol/library.js` merges `/api/reviews` + `/api/vol/games`), `insights/` (launcher + Deep Dive dashboard; `postmortem.js`/`postmortem.css` are the narrative overlay; `cinema.js` is the Forge + the film's chrome/Atlas, `cinema-film.js` is the scrubbed horizontal strip, `cinema.css` both), `elo/`, `eval/`, `vendor/` (vol's vendored chessground bundle) |
 | `tests/puzzles/`, `tests/vol/`, `tests/core/` | The three suites; `tests/vol/conftest.py` holds `FakeEngine` and fixtures; `tests/core/` covers the shared primitives + findability (engine-free, plus `@integration` real-engine capture tests) |
 | `data/` | Runtime only (gitignored): `trainer.db`, Stockfish/lc0 binaries, Maia weights, raw downloads |
 
