@@ -331,10 +331,211 @@
     }
   }
 
+
+  // ── Piece values lab ──────────────────────────────────────────────────── //
+  //
+  // Runs ~30 engine searches per position, so it is a bench you press a button
+  // on, never something that fires as you scrub. Two things about the display
+  // are load-bearing:
+  //
+  //   * The number on a square is the piece's contextual value; the COLOUR is
+  //     its premium over the static table. The premium is the insight — "your
+  //     bishop is worth 0.8, not 3" — and the value alone does not carry it.
+  //   * `anchored` explains (the board sums to the evaluation) and `shrunk`
+  //     predicts (it is damped toward the static value because the measurement
+  //     is noisy). Showing only one of them would misrepresent the other.
+
+  let mode = "label";
+  let valuesData = null;
+
+  const PIECE_NAMES = { 1: "Pawn", 2: "Knight", 3: "Bishop", 4: "Rook", 5: "Queen" };
+
+  function pawns(cp) {
+    return (cp / 100).toFixed(2);
+  }
+
+  function signedPawns(cp) {
+    const v = cp / 100;
+    return `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}`;
+  }
+
+  /** Square -> {top,left} in 12.5% steps. Percentages track the board on
+   *  resize, so this needs no pixel measuring and no resize listener. */
+  function squareToPercent(square, orientation) {
+    const file = square.charCodeAt(0) - 97;
+    const rank = parseInt(square[1], 10) - 1;
+    const flip = orientation === "black";
+    const col = flip ? 7 - file : file;
+    const row = flip ? rank : 7 - rank;
+    return { left: `${col * 12.5}%`, top: `${row * 12.5}%` };
+  }
+
+  /** Premium -> colour. Green = worth more than the book says, red = less. */
+  function premiumColor(premiumCp) {
+    const t = Math.max(-1, Math.min(1, premiumCp / 300));
+    if (t >= 0) return `rgba(80, 220, 90, ${0.25 + 0.6 * t})`;
+    return `rgba(235, 90, 90, ${0.25 + 0.6 * -t})`;
+  }
+
+  function clearValueOverlay() {
+    const el = $("dvValueOverlay");
+    if (!el) return;
+    el.innerHTML = "";
+    el.classList.add("hidden");
+  }
+
+  function renderValueOverlay(data) {
+    const el = $("dvValueOverlay");
+    if (!el || !data) return;
+    const orientation = turnFromFen(data.fen);
+    el.innerHTML = data.pieces
+      .map((p) => {
+        const pos = squareToPercent(p.square, orientation);
+        return (
+          `<div class="dv-vcell" style="top:${pos.top};left:${pos.left}">` +
+          `<span class="dv-vchip" style="background:${premiumColor(p.premium_cp)}">` +
+          `${pawns(p.anchored_cp)}</span></div>`
+        );
+      })
+      .join("");
+    el.classList.remove("hidden");
+  }
+
+  function renderValues(data) {
+    valuesData = data;
+    $("dvValuesResult").classList.remove("hidden");
+
+    $("dvRecon").innerHTML =
+      `<div><b>${signedPawns(data.material_cp)}</b><span>Material</span></div>` +
+      `<div><b>${signedPawns(data.gap_cp)}</b><span>Gap</span></div>` +
+      `<div><b>${signedPawns(data.eval_material_cp)}</b><span>Evaluation</span></div>`;
+
+    $("dvSaturated").classList.toggle("hidden", !data.saturated);
+
+    // Sorted by |premium| so the piece that explains the gap is row one.
+    const rows = data.pieces
+      .slice()
+      .sort((a, b) => Math.abs(b.premium_cp) - Math.abs(a.premium_cp));
+
+    $("dvValuesRows").innerHTML = rows
+      .map((p) => {
+        const why = (p.tags || []).join(", ");
+        const reloc = p.relocation
+          ? `<span class="dv-reloc">&rarr; ${escapeHtml(p.relocation.to_square)} ` +
+            `(${signedPawns(p.relocation.gain_cp)})</span>`
+          : "";
+        const sign = p.premium_cp >= 0 ? "up" : "down";
+        return (
+          `<tr><td><span class="dv-vpiece" data-color="${p.color}">` +
+          `${escapeHtml(p.symbol)}${escapeHtml(p.square)}</span> ` +
+          `<span class="dv-vwhy">${escapeHtml(PIECE_NAMES[p.piece_type] || "")}</span></td>` +
+          `<td>${pawns(p.static_cp)}</td>` +
+          `<td><b>${pawns(p.anchored_cp)}</b></td>` +
+          `<td class="dv-prem" data-sign="${sign}">${signedPawns(p.premium_cp)}</td>` +
+          `<td>${pawns(p.shrunk_cp)}</td>` +
+          `<td class="dv-vwhy">${escapeHtml(why)} ${reloc}</td></tr>`
+        );
+      })
+      .join("");
+
+    $("dvValuesFoot").innerHTML =
+      `${data.analyses} engine searches at depth ${data.depth} in ` +
+      `${(data.elapsed_ms / 1000).toFixed(1)}s. ` +
+      `<b>Value</b> reconciles to the evaluation and is what explains the gap; ` +
+      `<b>Predict</b> is the same number shrunk ${Math.round(data.shrinkage * 100)}% ` +
+      `toward the static table, which is what beat 1/3/3/5/9 at predicting real trades. ` +
+      `Residual before anchoring: ${signedPawns(data.residual_cp)}.`;
+
+    // Draw the position the values were measured on, then the overlay.
+    drawBoard({ fen: data.fen });
+    renderValueOverlay(data);
+  }
+
+  /** FastAPI reports 422 as a list of error objects and everything else as a
+   *  string, so a bare `body.detail` renders "[object Object]" on the one path
+   *  a user hits most: a malformed FEN. */
+  function detailText(body, statusCode) {
+    const detail = body && body.detail;
+    if (typeof detail === "string" && detail) return detail;
+    if (Array.isArray(detail) && detail.length) {
+      return detail
+        .map((d) => (d && d.msg ? d.msg : JSON.stringify(d)))
+        .join("; ");
+    }
+    return `Failed (${statusCode})`;
+  }
+
+  async function runValues() {
+    const fen = ($("dvFen").value || "").trim();
+    const status = $("dvValuesStatus");
+    if (!fen) {
+      status.textContent = "Paste a FEN, or press “From board”.";
+      status.dataset.error = "true";
+      return;
+    }
+    const btn = $("dvRunValues");
+    btn.disabled = true;
+    status.dataset.error = "false";
+    status.textContent = "Measuring — one engine search per piece…";
+    try {
+      const res = await api("/api/dev/piece-values", {
+        method: "POST",
+        body: JSON.stringify({
+          fen,
+          depth: parseInt($("dvDepth").value, 10),
+          relocate_top_k: $("dvRelocate").checked ? 2 : 0,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        status.dataset.error = "true";
+        status.textContent = detailText(body, res.status);
+        $("dvValuesResult").classList.add("hidden");
+        clearValueOverlay();
+        return;
+      }
+      status.textContent = "";
+      renderValues(body);
+    } catch (err) {
+      status.dataset.error = "true";
+      status.textContent = "Request failed.";
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function setMode(next) {
+    mode = next;
+    const values = mode === "values";
+    $("dvValuesPanel").classList.toggle("hidden", !values);
+    document.querySelector("#dev-root .dv-panel:not(.dv-values)")
+      .classList.toggle("hidden", values);
+    $("dvCounter").classList.toggle("hidden", values);
+    document.querySelector("#dev-root .dv-bar-mid").classList.toggle("hidden", values);
+    document.querySelector("#dev-root .dv-nav").classList.toggle("hidden", values);
+    document.querySelector("#dev-root .dv-legend").classList.toggle("hidden", values);
+    $("dvValueLegend").classList.toggle("hidden", !values);
+    // The labelling progress counter and export belong to the other mode.
+    document.querySelector("#dev-root .dv-bar-right").classList.toggle("dv-quiet", values);
+    document.querySelectorAll("#dev-root .dv-modes button").forEach((b) => {
+      const on = b.dataset.mode === mode;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    if (values) {
+      if (valuesData) renderValueOverlay(valuesData);
+      // Seed the FEN box from whatever position the labeller was showing.
+      if (!$("dvFen").value && current && current.fen) $("dvFen").value = current.fen;
+    } else {
+      clearValueOverlay();
+      render(current);
+    }
+  }
+
   // ── Wiring ────────────────────────────────────────────────────────────── //
 
   function onKey(event) {
-    if (!active) return;
+    if (!active || mode === "values") return;
     const tag = (event.target && event.target.tagName) || "";
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -378,6 +579,14 @@
       saveTimer = setTimeout(() => save({ silent: true }), 600);
     });
     $("dvExportBtn").addEventListener("click", exportLabels);
+
+    document.querySelectorAll("#dev-root .dv-modes button").forEach((b) => {
+      b.addEventListener("click", () => setMode(b.dataset.mode));
+    });
+    $("dvRunValues").addEventListener("click", runValues);
+    $("dvFromBoard").addEventListener("click", () => {
+      if (current && current.fen) $("dvFen").value = current.fen;
+    });
 
     // A filter change re-indexes everything, so drop the page cache and restart
     // at the top rather than keeping a now-meaningless offset.

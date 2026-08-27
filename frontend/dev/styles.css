@@ -471,3 +471,226 @@
 }
 
 #dev-root .hidden { display: none; }
+
+/* ── Piece values lab ──────────────────────────────────────────────────── */
+
+#dev-root .dv-modes {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--dv-line);
+  border-radius: 8px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+}
+
+#dev-root .dv-modes button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--dv-dim);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0.24rem 0.55rem;
+}
+
+#dev-root .dv-modes button.active {
+  background: rgba(255, 176, 32, 0.18);
+  color: #ffd489;
+}
+
+/* The board and its overlay share a stacking context; percentages track the
+   board on resize, so no pixel measuring and no resize listener. */
+#dev-root .dv-boardframe { position: relative; }
+
+#dev-root .dv-valueoverlay {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 4;
+}
+
+#dev-root .dv-vcell {
+  align-items: flex-start;
+  display: flex;
+  height: 12.5%;
+  justify-content: flex-end;
+  padding: 2px;
+  position: absolute;
+  width: 12.5%;
+}
+
+#dev-root .dv-vchip {
+  border-radius: 4px;
+  font-size: clamp(0.5rem, 1.35vw, 0.72rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1;
+  padding: 1px 3px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+#dev-root .dv-values { gap: 0.9rem; }
+
+#dev-root .dv-values-form { display: flex; flex-direction: column; gap: 0.5rem; }
+
+#dev-root .dv-fenlabel {
+  color: var(--dv-dim);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+#dev-root .dv-values-form textarea {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--dv-line);
+  border-radius: 8px;
+  color: #e7eaee;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.74rem;
+  padding: 0.45rem 0.6rem;
+  resize: vertical;
+}
+
+#dev-root .dv-values-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+#dev-root .dv-check {
+  align-items: center;
+  color: var(--dv-dim);
+  display: flex;
+  font-size: 0.74rem;
+  gap: 0.3rem;
+}
+
+#dev-root .dv-run {
+  background: linear-gradient(180deg, rgba(255, 176, 32, 0.26), rgba(255, 176, 32, 0.1));
+  border: 1px solid rgba(255, 176, 32, 0.6);
+  border-radius: 8px;
+  color: #ffd489;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-left: auto;
+  padding: 0.4rem 0.9rem;
+}
+
+#dev-root .dv-run:disabled { cursor: progress; opacity: 0.55; }
+
+#dev-root .dv-depthnote,
+#dev-root .dv-vfoot {
+  color: var(--dv-dim);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+#dev-root .dv-vstatus {
+  color: var(--dv-dim);
+  font-size: 0.78rem;
+  margin: 0;
+  min-height: 1rem;
+}
+
+#dev-root .dv-vstatus[data-error="true"] { color: #ff9d9d; }
+
+/* The reconciliation line: material + gap == eval, by construction. */
+#dev-root .dv-recon {
+  border: 1px solid var(--dv-line);
+  border-radius: 10px;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(3, 1fr);
+  padding: 0.7rem;
+}
+
+#dev-root .dv-recon div { text-align: center; }
+#dev-root .dv-recon b {
+  display: block;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+#dev-root .dv-recon span {
+  color: var(--dv-dim);
+  font-size: 0.64rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+#dev-root .dv-saturated {
+  background: rgba(255, 176, 32, 0.08);
+  border: 1px solid rgba(255, 176, 32, 0.3);
+  border-radius: 8px;
+  color: #ffd489;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+}
+
+#dev-root .dv-vtable {
+  border-collapse: collapse;
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+
+#dev-root .dv-vtable th {
+  border-bottom: 1px solid var(--dv-line);
+  color: var(--dv-dim);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 0.3rem 0.35rem;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+#dev-root .dv-vtable th:first-child,
+#dev-root .dv-vtable td:first-child,
+#dev-root .dv-vtable th:last-child,
+#dev-root .dv-vtable td:last-child { text-align: left; }
+
+#dev-root .dv-vtable td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 0.28rem 0.35rem;
+  text-align: right;
+}
+
+#dev-root .dv-vtable tr:hover td { background: rgba(255, 255, 255, 0.03); }
+
+#dev-root .dv-vpiece { font-weight: 700; }
+#dev-root .dv-vpiece[data-color="black"] { color: #9fb0c4; }
+
+#dev-root .dv-prem[data-sign="up"] { color: #7de05a; }
+#dev-root .dv-prem[data-sign="down"] { color: #ff8f8f; }
+
+#dev-root .dv-vwhy {
+  color: var(--dv-dim);
+  font-size: 0.66rem;
+}
+
+#dev-root .dv-reloc { color: #c9a2f7; }
+
+#dev-root .dv-vlegend {
+  align-items: center;
+  color: var(--dv-dim);
+  display: flex;
+  font-size: 0.7rem;
+  gap: 0.3rem;
+}
+
+#dev-root .dv-vlegend.hidden { display: none; }
+#dev-root .dv-key--under { background: rgba(235, 90, 90, 0.75); }
+#dev-root .dv-key--over { background: rgba(80, 220, 90, 0.75); }
+
+/* The labelling progress counter and export button mean nothing in values
+   mode; dim rather than remove, so the bar does not reflow on every switch. */
+#dev-root .dv-bar-right.dv-quiet { opacity: 0.35; pointer-events: none; }

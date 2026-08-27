@@ -2781,7 +2781,11 @@
     <div id="dev-root" class="hidden">
       <div class="dv-bar">
         <div class="dv-bar-left">
-          <span class="dv-brand">Calibration</span>
+          <span class="dv-brand">Dev</span>
+          <div class="dv-modes" role="tablist" aria-label="Dev tools">
+            <button type="button" role="tab" data-mode="label" class="active" aria-selected="true">Labelling</button>
+            <button type="button" role="tab" data-mode="values" aria-selected="false">Piece values</button>
+          </div>
           <span class="dv-counter" id="dvCounter">—</span>
         </div>
         <div class="dv-bar-mid">
@@ -2810,12 +2814,22 @@
 
       <div class="dv-body">
         <div class="dv-boardcol">
-          <div class="dv-board cg-wrap" id="dvBoard"></div>
+          <div class="dv-boardframe">
+            <div class="dv-board cg-wrap" id="dvBoard"></div>
+            <div class="dv-valueoverlay hidden" id="dvValueOverlay" aria-hidden="true"></div>
+          </div>
           <div class="dv-boardmeta">
             <span class="dv-turn" id="dvTurn">—</span>
             <span class="dv-legend">
               <i class="dv-key dv-key--best"></i> best move
               <i class="dv-key dv-key--played"></i> played
+            </span>
+            <!-- The number is the value; the colour is the premium, which is
+                 the part that carries the insight. Say so. -->
+            <span class="dv-vlegend hidden" id="dvValueLegend">
+              number = value ·
+              <i class="dv-key dv-key--under"></i> under book
+              <i class="dv-key dv-key--over"></i> over book
             </span>
           </div>
           <div class="dv-nav">
@@ -2907,6 +2921,61 @@
               <span class="dv-saved" id="dvSaved"></span>
               <button type="button" class="dv-ghost" id="dvClear">Clear labels</button>
             </div>
+          </div>
+        </aside>
+
+        <!-- ── Piece values ───────────────────────────────────────────── -->
+        <!-- A lab bench, not a product surface: it runs ~30 engine searches
+             per position. The number on each square is the piece's contextual
+             value; the COLOUR is its premium over the static table, which is
+             the actual insight. -->
+        <aside class="dv-panel dv-values hidden" id="dvValuesPanel">
+          <div class="dv-values-form">
+            <label class="dv-fenlabel" for="dvFen">Position (FEN)</label>
+            <textarea id="dvFen" rows="2" spellcheck="false"
+                      placeholder="Paste a FEN, or press &ldquo;From board&rdquo;"></textarea>
+            <div class="dv-values-controls">
+              <button type="button" class="dv-ghost" id="dvFromBoard">From board</button>
+              <label class="dv-select">
+                Depth
+                <select id="dvDepth">
+                  <option value="10">10 · fast</option>
+                  <option value="12">12 · noisy</option>
+                  <option value="14">14</option>
+                  <option value="16" selected>16 · validated</option>
+                  <option value="18">18 · slow</option>
+                </select>
+              </label>
+              <label class="dv-check">
+                <input type="checkbox" id="dvRelocate" /> Relocate top 2
+              </label>
+              <button type="button" class="dv-run" id="dvRunValues">Measure</button>
+            </div>
+            <p class="dv-depthnote">
+              Depth is load-bearing, not a speed dial &mdash; at 12 the ablation
+              noise swamps the signal. 16 is the validated setting.
+            </p>
+          </div>
+
+          <p class="dv-vstatus" id="dvValuesStatus"></p>
+
+          <div id="dvValuesResult" class="hidden">
+            <div class="dv-recon" id="dvRecon"></div>
+            <p class="dv-saturated hidden" id="dvSaturated">
+              <b>Saturated.</b> Past &plusmn;8.00 the evaluation stops
+              discriminating, so every piece compresses toward zero and the raw
+              values are unreliable. Shown, not hidden.
+            </p>
+            <table class="dv-vtable">
+              <thead>
+                <tr>
+                  <th>Piece</th><th>Static</th><th>Value</th>
+                  <th>Premium</th><th>Predict</th><th>Why</th>
+                </tr>
+              </thead>
+              <tbody id="dvValuesRows"></tbody>
+            </table>
+            <p class="dv-vfoot" id="dvValuesFoot"></p>
           </div>
         </aside>
       </div>
