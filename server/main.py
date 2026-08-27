@@ -38,6 +38,7 @@ from server.guess_elo_api import build_guess_elo_router
 from server.guess_eval_api import build_guess_eval_router
 from server.insights_api import build_insights_router
 from server.reviews_api import build_reviews_router
+from server.devlabels_api import build_dev_labels_router
 from server.deps import current_user, get_connection
 from server.replies import engine_reply
 from server.selection import select_next_position
@@ -117,6 +118,9 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
     # Per-user saved analyzed games (vol Library).
     app.include_router(build_vol_games_router(app))
 
+    # Dev tab: manual volatility / findability labelling over stored reviews.
+    app.include_router(build_dev_labels_router(app))
+
     # Guess the Elo Duels (matchmaking + guessing game).
     app.include_router(build_guess_elo_router())
 
@@ -158,6 +162,7 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
     # tab, but old links must keep resolving.
     @app.get("/guess-the-elo")
     @app.get("/guess-the-eval")
+    @app.get("/dev")
     def spa_routes(rest: str = "") -> FileResponse:  # noqa: ARG001
         return _spa_index()
 
