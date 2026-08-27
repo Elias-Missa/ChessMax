@@ -1111,6 +1111,35 @@
     evalLabelEl.textContent = formatEval(cpSideToMove, turn);
   }
 
+  // ── Human Eval bar ──────────────────────────────────────────────────────
+  // The same position, weighted by what a player at the user's level actually
+  // plays. It is hidden rather than zeroed when absent: no human model
+  // installed is not the same claim as "the position is equal".
+  const humanEvalWrap = document.getElementById("humanEvalWrap");
+  const humanEvalBarEl = document.getElementById("humanEvalBar");
+  const humanEvalLabelEl = document.getElementById("humanEvalLabel");
+
+  function renderHumanEvalBar(humanEval) {
+    if (!humanEvalWrap || !humanEvalBarEl) return;
+    if (!humanEval || typeof humanEval.cp !== "number") {
+      humanEvalWrap.classList.add("hidden");
+      return;
+    }
+    humanEvalWrap.classList.remove("hidden");
+    // `cp` is already White POV, unlike the engine bar's side-to-move value.
+    humanEvalBarEl.style.setProperty("--fill", evalCpToFill(humanEval.cp));
+    if (humanEvalLabelEl) humanEvalLabelEl.textContent = formatEval(humanEval.cp, "w");
+    const delta = humanEval.delta_cp || 0;
+    humanEvalWrap.title =
+      `Human evaluation at ~${humanEval.rating}: ${formatEval(humanEval.cp, "w")}` +
+      ` (engine says ${formatEval(humanEval.engine_cp, "w")}). ` +
+      (Math.abs(delta) < 50
+        ? "The engine line is one a player at this level would find."
+        : delta > 0
+          ? "Better for White than the engine says — the refutation is hard to find."
+          : "Worse for White than the engine says — the punishing move is an easy one.");
+  }
+
   // Last rendered volatility JSON — re-used on tab switch so the active
   // tab's explain panel always shows the current explanation (instead of
   // silently going stale because it was hidden when the data arrived).
@@ -1407,8 +1436,14 @@
   }
 
   function showArrowTip(event) {
-    if (!arrowTip || !arrowTipText || !boardFrameEl) return;
-    arrowTip.innerHTML = arrowTipText;
+    // Each arrow carries its own text, so the best-move and the
+    // strong-at-your-level arrow can say different things on the same board.
+    const own = event && event.currentTarget && event.currentTarget.dataset
+      ? event.currentTarget.dataset.tip
+      : null;
+    const text = own || arrowTipText;
+    if (!arrowTip || !text || !boardFrameEl) return;
+    arrowTip.innerHTML = text;
     arrowTip.classList.remove("hidden");
     arrowTip.setAttribute("aria-hidden", "false");
     const rect = boardFrameEl.getBoundingClientRect();
@@ -1443,18 +1478,19 @@
     ));
   }
 
-  function drawArrow(uci, color) {
-    if (!arrowLayer || !uci || uci.length < 4) { clearArrow(); return; }
+  function drawArrow(uci, color, tipHtml, options) {
+    const append = !!(options && options.append);
+    if (!arrowLayer || !uci || uci.length < 4) { if (!append) clearArrow(); return; }
     const from = uci.slice(0, 2);
     const to = uci.slice(2, 4);
     const a = squareCenter(from);
     const b = squareCenter(to);
-    if (!a || !b) { clearArrow(); return; }
+    if (!a || !b) { if (!append) clearArrow(); return; }
 
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const len = Math.hypot(dx, dy);
-    if (len < 1) { clearArrow(); return; }
+    if (len < 1) { if (!append) clearArrow(); return; }
     const ux = dx / len;
     const uy = dy / len;
 
@@ -1504,7 +1540,7 @@
       headPoly.setAttribute("style", `fill:${color};stroke:${color}`);
     }
 
-    clearArrow();
+    if (!append) clearArrow();
     arrowLayer.appendChild(shaft);
     arrowLayer.appendChild(headPoly);
 
@@ -1512,20 +1548,244 @@
     // so the tooltip never blocks a square underneath it.
     for (const el of [shaft, headPoly]) {
       el.classList.add("arrow-hit");
+      if (tipHtml) el.dataset.tip = tipHtml;
       el.addEventListener("mouseenter", showArrowTip);
       el.addEventListener("mousemove", showArrowTip);
       el.addEventListener("mouseleave", hideArrowTip);
     }
   }
 
+  // ── Contextual piece values on the review board ─────────────────────────
+  //
+  // Opt-in, and fetched per position rather than per review: it costs about one
+  // engine search per piece (~30), which is fine on demand and far too slow to
+  // run while arrow-keying through a game. Requests are keyed by FEN and the
+  // latest one wins, so scrubbing quickly cannot land a stale board.
+  const pieceValueOverlay = document.getElementById("pieceValueOverlay");
+  const pieceValuesToggle = document.getElementById("pieceValuesToggle");
+  const PV_STORAGE_KEY = "chessmax.review.pieceValues";
+  const pieceValueCache = new Map();
+  let pieceValuesOn = false;
+  let pieceValueRequestId = 0;
+
+  function pieceValuesEnabled() {
+    return pieceValuesOn;
+  }
+
+  /** Square -> {top,left} in 12.5% steps, honouring board orientation. */
+  function pvSquarePercent(square, orientation) {
+    const file = square.charCodeAt(0) - 97;
+    const rank = parseInt(square[1], 10) - 1;
+    const flip = orientation === "black";
+    return {
+      left: `${(flip ? 7 - file : file) * 12.5}%`,
+      top: `${(flip ? rank : 7 - rank) * 12.5}%`,
+    };
+  }
+
+  function pvPremiumColor(premiumCp) {
+    const t = Math.max(-1, Math.min(1, (premiumCp || 0) / 300));
+    return t >= 0
+      ? `rgba(80, 220, 90, ${0.25 + 0.6 * t})`
+      : `rgba(235, 90, 90, ${0.25 + 0.6 * -t})`;
+  }
+
+  function clearPieceValues() {
+    if (!pieceValueOverlay) return;
+    pieceValueOverlay.innerHTML = "";
+    pieceValueOverlay.classList.add("hidden");
+  }
+
+  function renderPieceValues(data) {
+    if (!pieceValueOverlay || !data || !Array.isArray(data.pieces)) return;
+    const orientation = board && board.orientation ? board.orientation() : "white";
+    pieceValueOverlay.innerHTML = data.pieces
+      .map((piece) => {
+        const pos = pvSquarePercent(piece.square, orientation);
+        const value = (piece.anchored_cp / 100).toFixed(2);
+        return (
+          `<div class="pv-cell" style="top:${pos.top};left:${pos.left}">` +
+          `<span class="pv-chip" style="background:${pvPremiumColor(piece.premium_cp)}">` +
+          `${value}</span></div>`
+        );
+      })
+      .join("");
+    pieceValueOverlay.classList.remove("hidden");
+  }
+
+  async function refreshPieceValues(fen) {
+    if (!pieceValuesEnabled() || !fen) { clearPieceValues(); return; }
+    if (pieceValueCache.has(fen)) { renderPieceValues(pieceValueCache.get(fen)); return; }
+
+    const requestId = ++pieceValueRequestId;
+    clearPieceValues();
+    try {
+      const res = await fetch("/api/dev/piece-values", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ fen, depth: 12 }),
+      });
+      const body = await res.json();
+      // Scrubbing fires several of these; only the newest may paint.
+      if (requestId !== pieceValueRequestId || !pieceValuesEnabled()) return;
+      if (!res.ok) { clearPieceValues(); return; }
+      pieceValueCache.set(fen, body);
+      renderPieceValues(body);
+    } catch (err) {
+      if (requestId === pieceValueRequestId) clearPieceValues();
+    }
+  }
+
+  function currentPlyFen() {
+    if (currentPlyIdx < 0 || currentPlyIdx >= loadedPlies.length) return null;
+    const entry = loadedPlies[currentPlyIdx];
+    // Values describe the position on the board, which is after the move.
+    return entry ? entry.fen_after : null;
+  }
+
+  if (pieceValuesToggle) {
+    try {
+      pieceValuesOn = localStorage.getItem(PV_STORAGE_KEY) === "1";
+    } catch (err) { pieceValuesOn = false; }
+    pieceValuesToggle.checked = pieceValuesOn;
+    pieceValuesToggle.addEventListener("change", () => {
+      pieceValuesOn = !!pieceValuesToggle.checked;
+      try { localStorage.setItem(PV_STORAGE_KEY, pieceValuesOn ? "1" : "0"); }
+      catch (err) { /* private mode — the toggle still works this session */ }
+      if (pieceValuesOn) refreshPieceValues(currentPlyFen());
+      else clearPieceValues();
+    });
+  }
+
+  // ── Review notes: steering advice + the level verdict ───────────────────
+  //
+  // Two things the classification badge alone cannot say. The steering advice
+  // is about the position you chose to enter (winning wants quiet, losing
+  // wants mess). The level note is about the gap between "correct" and
+  // "correct for you" — playing the move a player at your rating would pick
+  // and being told it is a mistake is useful information, not a scolding.
+  const reviewNotesEl = document.getElementById("reviewNotes");
+
+  function renderReviewNotes(r, review, topLines) {
+    if (!reviewNotesEl) return;
+    const parts = [];
+    const advice = r && r.ply ? r.ply.vol_advice : null;
+    const human = r && r.ply ? r.ply.human_eval : null;
+
+    if (advice) {
+      parts.push(
+        `<div class="review-note" data-kind="${escapeHtml(advice.kind)}"` +
+        ` data-severity="${escapeHtml(advice.severity)}">` +
+        `<b>${escapeHtml(advice.headline)}</b>` +
+        `<span>${escapeHtml(advice.detail)}</span></div>`
+      );
+    }
+
+    // Did they play the move their level plays, and get marked down for it?
+    const playedUci = r && r.ply ? r.ply.move_uci : null;
+    const bestUci = topLines && topLines[0] ? topLines[0].uci : null;
+    const classification = review && review.classification;
+    if (human && playedUci && human.top_move_uci === playedUci && bestUci !== playedUci
+        && isPoorMove(classification)) {
+      parts.push(
+        `<div class="review-note" data-kind="level" data-severity="info">` +
+        `<b>A mistake with best play — but the move at your level</b>` +
+        `<span>Players around ${human.rating} choose this most often here. ` +
+        `The engine's objection needs a line few of them would find.</span></div>`
+      );
+    }
+
+    reviewNotesEl.innerHTML = parts.join("");
+    reviewNotesEl.classList.toggle("hidden", parts.length === 0);
+  }
+
+  // ── Arrow policy ────────────────────────────────────────────────────────
+  //
+  // The best-move arrow only appears when the move played was an inaccuracy or
+  // worse. Pointing at the engine's move after the user already found an
+  // excellent one is noise: it answers a question nobody asked and trains the
+  // eye to ignore the arrow entirely.
+  //
+  // Alongside it, the strong-at-your-level arrow (pink) shows the move a player
+  // at the user's rating would actually pick, when that differs from the
+  // engine's. Two arrows, two different claims — so they carry separate hover
+  // text rather than sharing one global tooltip.
+  const POOR_CLASSIFICATIONS = new Set([
+    "inaccuracy", "mistake", "miss", "blunder",
+  ]);
+  const HUMAN_ARROW_COLOR = "#ec4899";
+
+  let arrowPlan = [];
+
+  function isPoorMove(classification) {
+    return POOR_CLASSIFICATIONS.has(String(classification || ""));
+  }
+
+  function findabilityTip(findability) {
+    if (!findability || typeof findability.score !== "number") {
+      return "<span>Findability not computed for this move</span>";
+    }
+    const band = findability.band ? ` · ${escapeHtml(findability.band)}` : "";
+    let out = `<span>Findability ${findability.score}/100${band}</span>`;
+    if (typeof findability.personal === "number") {
+      out += `<span>You'd find it ${Math.round(findability.personal * 100)}% of the time</span>`;
+    }
+    return out;
+  }
+
+  /** Decide which arrows this ply gets. Returns [{uci, color, tip}]. */
+  function buildArrowPlan(r, review) {
+    const plan = [];
+    if (!r || !r.ply) return plan;
+    const tl = r.ply.volatility && r.ply.volatility.top_lines;
+    const bestUci = tl && tl[0] ? tl[0].uci : null;
+    const bestSan = (review && review.best_move_san) || (tl && tl[0] ? tl[0].san : null);
+    const classification = review && review.classification;
+    const human = r.ply.human_eval;
+
+    if (!isPoorMove(classification)) return plan;
+
+    if (bestUci) {
+      plan.push({
+        uci: bestUci,
+        color: BEST_ARROW_COLOR,
+        tip:
+          `<strong>Best move${bestSan ? `: ${escapeHtml(bestSan)}` : ""}</strong>` +
+          findabilityTip(r.ply.findability),
+      });
+    }
+
+    // The human model's pick, when it is a genuinely different move.
+    if (human && human.top_move_uci && human.top_move_uci !== bestUci) {
+      const pct = Math.round((human.top_move_p || 0) * 100);
+      plan.push({
+        uci: human.top_move_uci,
+        color: HUMAN_ARROW_COLOR,
+        tip:
+          `<strong>Strong at your level</strong>` +
+          `<span>Players around ${human.rating} pick this ${pct}% of the time</span>` +
+          `<span>Findability is measured for the engine's move above</span>`,
+      });
+    }
+    return plan;
+  }
+
   function refreshArrow() {
-    if (!arrowEnabled() || !lastTopMoveUci) { clearArrow(); return; }
-    drawArrow(lastTopMoveUci, currentReviewArrowColor());
+    if (!arrowEnabled() || !arrowPlan.length) { clearArrow(); return; }
+    clearArrow();
+    arrowPlan.forEach((a) => drawArrow(a.uci, a.color, a.tip, { append: true }));
+  }
+
+  function setArrowPlan(plan) {
+    arrowPlan = Array.isArray(plan) ? plan : [];
+    lastTopMoveUci = arrowPlan.length ? arrowPlan[0].uci : null;
+    refreshArrow();
   }
 
   function setTopMove(uci) {
-    lastTopMoveUci = uci || null;
-    refreshArrow();
+    // Editor / single-position paths still want one unconditional arrow.
+    setArrowPlan(uci ? [{ uci, color: currentReviewArrowColor(), tip: arrowTipText }] : []);
   }
 
   // ── Engine lines panel ────────────────────────────────────────────────── //
@@ -2266,7 +2526,11 @@
         },
         r.ply.findability,
       );
-      setTopMove(tl && tl[0] ? tl[0].uci : null);
+      // Arrows are conditional now: nothing on a move the user got right.
+      setArrowPlan(buildArrowPlan(r, review));
+      refreshPieceValues(entry.fen_after);
+      renderHumanEvalBar(r.ply.human_eval);
+      renderReviewNotes(r, review, tl);
       if (boardFrameEl) {
         if (review && review.classification) {
           boardFrameEl.dataset.reviewClass = review.classification;
@@ -2280,7 +2544,10 @@
     } else {
       clearTopLinesLists();
       arrowTipText = "";
-      setTopMove(null);
+      setArrowPlan([]);
+      clearPieceValues();
+      renderHumanEvalBar(null);
+      renderReviewNotes(null, null, null);
       if (boardFrameEl) delete boardFrameEl.dataset.reviewClass;
       if (reviewMoveCard) reviewMoveCard.classList.add("hidden");
     }

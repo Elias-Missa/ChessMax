@@ -166,25 +166,39 @@ def _sse_event(event: str, payload: dict[str, Any]) -> _SseEvent:
 
 
 def _attach_findability_if_available(results: list[PlyResult], user_rating: int | None) -> None:
-    """Populate per-ply findability when a human model is installed (spec §3).
+    """Populate the human-model layers: findability, Human Eval, steering advice.
 
-    A no-op when the :data:`POLICY_FACTORY` yields ``None`` (no human model
-    installed, or disabled in tests) — the classic review is unaffected. Never
-    raises: a findability failure must not sink an otherwise-complete review.
+    All three go through one policy binding on purpose — the Maia backend owns
+    lc0 processes, and opening it once per enrichment would pay that cost three
+    times over.
+
+    The steering advice is the exception that runs regardless: it reads only
+    volatility and the evaluation, so it is attached even when
+    :data:`POLICY_FACTORY` yields ``None`` (no human model installed, or
+    disabled in tests). Never raises — an additive layer must not sink an
+    otherwise-complete review.
     """
+    from chess_vol.human_review import attach_human_eval, attach_vol_advice
+
     policy = POLICY_FACTORY()
-    if policy is None:
-        return
+    if policy is not None:
+        try:
+            # The Maia backend is a context manager (owns lc0 processes); an
+            # injected fake policy is just a callable. Support both.
+            if hasattr(policy, "__enter__"):
+                with policy as bound:
+                    attach_findability(results, bound, user_rating=user_rating)
+                    attach_human_eval(results, bound, user_rating=user_rating)
+            else:
+                attach_findability(results, policy, user_rating=user_rating)
+                attach_human_eval(results, policy, user_rating=user_rating)
+        except Exception:  # noqa: BLE001 — additive; degrade gracefully
+            logger.exception("human-model enrichment failed; review returned without it")
+
     try:
-        # The Maia backend is a context manager (owns lc0 processes); an injected
-        # fake policy is just a callable. Support both.
-        if hasattr(policy, "__enter__"):
-            with policy as bound:
-                attach_findability(results, bound, user_rating=user_rating)
-        else:
-            attach_findability(results, policy, user_rating=user_rating)
-    except Exception:  # noqa: BLE001 — findability is additive; degrade gracefully
-        logger.exception("findability enrichment failed; returning review without it")
+        attach_vol_advice(results)
+    except Exception:  # noqa: BLE001
+        logger.exception("steering advice failed; review returned without it")
 
 
 # --------------------------------------------------------------------------- #

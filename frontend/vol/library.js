@@ -82,6 +82,10 @@ Manual smoke test plan:
       return {
         ply: m.ply,
         san: m.san,
+        // Stored in the per-ply detail blob rather than as columns: neither is
+        // aggregated over, so neither has earned a column.
+        vol_advice: d.vol_advice || null,
+        human_eval: d.human_eval || null,
         fen_before: d.fen_before || "",
         fen_after: d.fen_after || "",
         eval_cp: d.eval_cp,

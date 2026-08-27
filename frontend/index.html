@@ -1219,10 +1219,25 @@
             <div id="evalLabel" class="bar-readout">—</div>
           </div>
 
+          <!-- Human Eval: the same position weighted by what a player at this
+               level actually plays, so an engine-only refutation nobody finds
+               stops dominating the number. Hidden until a human model supplies
+               one — null is not zero. -->
+          <div class="sidebar-bar hidden" id="humanEvalWrap"
+               title="Human evaluation — the position weighted by what a player at your level actually plays">
+            <div class="bar-tag">Human</div>
+            <div id="humanEvalBar" class="eval-bar human-eval-bar">
+              <div class="eval-dark-fill"></div>
+              <div class="eval-midline"></div>
+            </div>
+            <div id="humanEvalLabel" class="bar-readout">—</div>
+          </div>
+
           <div class="board-frame">
             <div id="volBoard"></div>
             <svg id="arrowLayer" class="arrow-layer" aria-hidden="true"></svg>
             <div id="arrowTip" class="arrow-tip hidden" role="tooltip" aria-hidden="true"></div>
+            <div id="pieceValueOverlay" class="piece-value-overlay hidden" aria-hidden="true"></div>
             <div id="reviewBoardOverlay" class="review-board-overlay hidden" aria-hidden="true"></div>
           </div>
 
@@ -1385,6 +1400,14 @@
                   <option value="10">Only when the best move gains ≥ 10% win</option>
                 </select>
               </label>
+              <!-- Contextual piece values on the board. Off by default and
+                   fetched per position on demand: it costs one engine search
+                   per piece, so it is not something to leave running while
+                   arrow-keying through a game. -->
+              <label class="drawer-check" for="pieceValuesToggle">
+                <input type="checkbox" id="pieceValuesToggle" />
+                <span>Show piece values</span>
+              </label>
               <button id="btnFlipGame" class="btn btn-block">Flip board</button>
             </div>
           </div>
@@ -1394,6 +1417,10 @@
         <section id="gameStats" class="review-summary hidden" aria-label="Game review summary">
 
           <!-- Coach bubble -->
+          <!-- Steering advice + the level verdict. Empty and hidden until a
+               ply actually has something to say. -->
+          <div id="reviewNotes" class="review-notes hidden"></div>
+
           <div id="reviewCoach" class="rs-coach">
             <span class="rs-coach-avatar" aria-hidden="true">
               <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">

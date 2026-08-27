@@ -115,6 +115,26 @@ class FindabilityJson(TypedDict):
     forced: bool
 
 
+class HumanEvalJson(TypedDict):
+    cp: int
+    engine_cp: int
+    delta_cp: int
+    rating: int
+    coverage: float
+    top_move_uci: str | None
+    top_move_p: float
+
+
+class VolAdviceJson(TypedDict):
+    kind: str
+    severity: str
+    headline: str
+    detail: str
+    win_prob: float
+    volatility: float
+    volatility_delta: float | None
+
+
 class PlyJson(TypedDict):
     """JSON shape for a single :class:`PlyResult`."""
 
@@ -128,6 +148,8 @@ class PlyJson(TypedDict):
     classification: ClassificationJson | None
     review: MoveReviewJson | None
     findability: FindabilityJson | None
+    human_eval: HumanEvalJson | None
+    vol_advice: VolAdviceJson | None
 
 
 class ParamsJson(TypedDict, total=False):
@@ -270,6 +292,14 @@ def findability_to_json(findability: PositionFindability) -> FindabilityJson:
     )
 
 
+def human_eval_to_json(value: Any) -> "HumanEvalJson | None":
+    return value.as_dict() if value is not None else None  # type: ignore[return-value]
+
+
+def vol_advice_to_json(value: Any) -> "VolAdviceJson | None":
+    return value.as_dict() if value is not None else None  # type: ignore[return-value]
+
+
 def ply_to_json(ply: PlyResult) -> PlyJson:
     """Convert a :class:`PlyResult` to a JSON-serializable dict."""
     return PlyJson(
@@ -289,6 +319,8 @@ def ply_to_json(ply: PlyResult) -> PlyJson:
         findability=(
             findability_to_json(ply.findability) if ply.findability is not None else None
         ),
+        human_eval=human_eval_to_json(getattr(ply, "human_eval", None)),
+        vol_advice=vol_advice_to_json(getattr(ply, "vol_advice", None)),
     )
 
 
@@ -363,6 +395,10 @@ __all__: list[str] = [
     "classification_to_json",
     "explanation_to_json",
     "findability_to_json",
+    "human_eval_to_json",
+    "vol_advice_to_json",
+    "HumanEvalJson",
+    "VolAdviceJson",
     "mode_label",
     "move_review_to_json",
     "ply_to_json",

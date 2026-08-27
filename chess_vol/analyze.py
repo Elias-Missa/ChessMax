@@ -16,6 +16,8 @@ import chess.pgn
 from chess_vol.classify import Classification, classify_move
 from chess_vol.game_review import MoveReview, attach_move_reviews
 from core.findability import PositionFindability
+from core.human_eval import HumanEval
+from core.vol_advice import VolAdvice
 from core.volatility import (
     EngineLike,
     VolatilityResult,
@@ -55,6 +57,13 @@ class PlyResult:
     """Expected-points game-review verdict attached after all plies are known."""
 
     findability: PositionFindability | None = None
+    human_eval: "HumanEval | None" = None
+    """Policy-weighted evaluation — what the position is worth to a player of
+    the user's strength, rather than to Stockfish. ``None`` without a human
+    model installed."""
+    vol_advice: "VolAdvice | None" = None
+    """Steering note: winning-and-sharp or losing-and-quiet. Needs no human
+    model, but does need the *next* ply, so the final ply never carries one."""
     """Findability verdict (Game Review 2.0 §3). ``None`` when the position is
     gated out (decided position, book move) or no human model is installed.
     Attached opt-in by :func:`chess_vol.findability_review.attach_findability`."""

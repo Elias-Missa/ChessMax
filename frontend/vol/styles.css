@@ -4002,3 +4002,102 @@ body[data-tab="game"] #vol-root .panel-status {
     grid-template-columns: 1fr;
   }
 }
+/* ── Human Eval bar ─────────────────────────────────────────────────────── */
+/* Sits beside the engine bar and reads the same way, but muted: it is a
+   second opinion, not the source of truth. */
+.human-eval-bar {
+  opacity: 0.92;
+  outline: 1px solid rgba(236, 72, 153, 0.35);
+  outline-offset: -1px;
+}
+
+/* ── Review notes (steering advice + level verdict) ─────────────────────── */
+.review-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.review-notes.hidden { display: none; }
+
+.review-note {
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.1));
+  border-left-width: 3px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+}
+
+.review-note b { font-size: 13px; font-weight: 700; }
+.review-note span { font-size: 12px; line-height: 1.5; opacity: 0.82; }
+
+/* Colour carries the verdict: amber when the move caused the problem, slate
+   when the position simply is that way, pink for the level note (matching the
+   strong-at-your-level arrow). */
+.review-note[data-severity="warn"] {
+  background: rgba(227, 175, 53, 0.08);
+  border-color: rgba(227, 175, 53, 0.45);
+}
+.review-note[data-severity="warn"] b { color: #e3af35; }
+
+.review-note[data-severity="info"] {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.review-note[data-kind="level"] {
+  background: rgba(236, 72, 153, 0.08);
+  border-color: rgba(236, 72, 153, 0.45);
+}
+.review-note[data-kind="level"] b { color: #ec4899; }
+
+/* ── Piece-value overlay on the review board ────────────────────────────── */
+/* Below the arrow layer (z-index 5) and the badge layer (6) so it never
+   occludes either. Percentages track the board, so no resize listener. */
+.piece-value-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.piece-value-overlay.hidden { display: none; }
+
+.pv-cell {
+  position: absolute;
+  width: 12.5%;
+  height: 12.5%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 2px;
+}
+
+/* The number is the value; the colour is the premium over the book value,
+   which is the part that carries the insight. */
+.pv-chip {
+  border-radius: 4px;
+  font-size: clamp(9px, 1.3vw, 12px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1;
+  padding: 1px 3px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+}
+
+.drawer-check {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.pv-status {
+  font-size: 11px;
+  opacity: 0.7;
+  padding: 2px 0;
+}

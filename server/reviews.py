@@ -351,6 +351,18 @@ def analyze_and_store(
         except Exception:  # noqa: BLE001 — findability is best-effort
             pass
 
+    # Human Eval + steering advice. The advice needs no human model, so it runs
+    # at every tier; the Human Eval only when a policy was supplied. Both are
+    # best-effort, like every other enrichment on this path.
+    try:
+        from chess_vol.human_review import attach_human_eval, attach_vol_advice
+
+        if policy_fn is not None:
+            attach_human_eval(plies, policy_fn, user_rating=user_rating)
+        attach_vol_advice(plies)
+    except Exception:  # noqa: BLE001
+        pass
+
     clocks = _parse_clocks(pgn)
     user_is_white = user_color == "white"
     connection.execute("DELETE FROM review_moves WHERE review_id = ?", (review_id,))
@@ -420,6 +432,10 @@ def analyze_and_store(
             "top_lines": top_lines,
             "cache_hits": getattr(cached_engine, "hits", None),
         }
+        if getattr(ply, "vol_advice", None) is not None:
+            detail["vol_advice"] = ply.vol_advice.as_dict()
+        if getattr(ply, "human_eval", None) is not None:
+            detail["human_eval"] = ply.human_eval.as_dict()
         if (
             depth_tier == "full"
             and policy_fn is not None

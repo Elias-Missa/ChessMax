@@ -1,0 +1,19 @@
+{
+  "_comment": "Thresholds for the two human-facing review layers added alongside volatility and findability: the Human Eval bar (core/human_eval.py) and the steering advice (core/vol_advice.py). Every number here is a PLACEHOLDER chosen from chess reasoning, not fitted — unlike findability.json and piece_values.json, nothing here has been measured against a corpus yet. The Dev tab is the intended place to collect the judgements that would fit them.",
+
+  "_rating_offset_comment": "PLACEHOLDER. The Human Eval asks the human policy 'what would a player at THIS rating do here', and the rating it asks at is the user's rating plus this offset. The offset exists because the bar is meant to answer 'realistically, am I winning?' rather than 'what would my exact peer do?' — a pure at-rating model treats every opponent error as equally likely as your own, which reads as too optimistic when you are the one who has to hold the position. Raising the offset makes the bar converge on Stockfish; lowering it makes it more forgiving.",
+  "rating_offset": 500,
+  "rating_default": 1500,
+  "rating_min": 600,
+  "rating_max": 2600,
+
+  "_tail_comment": "The MultiPV we reuse covers only the top few moves, so the human policy's remaining probability mass lands on moves we have no evaluation for. Renormalising over the covered moves would pretend the player only ever chooses among the engine's top lines, which biases the bar upward exactly when it matters. Instead the uncovered mass is valued at the WORST line we do have — optimistic (the tail is worse than that by definition) but bounded, and honest about the direction of the error. min_coverage is the point below which the estimate is too thin to report at all.",
+  "min_coverage": 0.35,
+
+  "_advice_comment": "PLACEHOLDER. Steering advice: when you are winning you want the position stable, because every extra chance is a chance for YOU to go wrong; when you are losing you want it sharp, because a quiet position converts your opponent's advantage for free. Read against win probability AFTER the move (the state you steered into) and the volatility of that state. `swing` is how much the move itself had to move volatility before the advice escalates from an observation to a warning — without it every quiet move in a won position nags.",
+  "winning_win_prob": 0.75,
+  "losing_win_prob": 0.25,
+  "high_volatility": 55.0,
+  "low_volatility": 25.0,
+  "swing_volatility": 12.0
+}
