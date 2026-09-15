@@ -46,6 +46,20 @@ DECISIVE_WIN_PROB = 0.85
 
 SCRAMBLE_CLOCK_SECONDS = 10.0
 
+# Opening ROI: which line is worth practising *next* (see ``compute_opening_roi``).
+#: Shrinkage prior. One game lost in a line is not a 100%-deficit repertoire hole.
+ROI_PRIOR_GAMES = 4.0
+#: Rare lines are shrunk, not hidden — a once-a-season disaster is real, just small.
+ROI_MIN_GAMES = 1
+#: ``attribution`` is a priority multiplier, never a licence to invent points.
+ROI_ATTRIBUTION_FLOOR = 0.4
+ROI_ATTRIBUTION_CEIL = 1.6
+#: Accuracy points (0-100) that move attribution by a full 1.0.
+ROI_ACCURACY_SCALE = 10.0
+#: Par is clamped away from the ends; nobody's realistic target is 0% or 100%.
+ROI_PAR_FLOOR = 0.05
+ROI_PAR_CEIL = 0.95
+
 MOVE_NUMBER_BUCKETS = (
     ("1-10", 1, 10),
     ("11-20", 11, 20),
@@ -880,6 +894,7 @@ def compute_opening_tree(facts: list[dict[str, Any]], *, min_games: int = 2) -> 
         lambda: {
             "n": 0, "score": 0.0, "decided": 0, "acc": [], "loss": [],
             "deviation": [], "blunders": 0, "moves": 0, "eco": "", "games": [],
+            "expected": 0.0, "expected_n": 0,
         }
     )
     for f in facts:
@@ -892,6 +907,9 @@ def compute_opening_tree(facts: list[dict[str, Any]], *, min_games: int = 2) -> 
             g["decided"] += 1
         if f["accuracy"] is not None:
             g["acc"].append(f["accuracy"])
+        if f["points"] is not None and f["expected_points"] is not None:
+            g["expected"] += f["expected_points"]
+            g["expected_n"] += 1
         opening_loss = float(f["phase_delta_w"].get("opening", 0.0))
         opening_moves = int(f["phase_moves"].get("opening", 0))
         if opening_moves:
@@ -910,6 +928,7 @@ def compute_opening_tree(facts: list[dict[str, Any]], *, min_games: int = 2) -> 
             "eco": g["eco"],
             "n": g["n"],
             "score_pct": _score_pct(g["score"], g["decided"]),
+            "expected_pct": _score_pct(g["expected"], g["expected_n"]),
             "mean_accuracy": _mean(g["acc"]),
             "opening_delta_w_per_move": _mean(g["loss"]),
             "mean_deviation_ply": _mean([float(d) for d in g["deviation"]]),
@@ -922,14 +941,192 @@ def compute_opening_tree(facts: list[dict[str, Any]], *, min_games: int = 2) -> 
     best = max(scored, key=lambda r: r["score_pct"]) if scored else None
     worst = min(scored, key=lambda r: r["score_pct"]) if scored else None
 
+    roi = compute_opening_roi(rows, facts)
+
     return {
         "rows": rows,
         "as_white": [r for r in rows if r["color"] == "white"],
         "as_black": [r for r in rows if r["color"] == "black"],
         "best": best,
         "worst": worst,
+        "roi": roi,
         "min_games": min_games,
         "distinct_openings": len({r["opening"] for r in rows}),
+    }
+
+
+# ── Opening ROI ───────────────────────────────────────────────────────────────
+
+
+def _roi_attribution(
+    row: dict[str, Any],
+    baseline_opening_dw: float | None,
+    baseline_accuracy: float | None,
+) -> tuple[float, dict[str, Any]]:
+    """How much of this opening's deficit the *opening* can explain.
+
+    A line you score badly in but play cleanly is not an opening problem — you
+    lost those games somewhere else, and drilling the line returns nothing. Both
+    signals are ratios against the player's **own** baseline, so a careful player
+    and a wild one get the same scale.
+    """
+
+    parts: list[float] = []
+    evidence: dict[str, Any] = {}
+
+    dw = row.get("opening_delta_w_per_move")
+    if dw is not None and baseline_opening_dw:
+        ratio = dw / baseline_opening_dw
+        evidence["opening_loss_ratio"] = round(ratio, 3)
+        parts.append(ratio)
+
+    acc = row.get("mean_accuracy")
+    if acc is not None and baseline_accuracy is not None:
+        gap = baseline_accuracy - acc          # positive: worse here than usual
+        evidence["accuracy_gap"] = round(gap, 2)
+        parts.append(1.0 + gap / ROI_ACCURACY_SCALE)
+
+    if not parts:
+        return 1.0, evidence
+    value = min(max(fmean(parts), ROI_ATTRIBUTION_FLOOR), ROI_ATTRIBUTION_CEIL)
+    return value, evidence
+
+
+def compute_opening_roi(
+    rows: list[dict[str, Any]],
+    facts: list[dict[str, Any]],
+    *,
+    min_games: int = ROI_MIN_GAMES,
+) -> dict[str, Any]:
+    """Rank openings by what practising them would actually return.
+
+    A raw loss rate is the wrong ranking. Three corrections, in order of how
+    badly each one misleads without it:
+
+    1. **Exposure.** A line you meet once in a hundred games cannot cost you
+       much however badly it goes; one you meet every twentieth game can. Every
+       number below is multiplied by ``n / games``, so the ranking is in points
+       lost *per 100 games played*, not per game of that opening.
+    2. **Par, not 50%.** Scoring 50% against equal opposition is the expected
+       result, not a leak — ranking on win rate alone promotes every line the
+       player happens to meet strong opponents in. Par is the mean Elo
+       expectancy of the actual opponents faced in that line, shifted by however
+       much the player beats their rating **in their other games**, so a line is
+       only underwater relative to the rest of that player's results.
+    3. **Attribution.** Underperforming a line you nonetheless play accurately
+       is not fixed by studying it (see ``_roi_attribution``).
+
+    Small samples are shrunk toward zero (``ROI_PRIOR_GAMES``) rather than
+    filtered, so a 0-for-2 disaster appears — well below a line with real
+    evidence behind it.
+
+    ``points_per_100_games`` is the honest size of the hole and is in the leak
+    board's unit (win% per game); ``roi_score`` folds in ``attribution`` and is
+    the ranking key — a priority, not a quantity.
+    """
+
+    n_games = len(facts)
+    params = {
+        "prior_games": ROI_PRIOR_GAMES,
+        "min_games": min_games,
+        "accuracy_scale": ROI_ACCURACY_SCALE,
+        "attribution_range": [ROI_ATTRIBUTION_FLOOR, ROI_ATTRIBUTION_CEIL],
+    }
+    if not rows or not n_games:
+        return {"rows": [], "top": [], "n_games": n_games, "baseline": {}, "params": params}
+
+    decided = [f for f in facts if f["points"] is not None]
+    rated = [f for f in decided if f["expected_points"] is not None]
+    # The player's own par: expectancy plus however much they habitually beat it.
+    # Measured **leave-one-out** — over every game *except* the line being
+    # scored — because a repertoire staple that is 60% of the window would
+    # otherwise set the baseline it is judged against and score a flat zero.
+    rated_total = (
+        sum(f["points"] for f in rated),
+        sum(f["expected_points"] for f in rated),
+        len(rated),
+    )
+    rated_by_line: dict[tuple[str, str], tuple[float, float, int]] = defaultdict(
+        lambda: (0.0, 0.0, 0)
+    )
+    for f in rated:
+        key = (f["user_color"], f["opening_name"])
+        pts, exp, n = rated_by_line[key]
+        rated_by_line[key] = (pts + f["points"], exp + f["expected_points"], n + 1)
+
+    def _shift(key: tuple[str, str]) -> float:
+        pts, exp, n = rated_total
+        own_pts, own_exp, own_n = rated_by_line.get(key, (0.0, 0.0, 0))
+        rest = n - own_n
+        return ((pts - own_pts) - (exp - own_exp)) / rest if rest else 0.0
+
+    overall_score = _score_pct(sum(f["points"] for f in decided), len(decided))
+    baseline_opening_dw = _mean([
+        float(f["phase_delta_w"].get("opening", 0.0)) / int(f["phase_moves"]["opening"])
+        for f in facts
+        if int(f["phase_moves"].get("opening", 0) or 0)
+    ])
+    baseline_accuracy = _mean([f["accuracy"] for f in facts if f["accuracy"] is not None])
+
+    ranked: list[dict[str, Any]] = []
+    for row in rows:
+        score_pct = row.get("score_pct")
+        if score_pct is None or row["n"] < min_games:
+            row["roi"] = None
+            continue
+
+        expected_pct = row.get("expected_pct")
+        shift = _shift((row["color"], row["opening"]))
+        par = (
+            expected_pct + shift
+            if expected_pct is not None
+            else (overall_score if overall_score is not None else 0.5)
+        )
+        par = min(max(par, ROI_PAR_FLOOR), ROI_PAR_CEIL)
+
+        exposure = row["n"] / n_games
+        deficit = max(0.0, par - score_pct)
+        confidence = row["n"] / (row["n"] + ROI_PRIOR_GAMES)
+        points_per_100 = exposure * deficit * 100.0 * confidence
+        attribution, evidence = _roi_attribution(row, baseline_opening_dw, baseline_accuracy)
+
+        entry = {
+            "color": row["color"],
+            "opening": row["opening"],
+            "eco": row["eco"],
+            "n": row["n"],
+            "share": round(exposure, 4),
+            "score_pct": score_pct,
+            "expected_pct": expected_pct,
+            "par_pct": round(par, 4),
+            "expectancy_shift": round(shift, 4),
+            "deficit_per_game": round(deficit, 4),
+            "confidence": round(confidence, 3),
+            "attribution": round(attribution, 3),
+            "points_per_100_games": round(points_per_100, 2),
+            "roi_score": round(points_per_100 * attribution, 2),
+            "mean_accuracy": row.get("mean_accuracy"),
+            "opening_delta_w_per_move": row.get("opening_delta_w_per_move"),
+            "game_ids": row.get("game_ids", [])[:10],
+            **evidence,
+        }
+        row["roi"] = entry
+        ranked.append(entry)
+
+    ranked.sort(key=lambda r: (-r["roi_score"], -r["n"], r["opening"]))
+    return {
+        "rows": ranked,
+        "top": [r for r in ranked if r["roi_score"] > 0][:5],
+        "n_games": n_games,
+        "baseline": {
+            "score_pct": overall_score,
+            "expectancy_shift": round(
+                (rated_total[0] - rated_total[1]) / rated_total[2], 4
+            ) if rated_total[2] else 0.0,
+            "opening_delta_w_per_move": baseline_opening_dw,
+            "accuracy": baseline_accuracy,
+        },
+        "params": params,
     }
 
 
@@ -1245,27 +1442,25 @@ def compute_leaks(
             evidence={"games": conv["n"], "dropped": conv["points_dropped"]},
         ))
 
-    # 6. A specific opening that is underwater.
-    worst_opening = openings.get("worst")
-    if (
-        worst_opening
-        and worst_opening["n"] >= 3
-        and worst_opening["score_pct"] is not None
-        and worst_opening["score_pct"] < 0.4
-    ):
-        share = worst_opening["n"] / n_games
-        impact = (0.5 - worst_opening["score_pct"]) * 100 * share
+    # 6. The opening worth practising next.
+    #    Ranked by ``compute_opening_roi``, not by win rate: a line you meet
+    #    twice a year cannot outrank one you meet weekly however badly it goes,
+    #    and 50% against equal opposition is par rather than a leak.
+    roi_top = next(iter((openings.get("roi") or {}).get("top") or []), None)
+    if roi_top and roi_top["n"] >= 3 and roi_top["points_per_100_games"] >= 1.0:
         leaks.append(_leak(
             "opening",
-            f"{worst_opening['opening']} is losing you games",
-            f"{worst_opening['score_pct'] * 100:.0f}% score across {worst_opening['n']} games as "
-            f"{worst_opening['color']}, leaking "
-            f"{(worst_opening['opening_delta_w_per_move'] or 0):.1f} win% per opening move.",
-            impact,
+            f"{roi_top['opening']} is where practice pays most",
+            f"{roi_top['score_pct'] * 100:.0f}% score across {roi_top['n']} games as "
+            f"{roi_top['color']} — {roi_top['share'] * 100:.0f}% of your games — against "
+            f"{roi_top['par_pct'] * 100:.0f}% par for the opponents you met there. "
+            f"Bringing it to par is worth {roi_top['points_per_100_games']:.1f} points "
+            f"per 100 games.",
+            roi_top["points_per_100_games"],
             ceiling=ceiling,
             practice="mistakes",
             section="openings",
-            evidence=worst_opening,
+            evidence=roi_top,
         ))
 
     # 7. Tilt — the game after a loss.

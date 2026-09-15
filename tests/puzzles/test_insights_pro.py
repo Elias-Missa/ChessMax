@@ -590,3 +590,171 @@ def test_scramble_decay_buckets_populate_from_clock(connection: sqlite3.Connecti
     assert (
         buckets["scramble"]["delta_w_per_move"] > buckets["deep"]["delta_w_per_move"]
     )
+
+
+# ── Opening ROI ───────────────────────────────────────────────────────────────
+
+
+def _roi_fact(
+    idx: int,
+    opening: str,
+    points: float,
+    *,
+    color: str = "white",
+    accuracy: float = 70.0,
+    opening_loss: float = 6.0,
+    user_rating: int = 1500,
+    opponent_rating: int = 1500,
+) -> dict:
+    """One ``game_explorer`` row, trimmed to what the opening tree reads."""
+
+    return {
+        "game_id": f"g{idx}",
+        "review_id": f"r{idx}",
+        "user_color": color,
+        "opening_name": opening,
+        "eco": "B10",
+        "points": points,
+        "outcome": "win" if points == 1.0 else "draw" if points == 0.5 else "loss",
+        "expected_points": 1.0 / (1.0 + 10 ** ((opponent_rating - user_rating) / 400.0)),
+        "accuracy": accuracy,
+        "user_rating": user_rating,
+        "opponent_rating": opponent_rating,
+        "phase_delta_w": {"opening": opening_loss},
+        "phase_moves": {"opening": 10},
+        "deviation_ply": 8,
+        "blunders": 1,
+        "user_moves": 40,
+    }
+
+
+def _roi_window() -> list[dict]:
+    """100 games: one rare disaster, one frequent bad line, two lines at par."""
+
+    facts = [_roi_fact(0, "Englund Gambit", 0.0, accuracy=55.0, opening_loss=12.0)]
+    facts += [
+        _roi_fact(1 + i, "Sicilian Najdorf", 1.0 if i == 4 else 0.0, accuracy=60.0,
+                  opening_loss=10.0)
+        for i in range(5)
+    ]
+    facts += [
+        _roi_fact(6 + i, "Italian Game", float(i % 2), accuracy=85.0, opening_loss=3.0)
+        for i in range(40)
+    ]
+    facts += [
+        _roi_fact(46 + i, "Queen's Gambit", float(i % 2), color="black", accuracy=72.0,
+                  opening_loss=5.0)
+        for i in range(54)
+    ]
+    return facts
+
+
+def test_opening_roi_weights_a_deficit_by_how_often_the_line_comes_up() -> None:
+    """The ranking question is "what should I practise", not "where do I score worst".
+
+    A line lost 100% of the time but met once in a hundred games cannot be
+    costing much; one lost 80% of the time and met every twentieth game is.
+    """
+
+    from server.insights_pro import compute_opening_tree
+
+    roi = compute_opening_tree(_roi_window())["roi"]
+    by_name = {r["opening"]: r for r in roi["rows"]}
+
+    rare, frequent = by_name["Englund Gambit"], by_name["Sicilian Najdorf"]
+    # The rare line is scored worse and still ranks far below.
+    assert rare["score_pct"] < frequent["score_pct"]
+    assert frequent["points_per_100_games"] > rare["points_per_100_games"] * 5
+    assert roi["top"][0]["opening"] == "Sicilian Najdorf"
+
+
+def test_opening_roi_measures_par_not_fifty_percent() -> None:
+    """50% against equal opposition is the expected result, not a leak."""
+
+    from server.insights_pro import compute_opening_tree
+
+    by_name = {r["opening"]: r for r in compute_opening_tree(_roi_window())["roi"]["rows"]}
+    even = by_name["Italian Game"]
+    assert even["score_pct"] == pytest.approx(0.5)
+    assert even["deficit_per_game"] == 0.0
+    assert even["roi_score"] == 0.0
+
+    # The same 50% against opponents rated 200 below is a real deficit.
+    facts = [
+        _roi_fact(i, "Italian Game", float(i % 2), opponent_rating=1300)
+        for i in range(20)
+    ]
+    weak = compute_opening_tree(facts)["roi"]["rows"][0]
+    assert weak["par_pct"] > 0.6
+    assert weak["deficit_per_game"] > 0.1
+
+
+def test_opening_roi_damps_a_line_the_player_already_plays_well() -> None:
+    """Underperforming a line you play accurately is not fixed by studying it.
+
+    Both lines below sit at the same score against the same opposition and the
+    same share of games; only the quality of the play inside them differs.
+    """
+
+    from server.insights_pro import compute_opening_tree
+
+    facts = [
+        _roi_fact(i, "Clean Line", 0.0, accuracy=90.0, opening_loss=1.0)
+        for i in range(10)
+    ] + [
+        _roi_fact(10 + i, "Messy Line", 0.0, accuracy=50.0, opening_loss=14.0)
+        for i in range(10)
+    ]
+    by_name = {r["opening"]: r for r in compute_opening_tree(facts)["roi"]["rows"]}
+
+    clean, messy = by_name["Clean Line"], by_name["Messy Line"]
+    assert clean["points_per_100_games"] == pytest.approx(messy["points_per_100_games"])
+    assert clean["attribution"] < 1.0 < messy["attribution"]
+    assert messy["roi_score"] > clean["roi_score"]
+
+
+def test_opening_roi_shrinks_small_samples_instead_of_hiding_them() -> None:
+    """A one-game line is real evidence, just weak — it ranks, near the bottom."""
+
+    from server.insights_pro import ROI_PRIOR_GAMES, compute_opening_tree
+
+    roi = compute_opening_tree(_roi_window())["roi"]
+    rare = next(r for r in roi["rows"] if r["opening"] == "Englund Gambit")
+
+    assert rare["n"] == 1
+    assert rare["confidence"] == pytest.approx(1 / (1 + ROI_PRIOR_GAMES))
+    assert 0 < rare["roi_score"] < roi["top"][0]["roi_score"]
+
+
+def test_opening_leak_is_the_roi_leader() -> None:
+    """The leak board ranks the opening worth practising, not the worst score."""
+
+    from server.insights_pro import compute_opening_tree
+
+    # A quarter of the window spent 20% in one line — a leak worth naming.
+    facts = [
+        _roi_fact(i, "Sicilian Najdorf", 1.0 if i % 5 == 0 else 0.0, accuracy=60.0,
+                  opening_loss=10.0)
+        for i in range(25)
+    ] + [
+        _roi_fact(25 + i, "Italian Game", float(i % 2), accuracy=85.0, opening_loss=3.0)
+        for i in range(75)
+    ]
+    openings = compute_opening_tree(facts)
+    leaks = compute_leaks(
+        facts,
+        move_quality={"by_phase": []},
+        critical={},
+        resilience={},
+        openings=openings,
+        blunder_timing={},
+        scramble={},
+        tier3={},
+        missed_tactics={},
+    )
+    opening_leak = next(l for l in leaks if l["id"] == "opening")
+
+    assert "Sicilian Najdorf" in opening_leak["title"]
+    assert opening_leak["impact_win_pct_per_game"] == pytest.approx(
+        openings["roi"]["top"][0]["points_per_100_games"], abs=0.05
+    )

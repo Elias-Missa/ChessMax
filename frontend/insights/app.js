@@ -1173,8 +1173,65 @@
 
   // ── Section: Openings & endgames ────────────────────────────────────────
 
+  // The practice-priority board. Ranking on win rate alone promotes whatever
+  // line you happen to meet strong opponents in, and a disaster you meet twice
+  // a year over one you meet weekly — so the server ranks on exposure x deficit
+  // below par x attribution (see ``compute_opening_roi``) and we render that.
+  function renderOpeningRoi() {
+    const roi = (pro().openings || {}).roi || {};
+    let rows = roi.rows || [];
+    if (openingColor !== "all") rows = rows.filter((r) => r.color === openingColor);
+    rows = rows.filter((r) => r.roi_score > 0 && r.points_per_100_games >= 0.05).slice(0, 8);
+
+    if (!rows.length) {
+      setHtml("body-opening-roi", emptyBlock(
+        roi.n_games
+          ? "Nothing in your repertoire is scoring below par for the opponents you met."
+          : "No opening data in this window."
+      ));
+      return;
+    }
+
+    const peak = rows[0].roi_score || 1;
+    setHtml("body-opening-roi",
+      rows.map((r, i) => {
+        const width = Math.max(4, Math.round((r.roi_score / peak) * 100));
+        const gap = isNum(r.accuracy_gap) ? r.accuracy_gap : null;
+        return (
+          `<div class="bar-row">` +
+          `<div class="bar-row-head">` +
+            `<span><b style="color:var(--ins-mute);font-variant-numeric:tabular-nums">` +
+            `${i + 1}.</b> ${escapeHtml(r.opening)} ` +
+            `<small style="color:var(--ins-mute)">as ${escapeHtml(r.color)}</small></span>` +
+            `<span class="bar-row-value"><b>${num(r.points_per_100_games, 1)}</b>` +
+            `<small>pts / 100 games</small></span>` +
+          `</div>` +
+          `<div class="bar-cell"><div class="track is-bad">` +
+          `<i style="width:${width}%"></i></div></div>` +
+          `</div>` +
+          `<p style="margin:3px 0 12px;font-size:0.78rem;color:var(--ins-mute)">` +
+          `${pct(r.score_pct)} scored vs ${pct(r.par_pct)} par · ` +
+          `${pct(r.share)} of your games (n=${r.n})` +
+          (gap !== null && Math.abs(gap) >= 1
+            ? ` · you play it ${num(Math.abs(gap), 1)} accuracy points ` +
+              `${gap > 0 ? "worse" : "better"} than usual`
+            : "") +
+          `</p>`
+        );
+      }).join("") +
+      `<p style="margin-top:4px;font-size:0.82rem;color:var(--ins-mute)">` +
+      `"Par" is the Elo expectancy of the opponents you actually faced in that line, ` +
+      `shifted by how you do in everything else — so 50% against equals is par, not a leak. ` +
+      `The number is what bringing the line back to par would return over 100 games, shrunk ` +
+      `for small samples; the ranking additionally favours lines you play worse than your ` +
+      `own norm, since a line you score badly in but play cleanly is not fixed by studying it.` +
+      `</p>`
+    );
+  }
+
   function renderOpenings(aggIn) {
     const agg = aggIn || aggregate(filteredFacts());
+    renderOpeningRoi();
     let rows = (pro().openings || {}).rows || [];
     if (openingColor !== "all") rows = rows.filter((r) => r.color === openingColor);
 
