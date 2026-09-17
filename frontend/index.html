@@ -70,6 +70,7 @@
     <nav id="training-subnav" class="shell-subnav hidden" aria-label="Training modes">
       <button type="button" role="tab" data-tab="evalhold" aria-selected="false">Eval Hold</button>
       <button type="button" role="tab" data-tab="defense" aria-selected="false">Defense Gym</button>
+      <button type="button" role="tab" data-tab="endgame" aria-selected="false">Endgame Arena</button>
       <button type="button" role="tab" data-tab="forced" aria-selected="false">Forced Lines</button>
       <button type="button" role="tab" data-tab="guess" aria-selected="false">Guess Eval</button>
       <button type="button" role="tab" data-tab="mistakes" aria-selected="false">Your Mistakes</button>
@@ -1083,6 +1084,76 @@
               <p id="mistakes-prompt" class="mode-status">Generate puzzles from Insights to begin.</p>
               <div id="mistakes-feedback" class="feedback hidden"></div>
               <button id="mistakes-next" type="button" disabled>Next mistake</button>
+            </div>
+          </section>
+
+          <!-- ── Endgame Arena ──────────────────────────────────────────── -->
+          <!-- Mined endgames played out against a laddered Maia: drawn at your
+               level, winning against the level above, losing against the one
+               below. The draw offer is the teaching mechanism — Maia only
+               accepts when it is not winning. -->
+          <section id="view-endgame" class="view hidden">
+            <div class="card eg-card">
+              <div class="eg-head">
+                <div class="eg-title">
+                  <span class="eg-badge" id="eg-bucket-badge" data-bucket="">—</span>
+                  <strong id="eg-headline">Endgame Arena</strong>
+                </div>
+                <p class="eg-scope" id="eg-scope">
+                  Drawn endings against your own level, won ones against the level
+                  above, lost ones against the level below. Hold, convert, or save.
+                </p>
+              </div>
+
+              <div class="eg-pickers" id="eg-pickers">
+                <button type="button" class="eg-pick" data-bucket="">Surprise me</button>
+                <button type="button" class="eg-pick" data-bucket="drawn">Hold a draw</button>
+                <button type="button" class="eg-pick" data-bucket="winning">Convert a win</button>
+                <button type="button" class="eg-pick" data-bucket="losing">Save a loss</button>
+              </div>
+
+              <div class="meta-row">
+                <span>Opponent</span>
+                <strong id="eg-opponent">—</strong>
+              </div>
+              <div class="meta-row">
+                <span>From</span>
+                <strong id="eg-source">—</strong>
+              </div>
+              <div class="meta-row">
+                <span>Takebacks</span>
+                <strong id="eg-takebacks">0</strong>
+              </div>
+
+              <label class="eg-toggle" for="eg-analysis-toggle">
+                <input type="checkbox" id="eg-analysis-toggle" />
+                <span>Live analysis</span>
+                <em class="eg-legend">
+                  <i class="eg-key eg-key--best"></i>engine
+                  <i class="eg-key eg-key--human"></i>your level
+                </em>
+              </label>
+
+              <div class="eg-actions">
+                <button type="button" id="eg-takeback" class="eg-ghost" disabled>Take back</button>
+                <button type="button" id="eg-draw" class="eg-ghost" disabled>Offer draw</button>
+                <button type="button" id="eg-resign" class="eg-ghost" disabled>Resign</button>
+              </div>
+
+              <p class="eg-status" id="eg-status">Pick a challenge to begin.</p>
+
+              <!-- Shown once the game is over: what it was, what you did with
+                   it, and a hand-off into the full review. -->
+              <div class="eg-result hidden" id="eg-result">
+                <strong id="eg-result-title">—</strong>
+                <p id="eg-result-detail"></p>
+                <div class="eg-result-actions">
+                  <button type="button" id="eg-again" class="eg-primary">Another</button>
+                  <button type="button" id="eg-analyse" class="eg-ghost">Full review</button>
+                </div>
+              </div>
+
+              <div class="eg-record" id="eg-record"></div>
             </div>
           </section>
 

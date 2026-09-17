@@ -101,6 +101,7 @@ const views = {
   train: document.querySelector("#view-train"),
   evalhold: document.querySelector("#view-evalhold"),
   defense: document.querySelector("#view-defense"),
+  endgame: document.querySelector("#view-endgame"),
   forced: document.querySelector("#view-forced"),
   guess: document.querySelector("#view-guess"),
   mistakes: document.querySelector("#view-mistakes"),
@@ -332,6 +333,10 @@ async function onMove(source, target) {
   }
   if (state.view === "playout") {
     await submitPlayoutMove(source, target);
+    return;
+  }
+  if (state.view === "endgame") {
+    await egSubmitMove(source, target);
     return;
   }
   if (state.view === "evalhold" || state.view === "defense") {
@@ -574,6 +579,7 @@ const TAGLINES = {
   train: "Decide if there is a tactic — or just make a solid move.",
   evalhold: "Hold the eval for N moves straight. One big drop ends the run.",
   defense: "You start worse. The goal isn't to win — it's to survive.",
+  endgame: "Hold it, convert it, or save it — against a Maia picked to make it hard.",
   forced: "See the whole line before you touch a piece.",
   guess: "Train your evaluation sense — no bars, no hints.",
   mistakes: "Your own missed wins and blunders, replayed as puzzles.",
@@ -598,6 +604,9 @@ function switchTab(tabId) {
   });
   if (tabId === "stats") {
     void loadStats();
+  }
+  if (tabId === "endgame") {
+    void egActivate();
   }
   if (tabId === "playout") {
     renderPlayoutTimeline();
@@ -2030,3 +2039,294 @@ function drawCalibrationChart(key, canvas, points, range) {
 }
 
 window.ChessTrainer = { state, board };
+
+// ── Endgame Arena ───────────────────────────────────────────────────────── //
+//
+// Mined endgames played out against a laddered Maia: a drawn ending against
+// your own level, a won one against the level ABOVE (converting against
+// someone stronger is the skill), a lost one against the level BELOW (so the
+// save is actually available).
+//
+// The draw offer is the teaching mechanism and is decided server-side: Maia
+// agrees only when it is not winning, so a position you hold ends when you
+// claim it and one you threw away does not.
+const EG_BUCKET_LABEL = {
+  drawn: "Level",
+  winning: "Winning",
+  losing: "Losing",
+};
+const EG_BUCKET_AIM = {
+  drawn: "Hold the draw.",
+  winning: "Convert it — against a stronger opponent.",
+  losing: "Try to save the half point.",
+};
+// Green is the engine's move and pink is what a player at this level plays.
+// Two colours because the gap between them is the lesson.
+const EG_BEST_BRUSH = "green";
+const EG_HUMAN_BRUSH = "red";
+
+const egState = {
+  session: null,
+  analysis: false,
+  hintSeq: 0,
+};
+
+const egEl = (id) => document.getElementById(id);
+
+function egSetStatus(text) {
+  const el = egEl("eg-status");
+  if (el) el.textContent = text || "";
+}
+
+function egButtonsEnabled(on) {
+  ["eg-takeback", "eg-draw", "eg-resign"].forEach((id) => {
+    const el = egEl(id);
+    if (el) el.disabled = !on;
+  });
+}
+
+function egRenderBoard(session, { interactive = true } = {}) {
+  if (!session) return;
+  const chessInstance = new Chess(session.fen);
+  const userColor = session.user_color === "w" ? "white" : "black";
+  const turn = chessInstance.turn() === "w" ? "white" : "black";
+  const last = session.maia_move_uci || session.last_move_uci;
+  board.set({
+    fen: session.fen,
+    orientation: userColor,
+    turnColor: turn,
+    lastMove: last && last.length >= 4 ? [last.slice(0, 2), last.slice(2, 4)] : undefined,
+    movable: {
+      free: false,
+      // Locked to the user's colour, and to nothing at all once the game is
+      // over — a finished arena game is a board to study, not to play on.
+      color: interactive && turn === userColor ? userColor : undefined,
+      dests: interactive ? legalDests(chessInstance) : new Map(),
+      events: { after: onMove },
+    },
+  });
+  board.setShapes([]);
+  if (egState.analysis && interactive) void egRefreshHint();
+}
+
+function egRenderMeta(session) {
+  const badge = egEl("eg-bucket-badge");
+  if (badge) {
+    badge.textContent = EG_BUCKET_LABEL[session.bucket] || "—";
+    badge.dataset.bucket = session.bucket || "";
+  }
+  const headline = egEl("eg-headline");
+  if (headline) headline.textContent = EG_BUCKET_AIM[session.bucket] || "Endgame Arena";
+  const opponent = egEl("eg-opponent");
+  if (opponent) opponent.textContent = `Maia ${session.maia_rating}`;
+  const source = egEl("eg-source");
+  if (source) {
+    source.textContent =
+      session.source === "own_games" ? "One of your games" : "Lichess endgame";
+  }
+  const takebacks = egEl("eg-takebacks");
+  if (takebacks) takebacks.textContent = String(session.takebacks || 0);
+}
+
+function egApply(session, { message } = {}) {
+  egState.session = session;
+  egRenderMeta(session);
+  const finished = session.status === "finished";
+  egRenderBoard(session, { interactive: !finished });
+  egButtonsEnabled(!finished);
+
+  const result = egEl("eg-result");
+  if (finished) {
+    if (result) result.classList.remove("hidden");
+    const title = egEl("eg-result-title");
+    if (title) {
+      title.textContent = session.passed ? "Passed" : "Not this time";
+      title.dataset.passed = session.passed ? "true" : "false";
+    }
+    const detail = egEl("eg-result-detail");
+    if (detail) detail.textContent = session.message || "";
+    egSetStatus("");
+  } else {
+    if (result) result.classList.add("hidden");
+    egSetStatus(message || session.message || "Your move.");
+  }
+}
+
+async function egStart(bucket) {
+  egSetStatus("Mining an endgame…");
+  try {
+    const response = await request("/api/endgame/start", {
+      method: "POST",
+      body: JSON.stringify({ bucket: bucket || null }),
+    });
+    egApply(response);
+    void egLoadRecord();
+  } catch (error) {
+    egSetStatus(error.message || "Could not start a game.");
+  }
+}
+
+async function egSubmitMove(source, target) {
+  const session = egState.session;
+  if (!session || session.status !== "active") return;
+  try {
+    const response = await request(`/api/endgame/${session.session_id}/move`, {
+      method: "POST",
+      body: JSON.stringify({ move: `${source}${target}` }),
+    });
+    egApply(response);
+    if (response.status === "finished") void egLoadRecord();
+  } catch (error) {
+    // Snap the board back to the server's truth rather than leaving the
+    // rejected move sitting there looking played.
+    egRenderBoard(egState.session);
+    egSetStatus(error.message || "That move was not accepted.");
+  }
+}
+
+async function egAction(path, label) {
+  const session = egState.session;
+  if (!session || session.status !== "active") return;
+  try {
+    const response = await request(`/api/endgame/${session.session_id}/${path}`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    egApply(response);
+    if (response.status === "finished") void egLoadRecord();
+  } catch (error) {
+    egSetStatus(error.message || `Could not ${label}.`);
+  }
+}
+
+// ── Live analysis: the two arrows ──────────────────────────────────────── //
+
+async function egRefreshHint() {
+  const session = egState.session;
+  if (!egState.analysis || !session || session.status !== "active") {
+    board.setShapes([]);
+    return;
+  }
+  const seq = ++egState.hintSeq;
+  try {
+    const response = await request("/api/endgame/hint", {
+      method: "POST",
+      body: JSON.stringify({ fen: session.fen, maia_rating: session.maia_rating }),
+    });
+    // Moving quickly fires several of these; only the newest may paint.
+    if (seq !== egState.hintSeq || !egState.analysis) return;
+    const shapes = [];
+    const best = response.best && response.best.uci;
+    const human = response.human && response.human.uci;
+    if (best && best.length >= 4) {
+      shapes.push({ orig: best.slice(0, 2), dest: best.slice(2, 4), brush: EG_BEST_BRUSH });
+    }
+    // Only worth a second arrow when it disagrees with the engine.
+    if (human && human.length >= 4 && human !== best) {
+      shapes.push({ orig: human.slice(0, 2), dest: human.slice(2, 4), brush: EG_HUMAN_BRUSH });
+    }
+    board.setShapes(shapes);
+  } catch (error) {
+    if (seq === egState.hintSeq) board.setShapes([]);
+  }
+}
+
+// ── Record ──────────────────────────────────────────────────────────────── //
+
+async function egLoadRecord() {
+  const el = egEl("eg-record");
+  if (!el) return;
+  try {
+    const data = await request("/api/endgame/summary");
+    if (!data.played) {
+      el.innerHTML = "";
+      return;
+    }
+    const rows = (data.buckets_order || [])
+      .map((bucket) => {
+        const entry = (data.buckets || {})[bucket] || {};
+        if (!entry.played) return "";
+        const rate = entry.pass_rate == null ? "—" : `${Math.round(entry.pass_rate * 100)}%`;
+        return (
+          `<div class="eg-record-row"><span>${EG_BUCKET_LABEL[bucket] || bucket}</span>` +
+          `<b>${rate}</b><em>${entry.passed}/${entry.played}</em></div>`
+        );
+      })
+      .join("");
+    el.innerHTML = rows ? `<div class="eg-record-title">Your record</div>${rows}` : "";
+  } catch (error) {
+    el.innerHTML = "";
+  }
+}
+
+async function egOpenFullReview() {
+  const session = egState.session;
+  if (!session) return;
+  try {
+    const data = await request(`/api/endgame/${session.session_id}/pgn`);
+    if (!data.pgn) return;
+    if (!window.__volAnalyzePgn || !window.__shellNavigate) {
+      egSetStatus("Open Game Review and paste the PGN to analyse this game.");
+      return;
+    }
+    // `__volAnalyzePgn` is the vol tab's own Analyze path, so the arena gets the
+    // full durable review rather than a second, divergent loader. Navigate first
+    // so the board it renders into is visible.
+    window.__shellNavigate("/game-review");
+    window.__volAnalyzePgn(data.pgn);
+  } catch (error) {
+    egSetStatus("That game is not finished yet.");
+  }
+}
+
+function egInit() {
+  document.querySelectorAll("#eg-pickers .eg-pick").forEach((btn) => {
+    btn.addEventListener("click", () => egStart(btn.dataset.bucket || null));
+  });
+  const takeback = egEl("eg-takeback");
+  if (takeback) takeback.addEventListener("click", () => egAction("takeback", "take back"));
+  const draw = egEl("eg-draw");
+  if (draw) draw.addEventListener("click", () => egAction("draw", "offer a draw"));
+  const resign = egEl("eg-resign");
+  if (resign) resign.addEventListener("click", () => egAction("resign", "resign"));
+  const again = egEl("eg-again");
+  if (again) again.addEventListener("click", () => egStart(null));
+  const analyse = egEl("eg-analyse");
+  if (analyse) analyse.addEventListener("click", () => void egOpenFullReview());
+
+  const toggle = egEl("eg-analysis-toggle");
+  if (toggle) {
+    try {
+      egState.analysis = localStorage.getItem("chessmax.arena.analysis") === "1";
+    } catch (error) {
+      egState.analysis = false;
+    }
+    toggle.checked = egState.analysis;
+    toggle.addEventListener("change", () => {
+      egState.analysis = !!toggle.checked;
+      try {
+        localStorage.setItem("chessmax.arena.analysis", egState.analysis ? "1" : "0");
+      } catch (error) {
+        /* private mode — the toggle still works for this session */
+      }
+      if (egState.analysis) void egRefreshHint();
+      else board.setShapes([]);
+    });
+  }
+}
+
+async function egActivate() {
+  egInit();
+  void egLoadRecord();
+  if (egState.session && egState.session.status === "active") {
+    egApply(egState.session);
+    return;
+  }
+  try {
+    const data = await request("/api/endgame/active");
+    if (data.session) egApply(data.session);
+    else egSetStatus("Pick a challenge to begin.");
+  } catch (error) {
+    egSetStatus("Pick a challenge to begin.");
+  }
+}

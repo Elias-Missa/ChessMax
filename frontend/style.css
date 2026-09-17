@@ -1281,3 +1281,164 @@
     position: static;
   }
 }
+
+/* ── Endgame Arena ──────────────────────────────────────────────────────── */
+/* Scoped under #puzzles-root like everything else in the trainer — a bare
+   class rule would lose to the ID selector (see the specificity notes). */
+
+#puzzles-root .eg-card { display: flex; flex-direction: column; gap: 12px; }
+
+#puzzles-root .eg-head { display: flex; flex-direction: column; gap: 6px; }
+
+#puzzles-root .eg-title {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+#puzzles-root .eg-badge {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 2px 9px;
+  text-transform: uppercase;
+}
+
+/* The badge colour is the whole brief: level, ahead, behind. */
+#puzzles-root .eg-badge[data-bucket="drawn"] {
+  background: rgba(150, 188, 75, 0.16);
+  border-color: rgba(150, 188, 75, 0.5);
+  color: #b7d97a;
+}
+#puzzles-root .eg-badge[data-bucket="winning"] {
+  background: rgba(68, 214, 44, 0.14);
+  border-color: rgba(68, 214, 44, 0.5);
+  color: #7de05a;
+}
+#puzzles-root .eg-badge[data-bucket="losing"] {
+  background: rgba(232, 120, 74, 0.14);
+  border-color: rgba(232, 120, 74, 0.5);
+  color: #ff9d6f;
+}
+
+#puzzles-root .eg-scope { font-size: 0.78rem; line-height: 1.5; margin: 0; opacity: 0.75; }
+
+#puzzles-root .eg-pickers {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+#puzzles-root .eg-pickers .eg-pick {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 8px 6px;
+}
+
+#puzzles-root .eg-pickers .eg-pick:hover {
+  background: rgba(68, 214, 44, 0.12);
+  border-color: rgba(68, 214, 44, 0.4);
+}
+
+#puzzles-root .eg-toggle {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  gap: 8px;
+}
+
+#puzzles-root .eg-legend {
+  align-items: center;
+  display: flex;
+  font-size: 0.68rem;
+  font-style: normal;
+  gap: 4px;
+  opacity: 0.7;
+}
+
+#puzzles-root .eg-key {
+  border-radius: 2px;
+  display: inline-block;
+  height: 8px;
+  margin-left: 6px;
+  width: 13px;
+}
+#puzzles-root .eg-key--best { background: #3f9e3f; }
+#puzzles-root .eg-key--human { background: #ec4899; }
+
+#puzzles-root .eg-actions { display: grid; gap: 6px; grid-template-columns: repeat(3, 1fr); }
+
+#puzzles-root .eg-ghost,
+#puzzles-root .eg-primary {
+  border-radius: 9px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 8px 6px;
+}
+
+#puzzles-root .eg-ghost {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: inherit;
+}
+#puzzles-root .eg-ghost:disabled { cursor: default; opacity: 0.4; }
+#puzzles-root .eg-ghost:not(:disabled):hover { background: rgba(255, 255, 255, 0.1); }
+
+#puzzles-root .eg-primary {
+  background: linear-gradient(180deg, rgba(68, 214, 44, 0.3), rgba(68, 214, 44, 0.12));
+  border: 1px solid rgba(68, 214, 44, 0.6);
+  color: #eef1f3;
+}
+
+#puzzles-root .eg-status { font-size: 0.8rem; margin: 0; min-height: 1.1em; opacity: 0.85; }
+
+#puzzles-root .eg-result {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+#puzzles-root .eg-result.hidden, #puzzles-root .eg-record:empty { display: none; }
+#puzzles-root .eg-result strong[data-passed="true"] { color: #7de05a; }
+#puzzles-root .eg-result strong[data-passed="false"] { color: #ff9d6f; }
+#puzzles-root .eg-result p { font-size: 0.78rem; line-height: 1.5; margin: 0; opacity: 0.82; }
+#puzzles-root .eg-result-actions { display: grid; gap: 6px; grid-template-columns: 1fr 1fr; }
+
+#puzzles-root .eg-record {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 8px;
+}
+
+#puzzles-root .eg-record-title {
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  opacity: 0.6;
+  padding-bottom: 4px;
+  text-transform: uppercase;
+}
+
+#puzzles-root .eg-record-row {
+  display: grid;
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  padding: 2px 0;
+}
+#puzzles-root .eg-record-row em { font-style: normal; opacity: 0.6; }

@@ -425,6 +425,58 @@ CREATE TABLE IF NOT EXISTS insight_flags (
 );
 CREATE INDEX IF NOT EXISTS idx_insight_flags_run ON insight_flags(run_id, delta_w DESC);
 
+-- Endgame Arena: mined endgame positions played out against Maia. The bucket
+-- (drawn / winning / losing) is snapshotted at start because it decides both
+-- the opponent's level and how the finished game is graded, and the live eval
+-- moves as soon as the first move is played.
+CREATE TABLE IF NOT EXISTS endgame_sessions (
+    id             INTEGER PRIMARY KEY,
+    user_id        INTEGER NOT NULL,
+    bucket         TEXT NOT NULL,
+    source         TEXT NOT NULL,
+    source_ref     TEXT,
+    user_color     TEXT NOT NULL,
+    maia_rating    INTEGER NOT NULL,
+    user_rating    INTEGER,
+    start_eval_cp  INTEGER,
+    initial_fen    TEXT NOT NULL,
+    fen            TEXT NOT NULL,
+    move_list      TEXT NOT NULL DEFAULT '[]',
+    draw_offers    INTEGER NOT NULL DEFAULT 0,
+    takebacks      INTEGER NOT NULL DEFAULT 0,
+    status         TEXT NOT NULL DEFAULT 'active',
+    result         TEXT,
+    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_endgame_sessions_user
+    ON endgame_sessions(user_id, status);
+
+CREATE TABLE IF NOT EXISTS endgame_results (
+    id             INTEGER PRIMARY KEY,
+    user_id        INTEGER NOT NULL,
+    session_id     INTEGER NOT NULL,
+    bucket         TEXT NOT NULL,
+    source         TEXT NOT NULL,
+    maia_rating    INTEGER NOT NULL,
+    user_color     TEXT NOT NULL,
+    start_eval_cp  INTEGER,
+    end_eval_cp    INTEGER,
+    result         TEXT NOT NULL,
+    outcome        TEXT NOT NULL,
+    passed         INTEGER NOT NULL,
+    plies          INTEGER NOT NULL DEFAULT 0,
+    takebacks      INTEGER NOT NULL DEFAULT 0,
+    initial_fen    TEXT NOT NULL,
+    pgn            TEXT,
+    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (session_id) REFERENCES endgame_sessions(id)
+);
+CREATE INDEX IF NOT EXISTS idx_endgame_results_user
+    ON endgame_results(user_id, bucket, id);
+
 -- Dev tab: manual calibration labels over stored review positions. One row per
 -- (user, review, ply); both label columns are nullable so volatility and
 -- findability can be judged independently. The scores are snapshotted at

@@ -1,0 +1,23 @@
+{
+  "_comment": "Endgame Arena (core/endgame.py). The arena mines endgame positions, buckets them by how the user stands, and picks the Maia opponent from that bucket. Every number here is a PLACEHOLDER chosen from chess reasoning rather than measured — the arena's own results table is what would eventually fit them.",
+
+  "_endgame_comment": "What counts as an endgame. Piece count is the honest signal: a queen still on carries middlegame character however few pawns remain, so a queen disqualifies unless almost nothing else is left. `max_pieces` counts everything including both kings.",
+  "max_pieces": 10,
+  "max_non_king_material_cp": 1500,
+  "allow_queens_below_pieces": 6,
+
+  "_bucket_comment": "PLACEHOLDER. Buckets are read from the USER's point of view at the starting position. The dead zone between drawn_cp and decided_cp is deliberately discarded rather than assigned: a +90cp endgame is neither a holdable draw nor a conversion exercise, and calling it either teaches the wrong lesson.",
+  "drawn_cp": 60,
+  "decided_cp": 200,
+  "max_decided_cp": 900,
+
+  "_ladder_comment": "PLACEHOLDER, and the heart of the mode. A drawn position is played against your own level. A WON position is played against the level ABOVE, because converting against someone better is the skill worth drilling. A LOST position is played against the level BELOW, so holding the draw is actually possible. Steps are in Maia nets, which exist at 1100/1300/1500/1700/1900 — so one step is 200 Elo, and the ladder clamps at the ends rather than wrapping.",
+  "ladder_steps": { "drawn": 0, "winning": 1, "losing": -1 },
+
+  "_draw_offer_comment": "PLACEHOLDER, and the rule the whole mode hangs on. Maia accepts a draw offer only when it is NOT winning — evaluated from Maia's side. So a genuinely held position ends when you claim it, and a position you blundered does not: offering a draw cannot rescue what you threw away, which is exactly the lesson. `min_plies_before_offer` stops a drawn start being claimed on move one without playing it.",
+  "draw_accept_max_cp": 90,
+  "min_plies_before_offer": 6,
+
+  "_result_comment": "How a finished game is graded against what it started as. A drawn start is `held` on a draw and `lost` on a loss; a won start is `converted` only on a win; a lost start is a `save` on a draw and a `hold` on a win. `blunder_cp` is how far the evaluation has to fall from the start before the arena says you threw it rather than were outplayed.",
+  "blunder_cp": 250
+}

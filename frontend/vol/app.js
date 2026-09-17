@@ -2225,7 +2225,13 @@
       const g = new Chess();
       if (!g.load_pgn(text, { sloppy: true })) return null;
       const history = g.history({ verbose: true });
-      const replay = new Chess();
+      // A PGN with a `[FEN]`/`[SetUp]` header does not start from the initial
+      // position — Endgame Arena games all do. Replaying such a game from the
+      // standard start diverges on move one and parsing silently fails, so seed
+      // the replay board from the header when there is one.
+      const headers = typeof g.header === "function" ? g.header() : {};
+      const startFen = headers && headers.FEN ? headers.FEN : null;
+      const replay = startFen ? new Chess(startFen) : new Chess();
       const plies = [];
       for (const mv of history) {
         const fenBefore = replay.fen();
@@ -2695,6 +2701,24 @@
     collapsePgnDrawer(text, loadedPlies.length);
     startReviewOrStream(text);
   });
+
+  // Hand-off hook: another app (the Endgame Arena) finished a game and wants it
+  // reviewed here. Same path as the Analyze button — fill the drawer, parse, and
+  // start the review — so there is one code path that can load a PGN.
+  window.__volAnalyzePgn = (pgnText) => {
+    const text = (pgnText || "").trim();
+    if (!text) return false;
+    const plies = parsePgn(text);
+    if (!plies) { gameStatus.textContent = "Could not parse that PGN."; return false; }
+    resetGame();
+    pgnInput.value = text;
+    loadedPlies = plies;
+    renderMoveList();
+    if (plies.length) jumpToPly(0);
+    collapsePgnDrawer(text, plies.length);
+    startReviewOrStream(text);
+    return true;
+  };
 
   btnStopPgn.addEventListener("click", () => {
     if (pgnController) pgnController.abort();

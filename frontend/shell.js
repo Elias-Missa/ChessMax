@@ -12,6 +12,7 @@ const ROUTES = [
   { path: "/training", app: "puzzles", tab: "evalhold", top: "training" },
   { path: "/training/eval-hold", app: "puzzles", tab: "evalhold", top: "training" },
   { path: "/training/defense", app: "puzzles", tab: "defense", top: "training" },
+  { path: "/training/endgame", app: "puzzles", tab: "endgame", top: "training" },
   { path: "/training/forced", app: "puzzles", tab: "forced", top: "training" },
   { path: "/training/guess-eval", app: "puzzles", tab: "guess", top: "training" },
   { path: "/training/mistakes", app: "puzzles", tab: "mistakes", top: "training" },
@@ -46,7 +47,7 @@ TAB_TO_PATH.insights = "/insights";
 TAB_TO_PATH.dev = "/dev";
 
 const TRAINING_TABS = new Set([
-  "evalhold", "defense", "forced", "guess", "mistakes", "playout", "stats",
+  "evalhold", "defense", "endgame", "forced", "guess", "mistakes", "playout", "stats",
 ]);
 const VOL_TABS = new Set(["game", "editor", "library", "about"]);
 const DUEL_APPS = new Set(["elo", "eval"]);

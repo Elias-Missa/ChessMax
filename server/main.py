@@ -40,6 +40,7 @@ from server.insights_api import build_insights_router
 from server.reviews_api import build_reviews_router
 from server.devlabels_api import build_dev_labels_router
 from server.piecevalues_api import build_piece_values_router
+from server.endgame_api import build_endgame_router
 from server.deps import current_user, get_connection
 from server.replies import engine_reply
 from server.selection import select_next_position
@@ -124,6 +125,9 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
 
     # Dev tab: contextual piece values (the one engine-backed /api/dev route).
     app.include_router(build_piece_values_router(app))
+
+    # Endgame Arena: mined endgames played out against a laddered Maia.
+    app.include_router(build_endgame_router(app))
 
     # Guess the Elo Duels (matchmaking + guessing game).
     app.include_router(build_guess_elo_router())
