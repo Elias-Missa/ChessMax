@@ -27,6 +27,7 @@ from statistics import fmean, median, pstdev
 from typing import Any
 
 from chess_vol.game_review import move_accuracy
+from server.game_shape import game_shape
 
 # ── Thresholds ────────────────────────────────────────────────────────────────
 # One place, so the UI copy and the maths can never drift apart.
@@ -391,6 +392,21 @@ def build_game_facts(
         theirs = castle_side(opp_moves)
         dt = parse_dt(row["played_at"], row["pgn"])
 
+        # What kind of position was this? The centre the middlegame was played
+        # in and the endgame it turned into are the two axes a study plan can
+        # name study material for; everything else here measures move quality
+        # rather than position type. Both are None when the game never reached
+        # the phase, so a bucket never silently absorbs games it does not own.
+        first_mid = next(
+            (int(m["ply"]) for m in all_moves if str(m["phase"] or "") == "middlegame"),
+            None,
+        )
+        first_end = next(
+            (int(m["ply"]) for m in all_moves if str(m["phase"] or "") == "endgame"),
+            None,
+        )
+        shape = game_shape(row["pgn"], middlegame_ply=first_mid, endgame_ply=first_end)
+
         enriched.append({
             "review_id": rid,
             "game_id": row["game_id"],
@@ -435,6 +451,8 @@ def build_game_facts(
             "scramble_delta_w": scramble_delta_w,
             "castle_side": mine,
             "opponent_castle_side": theirs,
+            "centre": shape["centre"],
+            "endgame_type": shape["endgame_type"],
             "castle_relation": (
                 None if mine is None or theirs is None
                 else "same_side" if mine == theirs

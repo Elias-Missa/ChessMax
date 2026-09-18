@@ -171,6 +171,12 @@ front the whole tab, both children of `#insights-root` and both **empty in `inde
   own inputs** — a 5-game run plays a handful rather than 22 full of em-dashes. It ends on
   the **Atlas**: the practice set as a board gallery, a chapter-replay grid, and the
   hand-offs into the story / Deep Dive / trainers.
+- **`cinema-film.js` needs its own `<script>` tag, after `cinema.js`.** The shell publishes
+  `window.__insightsCinemaInternals`, which the film reads at load to install
+  `window.__insightsFilm`; `cinema.js` calls it only through `film() => window.__insightsFilm
+  || null`, so a missing tag is silent — play, replay and the chapter ticks all become
+  no-ops and the Atlas is the only thing that renders. A merge dropped exactly that line
+  once (`9405310`), and nothing failed loudly.
 - **Four numbers decide the feel**, all in `FEEL` at the top of `cinema-film.js`.
   `buildWindow` is the load-bearing one: a panel must be *half* built when it is half a
   screen out, or the midpoint of every transition is two invisible panels and a black
@@ -206,9 +212,77 @@ front the whole tab, both children of `#insights-root` and both **empty in `inde
   squashes every `<text>` node into unreadable condensed type; and a CSS `transition` on
   any property the frame loop also writes makes the strip judder, because the two fight.
 
-**UI (`frontend/insights/`).** The tab is a *launcher* — run form, prior runs, and a ready card whose primary button is **Play your report** (the film), with *Why you lose* and *Deep dive* alongside. That opens the narrative overlay (`#postmortem`, `postmortem.js` / `postmortem.css`): Verdict → Why you lose → How to fix it, with Deep Dive handing off to the existing seven-section dashboard. Routes: `/insights/:runId/verdict|why-you-lose|how-you-win|deep-dive`. The server owns the story (`metrics.narrative` from `server/insights_narrative.py`); the frontend only renders. Verdict / Why / How copy must not contain Δw, volatility, findability, or "expectation-adjusted". Signature visuals are custom SVG (eval spine, loss funnel, trajectory overlay, opening heat table) plus lazy Chessground boards. Two overlay traps: `#insights-root > *` sets `position: relative` at ID specificity, so `#insights-root > .pm-overlay` and `#insights-root > .insights-dashboard` need their own `position: fixed`; a `<button>` cannot contain a `<button>` (funnel chips are siblings). Old runs without `narrative` get it attached on GET (pure over the stored blob, no engine).
+**UI (`frontend/insights/`).** The tab is a *launcher* — run form, prior runs, and a ready card whose primary button is **Play your report** (the film), with *Why you lose*, *Study plan* and *Deep dive* alongside. That opens the narrative overlay (`#postmortem`, `postmortem.js` / `postmortem.css`): Verdict → Why you lose → How to fix it, with Deep Dive handing off to the existing seven-section dashboard. Routes: `/insights/:runId/verdict|why-you-lose|how-you-win|deep-dive`. The server owns the story (`metrics.narrative` from `server/insights_narrative.py`); the frontend only renders. Verdict / Why / How copy must not contain Δw, volatility, findability, or "expectation-adjusted". Signature visuals are custom SVG (eval spine, loss funnel, trajectory overlay, opening heat table) plus lazy Chessground boards. Two overlay traps: `#insights-root > *` sets `position: relative` at ID specificity, so `#insights-root > .pm-overlay` and `#insights-root > .insights-dashboard` need their own `position: fixed`; a `<button>` cannot contain a `<button>` (funnel chips are siblings). Old runs without `narrative` get it attached on GET (pure over the stored blob, no engine).
 
 Every "Review"/"Open game" hand-off carries the **ply** as well as the game id — `goReview(gameId, ply)` → `window.__volOpenGameById(gameId, {ply})` → `openSavedGame` jumps straight to that move (1-based, as stored in `review_moves.ply`). A flagged miss that dumps the user at move 1 makes them hunt for it, so `insights_narrative` moments carry `ply` for exactly this.
+
+## The study plan (`server/study_plan.py`)
+
+Everything else in Insights answers "what happened". The plan answers "what do I
+do on Tuesday". It is **pure over a computed metrics blob** — the same `pro` /
+`narrative` / `game_explorer` contract the dashboard and the film read, so it can
+never disagree with the tables behind it — and takes no engine, no DB and no
+network. Stored at `metrics.study_plan` by `compute_tier1_metrics`, backfilled on
+read by `ensure_study_plan` (the `ensure_narrative` pattern), and rebuilt for any
+other budget by `GET /api/insights/{run_id}/study-plan?hours_per_week=&weeks=`,
+which is why the UI's hours/weeks controls can be live.
+
+- **Blocks are built from evidence or not at all.** Nine builders (`openings`,
+  `tactics`, `mistakes`, `middlegame`, `endgames`, `calculation`, plus the habit
+  blocks `blunders`, `clock`, `mental`); each returns `None` unless it can name
+  the opening, the motif, the window and the number. There is no fallback copy
+  telling somebody to "work on tactics": a thin window simply gets fewer blocks,
+  and a run under `MIN_GAMES` gets `available: False` with a stated reason
+  instead of a plan.
+- **Hours are a budget, not a wish list.** `_allocate` water-fills the weekly
+  budget in proportion to what each block costs the player, floored at
+  `MIN_BLOCK_HOURS` and capped at `MAX_BLOCK_SHARE`, then **drops** what does not
+  fit rather than shaving everything into tokens. Habit blocks cost zero study
+  time — they are rules applied while playing — so a 1h/week plan still gets all
+  of them.
+- **Two effort models, both placeholders, both stated.** Study blocks recover
+  `ceiling · h / (h + half_hours)` — saturating, so doubling the hours never
+  doubles the gain. Habits are modelled on *weeks* instead and reach their
+  ceiling at about a month. Nothing here is fitted; the ordering is the claim
+  (memorising a line you already reach is fast at 5h, calculating better is slow
+  with a low ceiling at 14h).
+- **The projection is capped twice, and the second cap is the important one.**
+  `pro.headline.elo_left_on_board` is the measured pool, converted through
+  `insights_pro.rating_difference` (the one FIDE curve in the codebase). But on a
+  bad window that pool is enormous — a seeded 24-game window with a blunder in
+  most games measured **~200 points** — and no four-week plan delivers that.
+  `_pace_ceiling` is a second
+  bound: rating points per week a player plausibly absorbs, decaying with rating
+  and scaling with committed hours. `limited_by` reports which cap bound, and the
+  UI shows the larger pool separately as "on the table long-term". Without it the
+  headline number was that full pool in four weeks, which would have discredited
+  the whole feature. Per-block gains are the capped total split proportionally, never a sum
+  of independently-converted leaks.
+- **Voice follows `insights_narrative`.** No Δw, volatility, findability or
+  "expectation-adjusted" in anything a player reads; `plan_strings` is the
+  extractor and `test_no_jargon_reaches_the_plan` is the guard. The numbers still
+  reach the UI as labelled `evidence` fields.
+
+**Two new per-game facts feed it** (`server/game_shape.py`, added to
+`build_game_facts`): `centre` (`closed`/`semi_open`/`open`, from blocked pawn
+pairs on the c–f files at the first middlegame ply) and `endgame_type`
+(`pawn`/`minor`/`rook`/`rook_minor`/`queen`/`heavy`, from material at the first
+endgame ply). Both replay the stored PGN, both are **heuristics with the rule
+written beside them**, and both are `None` — never a guessed default — when the
+game never reached that phase or the PGN will not parse. They exist so the plan
+can say "you score 30% in rook endings" instead of "work on endgames"; that is
+the whole reason they were added.
+
+**UI: `frontend/insights/studyplan.{js,css}`**, a third full-screen overlay
+alongside the post-mortem and the cinema, reached from the ready card's **Study
+plan** button and the route `/insights/:runId/study-plan`. `app.js:routeDeepLink`
+now hands one deep link to whichever surface owns it (film → plan → story), each
+returning falsy for a path that is not its own. The overlay's own accent is amber
+rather than the story's green so a player can tell which surface they are on, and
+it carries a print stylesheet because the plan is a thing people want on paper.
+Same two overlay traps as the post-mortem: `#insights-root > .sp-overlay` needs
+its own `position: fixed`, and it must close the other two before taking the body
+scroll lock. Engine-free tests in `tests/puzzles/test_study_plan.py`.
 
 ## Human Eval, arrows and steering advice (Game Review)
 
@@ -267,11 +341,11 @@ It pages through **`review_moves`** — every ply of every *completed* review th
 
 | Path | What |
 |------|------|
-| `server/` | Trainer backend: `main.py` (combined app), `db.py`, `engine.py`, `grading.py`, `selection.py`, `stats.py`, `modes.py` + `modes_api.py`, `playout.py`, `maia.py`, `replies.py`, `evalcheck.py`; accounts: `auth.py` + `auth_api.py`, `deps.py` (shared `get_connection` + `current_user`), `vol_games_api.py` (per-user saved games); "Your Mistakes": `mistakes.py` + `mistakes_run.py` + `mistakes_api.py`; Guess the Elo Duels: `guess_elo.py` + `guess_elo_api.py`; Dev calibration labelling: `devlabels.py` + `devlabels_api.py`; Insights/reviews: `reviews.py` + `reviews_api.py`, `insights_api.py` + `insights_run.py` + `insights_metrics.py` (Tier 1–3) + `insights_pro.py` (headline/leaks/game facts) + `insights_narrative.py` (story layer), `position_cache.py`, `findability_features.py`, `tactic_tags.py`, `game_identity.py` |
+| `server/` | Trainer backend: `main.py` (combined app), `db.py`, `engine.py`, `grading.py`, `selection.py`, `stats.py`, `modes.py` + `modes_api.py`, `playout.py`, `maia.py`, `replies.py`, `evalcheck.py`; accounts: `auth.py` + `auth_api.py`, `deps.py` (shared `get_connection` + `current_user`), `vol_games_api.py` (per-user saved games); "Your Mistakes": `mistakes.py` + `mistakes_run.py` + `mistakes_api.py`; Guess the Elo Duels: `guess_elo.py` + `guess_elo_api.py`; Dev calibration labelling: `devlabels.py` + `devlabels_api.py`; Insights/reviews: `reviews.py` + `reviews_api.py`, `insights_api.py` + `insights_run.py` + `insights_metrics.py` (Tier 1–3) + `insights_pro.py` (headline/leaks/game facts) + `insights_narrative.py` (story layer) + `study_plan.py` (the plan) + `game_shape.py` (centre/endgame type per game), `position_cache.py`, `findability_features.py`, `tactic_tags.py`, `game_identity.py` |
 | `pipeline/` | Offline puzzle data: `import_puzzles.py` (Lichess CSV → DB, also owns the `positions` schema), `mine_quiet.py` (PGN → quiet positions via Stockfish), `seed_demo.py`, `download_data.py`, `chesscom.py` / `lichess.py` (Insights ingest) |
 | `chess_vol/` | Vol package: `volatility.py` (re-export shim → `core.volatility`), `engine.py`, `analyze.py`, `config.py`, `cli.py`, `server.py`, `calibrate.py`, `classify.py`, `explain.py`, `game_review.py` (expected-points review + opening/key-moments), `findability_review.py` (attaches findability), `calibrate_findability.py` (Phase 3 driver: DB puzzles → full/line calibration), `calibrate_piece_values.py` (eval-scale fit + piece-value validation) |
 | `core/` | Shared, FastAPI-free primitives (Game Review 2.0): `volatility.py`, `evaluation.py`, `acceptable.py`, `features.py`, `findability.py`, `human.py`, `engine.py`, `cache.py`, `calibration.py`, `piece_features.py` + `piece_values.py` (contextual piece values), `constants/findability.json` + `constants/piece_values.json` |
-| `frontend/` | Single page: `index.html` + `shell.js`/`shell.css` (tab shell), `auth.js` (login/signup overlay gate), `app.js` (puzzles), `home/` (landing page — see below), `vol/` (vol UI; `vol/library.js` merges `/api/reviews` + `/api/vol/games`), `insights/` (launcher + Deep Dive dashboard; `postmortem.js`/`postmortem.css` are the narrative overlay; `cinema.js`/`cinema.css` are the generation Forge + the auto-playing film), `elo/`, `eval/`, `dev/` (internal calibration labelling), `vendor/` (vol's vendored chessground bundle) |
+| `frontend/` | Single page: `index.html` + `shell.js`/`shell.css` (tab shell), `auth.js` (login/signup overlay gate), `app.js` (puzzles), `home/` (landing page — see below), `vol/` (vol UI; `vol/library.js` merges `/api/reviews` + `/api/vol/games`), `insights/` (launcher + Deep Dive dashboard; `postmortem.js`/`postmortem.css` are the narrative overlay; `cinema.js`/`cinema.css` are the generation Forge + the auto-playing film; `studyplan.js`/`studyplan.css` are the study plan), `elo/`, `eval/`, `dev/` (internal calibration labelling), `vendor/` (vol's vendored chessground bundle) |
 | `tests/puzzles/`, `tests/vol/`, `tests/core/` | The three suites; `tests/vol/conftest.py` holds `FakeEngine` and fixtures; `tests/core/` covers the shared primitives + findability (engine-free, plus `@integration` real-engine capture tests) |
 | `data/` | Runtime only (gitignored): `trainer.db`, Stockfish/lc0 binaries, Maia weights, raw downloads |
 

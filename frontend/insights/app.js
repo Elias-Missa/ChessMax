@@ -41,6 +41,7 @@
   const openBtn = $("insights-open");
   const deepBtn = $("insights-open-deep");
   const playBtn = $("insights-play");
+  const planBtn = $("insights-plan");
 
   const dashboard = $("insights-dashboard");
   const dashClose = $("dash-close");
@@ -517,6 +518,16 @@
     if (window.__postmortemOpen) window.__postmortemOpen(tab || "verdict");
   }
 
+  /** Open the study plan. Same guards as the story: stale runs rebuild first. */
+  function openPlan() {
+    if (!currentMetrics) return;
+    if (isStale(currentMetrics)) { rebuildRun(); return; }
+    closeDashboard();
+    if (window.__postmortemClose) window.__postmortemClose({ silent: true });
+    if (window.__studyPlanAdopt) window.__studyPlanAdopt(currentMetrics, currentRunMeta);
+    if (window.__studyPlanOpen) window.__studyPlanOpen();
+  }
+
   function closeDashboard() {
     if (!dashboard) return;
     dashboard.classList.add("hidden");
@@ -546,6 +557,7 @@
 
   // The handler is assigned per-run (open vs rebuild) in updateLauncher.
   if (openBtn) openBtn.onclick = () => openStory("verdict");
+  if (planBtn) planBtn.onclick = openPlan;
   if (deepBtn) deepBtn.onclick = openDashboard;
   if (dashClose) dashClose.addEventListener("click", closeDashboard);
 
@@ -1829,6 +1841,7 @@
         playBtn.onclick = rebuildRun;
       }
       if (deepBtn) deepBtn.classList.add("hidden");
+      if (planBtn) planBtn.classList.add("hidden");
       return;
     }
 
@@ -1841,6 +1854,11 @@
       openBtn.onclick = () => openStory("verdict");
     }
     if (window.__insightsCinema) window.__insightsCinema.adopt(metrics, meta);
+    if (window.__studyPlanAdopt) window.__studyPlanAdopt(metrics, meta);
+    if (planBtn) {
+      planBtn.classList.remove("hidden");
+      planBtn.onclick = openPlan;
+    }
     if (deepBtn) {
       deepBtn.classList.remove("hidden");
       deepBtn.onclick = openDashboard;
@@ -2183,20 +2201,33 @@
       if (wanted && (!currentMetrics || activeRunId !== wanted[1])) {
         loadRun(wanted[1]).then((data) => {
           if (!data || !data.metrics) return;
-          const claimedLate = window.__insightsCinema && window.__insightsCinema.route(here);
-          if (!claimedLate && window.__postmortemRoute) window.__postmortemRoute(here);
+          routeDeepLink(here);
         });
         return;
       }
-      const claimed = window.__insightsCinema && window.__insightsCinema.route(here);
-      if (!claimed && window.__postmortemRoute) window.__postmortemRoute(here);
+      routeDeepLink(here);
     } else {
       closeDashboard();
       if (window.__postmortemClose) window.__postmortemClose({ silent: true });
+      if (window.__studyPlanClose) window.__studyPlanClose({ silent: true });
       if (window.__insightsCinema) window.__insightsCinema.close();
       if (window.__insightsForge) window.__insightsForge.close();
     }
   };
+
+  /**
+   * Hand one /insights/:id/... deep link to whichever surface owns it. The film
+   * claims first, then the plan, then the story — each returns falsy for a path
+   * that is not its own, so a missing script is a no-op rather than a 404 page.
+   */
+  function routeDeepLink(here) {
+    if (window.__insightsCinema && window.__insightsCinema.route(here)) return;
+    if (window.__studyPlanRoute && window.__studyPlanRoute(here)) {
+      openPlan();
+      return;
+    }
+    if (window.__postmortemRoute) window.__postmortemRoute(here);
+  }
 
   window.__insightsCloseDeepDive = closeDashboard;
   window.__insightsLoadRun = loadRun;

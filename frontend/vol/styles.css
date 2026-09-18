@@ -4003,12 +4003,32 @@ body[data-tab="game"] #vol-root .panel-status {
   }
 }
 /* ── Human Eval bar ─────────────────────────────────────────────────────── */
-/* Sits beside the engine bar and reads the same way, but muted: it is a
-   second opinion, not the source of truth. */
+/* Sits beside the engine bar and reads the same way — light half = White — but
+   in the same #ec4899 pink as the human-policy arrow. Both are the same second
+   opinion ("what a player at your level actually does"), so wearing one colour
+   is what tells you they belong together and that neither is the engine. */
 .human-eval-bar {
-  opacity: 0.92;
-  outline: 1px solid rgba(236, 72, 153, 0.35);
+  background: linear-gradient(180deg, #fbc7de 0%, #ec4899 100%);
+  outline: 1px solid rgba(236, 72, 153, 0.55);
   outline-offset: -1px;
+}
+
+/* Black's half stays the dark end of the same hue rather than the engine bar's
+   neutral black, so the split reads as one pink bar and not as a pink outline
+   around the engine's. */
+.human-eval-bar .eval-dark-fill {
+  background: linear-gradient(180deg, #22050f 0%, #5c1030 100%);
+}
+
+.human-eval-bar .eval-midline {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* Tag and readout carry the hue too, so the column is identifiable as the
+   human one at a glance without reading the label. */
+#humanEvalWrap .bar-tag,
+#humanEvalWrap .bar-readout {
+  color: #f472b6;
 }
 
 /* ── Review notes (steering advice + level verdict) ─────────────────────── */

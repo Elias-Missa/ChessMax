@@ -18,7 +18,8 @@
     <link rel="stylesheet" href="/static/eval/styles.css" />
     <link rel="stylesheet" href="/static/insights/styles.css" />
     <link rel="stylesheet" href="/static/insights/postmortem.css?v=story-3" />
-    <link rel="stylesheet" href="/static/insights/cinema.css?v=cinema-1" />
+    <link rel="stylesheet" href="/static/insights/cinema.css?v=film-1" />
+    <link rel="stylesheet" href="/static/insights/studyplan.css?v=plan-1" />
     <link rel="stylesheet" href="/static/dev/styles.css" />
   </head>
   <body>
@@ -2361,6 +2362,7 @@
               <button type="button" id="insights-open" class="insights-deep-btn">
                 <span>Why you lose</span>
               </button>
+              <button type="button" id="insights-plan" class="insights-deep-btn">Study plan</button>
               <button type="button" id="insights-open-deep" class="insights-deep-btn">Deep dive</button>
             </div>
             <p class="insights-ready-hint">Plays itself · <kbd>scroll</kbd> to take over · <kbd>Esc</kbd> to explore</p>
@@ -2878,6 +2880,12 @@
            aria-label="Generating your report" aria-live="polite"></div>
       <div id="insights-cinema" class="hidden" role="dialog" aria-modal="true"
            aria-label="Your report" tabindex="-1"></div>
+      <!-- ── Study plan: what to do, for how long, and what it is worth ──── -->
+      <!-- Built by insights/studyplan.js; empty here for the same reason the
+           cinema surfaces are — the launcher's first paint carries no dead
+           markup, and the plan's chrome depends on the run's budget. -->
+      <div id="studyplan" class="sp-overlay hidden" role="dialog" aria-modal="true"
+           aria-label="Your study plan"></div>
     </div><!-- /#insights-root -->
 
     <!-- ═══════════════════ DEV: CALIBRATION LABELLING ═════════════════════ -->
@@ -3113,7 +3121,14 @@
     <script src="/static/eval/app.js"></script>
     <script src="/static/insights/app.js"></script>
     <script src="/static/insights/postmortem.js?v=story-3"></script>
-    <script src="/static/insights/cinema.js?v=cinema-1"></script>
+    <!-- cinema.js is the shell (routing, chrome, Forge, Atlas); it publishes
+         window.__insightsCinemaInternals, which cinema-film.js reads at load to
+         install window.__insightsFilm. Load order matters, and dropping the
+         second tag leaves every transport control — play, replay, the chapter
+         ticks — a silent no-op with the Atlas as the only thing that renders. -->
+    <script src="/static/insights/cinema.js?v=film-1"></script>
+    <script src="/static/insights/cinema-film.js?v=film-1"></script>
+    <script src="/static/insights/studyplan.js?v=plan-1"></script>
     <script src="/static/dev/app.js"></script>
     <script src="/static/home/opera.js"></script>
     <script src="/static/home/app.js?v=7"></script>

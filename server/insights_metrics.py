@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from server.insights_narrative import build_narrative
+from server.study_plan import build_study_plan
 from server.insights_pro import (
     castle_side as _castle_side,
     compute_pro_metrics,
@@ -54,6 +55,7 @@ def compute_tier1_metrics(
         "game_explorer": [],
         "ai_coach_takeaways": [],
         "narrative": {},
+        "study_plan": {},
         "pro": {
             "headline": {},
             "move_quality": {},
@@ -69,6 +71,7 @@ def compute_tier1_metrics(
     }
     if not review_ids:
         empty["narrative"] = build_narrative(empty)
+        empty["study_plan"] = build_study_plan(empty)
         return empty
 
     placeholders = ",".join("?" for _ in review_ids)
@@ -221,6 +224,10 @@ def compute_tier1_metrics(
         "pro": pro,
     }
     payload["narrative"] = build_narrative(payload)
+    # The plan reads `pro`, `narrative` and `game_explorer`, so it is built last
+    # and stored at the default budget. The dedicated endpoint rebuilds it for
+    # any other hours/weeks the player picks — same function, no re-analysis.
+    payload["study_plan"] = build_study_plan(payload)
     return payload
 
 

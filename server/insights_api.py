@@ -188,7 +188,8 @@ def build_insights_router(app: FastAPI) -> APIRouter:
                 metrics = None
         if metrics is not None:
             from server.insights_narrative import ensure_narrative
-            metrics = ensure_narrative(metrics)
+            from server.study_plan import ensure_study_plan
+            metrics = ensure_study_plan(ensure_narrative(metrics))
         source = row["source"] if "source" in row.keys() else "chesscom"
         keys = row.keys()
         return {
@@ -240,6 +241,7 @@ def build_insights_router(app: FastAPI) -> APIRouter:
         ).fetchall()
         runs = []
         from server.insights_narrative import ensure_narrative
+        from server.study_plan import ensure_study_plan
         for row in rows:
             metrics = None
             if row["metrics"]:
@@ -248,7 +250,7 @@ def build_insights_router(app: FastAPI) -> APIRouter:
                 except json.JSONDecodeError:
                     metrics = None
             if metrics is not None:
-                metrics = ensure_narrative(metrics)
+                metrics = ensure_study_plan(ensure_narrative(metrics))
             runs.append({
                 **dict(row),
                 "metrics": metrics,
@@ -296,6 +298,43 @@ def build_insights_router(app: FastAPI) -> APIRouter:
             (run_id,),
         ).fetchall()
         return {"run_id": run_id, "flags": [dict(f) for f in flags]}
+
+    @router.get("/insights/{run_id}/study-plan")
+    def get_study_plan(
+        run_id: str,
+        hours_per_week: float = 5.0,
+        weeks: int = 4,
+        connection: sqlite3.Connection = Depends(get_connection),
+        user: sqlite3.Row = Depends(current_user),
+    ) -> dict[str, object]:
+        """Rebuild the plan for a different budget.
+
+        Pure arithmetic over the metrics already stored on the run — no engine,
+        no re-analysis — so the hours/weeks controls can be live. The run's own
+        ``metrics.study_plan`` holds the default-budget copy for the launcher.
+        """
+
+        from server.study_plan import build_study_plan
+
+        row = connection.execute(
+            "SELECT metrics FROM insight_runs WHERE run_id = ? AND user_id = ?",
+            (run_id, user["id"]),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Insights run not found")
+        metrics = None
+        if row["metrics"]:
+            try:
+                metrics = json.loads(row["metrics"])
+            except json.JSONDecodeError:
+                metrics = None
+        if metrics is None:
+            raise HTTPException(
+                status_code=409,
+                detail="This run has no metrics yet — wait for it to finish.",
+            )
+        plan = build_study_plan(metrics, hours_per_week=hours_per_week, weeks=weeks)
+        return {"run_id": run_id, "study_plan": plan}
 
     @router.post("/insights/{run_id}/recompute")
     def recompute_insights(
