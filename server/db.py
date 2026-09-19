@@ -502,6 +502,60 @@ CREATE TABLE IF NOT EXISTS dev_labels (
 );
 CREATE INDEX IF NOT EXISTS idx_dev_labels_user ON dev_labels(user_id, updated_at DESC);
 
+-- Daily check-in: one session per user per *local* day, five phase rows under
+-- it. The rollups on the session row (phases_done / seconds_total) are
+-- denormalized on purpose — the calendar reads a month of days at a time, and
+-- recounting five phase rows per cell is a join nobody needs.
+CREATE TABLE IF NOT EXISTS daily_sessions (
+    id             INTEGER PRIMARY KEY,
+    user_id        INTEGER NOT NULL,
+    day            TEXT NOT NULL,              -- the player's local YYYY-MM-DD
+    phases_done    INTEGER NOT NULL DEFAULT 0,
+    seconds_total  INTEGER NOT NULL DEFAULT 0,
+    started_at     TIMESTAMP,
+    completed_at   TIMESTAMP,
+    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, day),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_daily_sessions_user ON daily_sessions(user_id, day);
+
+CREATE TABLE IF NOT EXISTS daily_phase_runs (
+    id             INTEGER PRIMARY KEY,
+    session_id     INTEGER NOT NULL,
+    user_id        INTEGER NOT NULL,
+    phase          TEXT NOT NULL,              -- openings|puzzles|endgame|mistakes|review
+    status         TEXT NOT NULL DEFAULT 'pending',
+    seconds_spent  INTEGER NOT NULL DEFAULT 0,
+    target_seconds INTEGER NOT NULL DEFAULT 300,
+    payload        TEXT,                       -- phase-specific (the review's game)
+    started_at     TIMESTAMP,
+    completed_at   TIMESTAMP,
+    UNIQUE (session_id, phase),
+    FOREIGN KEY (session_id) REFERENCES daily_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_daily_phase_runs_user
+    ON daily_phase_runs(user_id, phase, id);
+
+-- Opening repertoire drill answers. Every attempt is kept, not just the latest:
+-- the queue reads only the most recent one per card, but the history is what a
+-- real spaced-repetition schedule would have to be fitted on.
+CREATE TABLE IF NOT EXISTS repertoire_attempts (
+    id           INTEGER PRIMARY KEY,
+    user_id      INTEGER NOT NULL,
+    card_id      TEXT NOT NULL,
+    fen          TEXT NOT NULL,
+    expected_uci TEXT NOT NULL,
+    played_uci   TEXT NOT NULL,
+    correct      INTEGER NOT NULL,
+    verdict      TEXT,
+    timestamp    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_repertoire_attempts_card
+    ON repertoire_attempts(user_id, card_id, id DESC);
+
 -- Shared Zobrist position cache (Insights.md B.3). ``nodes`` stores search
 -- depth when the live path is depth-limited rather than node-limited.
 CREATE TABLE IF NOT EXISTS position_cache (

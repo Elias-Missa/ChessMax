@@ -122,6 +122,139 @@ Engine access goes through `app.state` like the rest of the trainer: `playout_mo
 Every constant in `core/constants/endgame.json` is a **PLACEHOLDER** chosen from chess reasoning, not measured — the arena's own `endgame_results` table is what would eventually fit them. Each carries a `_comment` saying so, per repo convention.
 
 
+## Daily check-in (`server/daily.py`, `frontend/daily/`)
+
+The seventh top-level tab, at `/daily`. Five timed phases in a fixed order —
+**opening repertoire → puzzles → Endgame Arena → puzzles from your games → one
+loss, reviewed** — plus a monthly calendar and a streak.
+
+**It is a conductor, not a sixth trainer.** Four of the five phases hand off to
+modes that already exist (`/puzzles`, `/training/endgame`, `/training/mistakes`,
+`/game-review`); `server/daily.py` owns only what those modes cannot answer —
+which phase you are on, how long you have been in it, and whether today counts.
+Each `Phase` carries the route it hands off to, so adding a sixth is one entry
+in `PHASES` and a row that `_ensure_phase_rows` backfills onto days that already
+exist.
+
+**Five minutes is a floor, not a cap** (`TARGET_SECONDS`). Nothing stops at it
+and nothing past it is discarded; a phase ends when the player says it does, and
+re-entering a phase already marked done keeps counting.
+
+**The clock lives on `<body>`, not in `#daily-root`.** `frontend/daily/app.js`
+appends `#daily-hud` to the document and runs its tick loop whether or not the
+daily app is the active one — that is the only reason the timer survives
+navigating to the tab a phase actually happens in. Consequences worth keeping:
+
+- The HUD needs **its own `.hidden` rule** (`#daily-hud.hidden { display: none
+  !important }`). A bare `.hidden { display: none }` loses to the `display:
+  flex` on `#daily-hud`, the same specificity trap `style.css` documents.
+- **Time is flushed, not inferred.** The client counts seconds and posts deltas
+  (`/heartbeat`, every 15 s, plus `visibilitychange` and a `sendBeacon` on
+  `pagehide`); the server never derives elapsed time from timestamps. So a
+  closed laptop costs exactly the seconds it was closed.
+- **Only a visible tab ticks**, and `daily.MAX_HEARTBEAT_SECONDS` (120) caps
+  what one jump may add. Without both, "left the tab open overnight" becomes
+  eight hours of practice.
+- **One phase is active at a time.** `start_phase` drops any other active phase
+  to pending — two running clocks would both take heartbeats and the day's
+  total would be fiction.
+
+**The day is the player's day.** Only the browser knows the timezone, so the
+client sends its local `YYYY-MM-DD` and `daily.normalize_day` clamps it to ±1
+day of UTC. These genuinely differ (the local date can be a day behind UTC), so
+anything that touches a session — including test harnesses — must send the same
+local day the page does or it will read a different session.
+
+**A day counts when all five phases are `done`.** `skipped` is tracked but does
+not count, and `reopen` undoes a verdict without discarding the time already
+spent. `streaks()` counts back from today when today is complete and from
+yesterday otherwise — today has not been missed until it is over.
+
+**The review phase's game is picked once** and stored on the phase row
+(`daily_phase_runs.payload`), so re-entering the phase or reloading reopens the
+same game rather than rolling again. `pick_loss` prefers a loss whose review
+actually scored a move — the phase promises "opened at the move it turned", and
+`_worst_miss` is what supplies the ply — and prefers a game not shown recently.
+Both are **preferences, not filters** (the Endgame Arena rule): a player with
+three reviewed losses must not be told there is nothing available. The hand-off
+is `window.__volOpenGameById(game_id, {ply})`, the same loader Insights uses.
+
+State is in SQLite (`daily_sessions` + `daily_phase_runs` in `server/db.py`).
+The rollups on the session row are denormalized on purpose: the calendar reads a
+month of days at a time and re-counting five phase rows per cell is a join
+nobody needs. Routes are built by `server/daily_api.py:build_daily_router` under
+`/api/daily` and are `current_user`-gated: `today`, `phase/{key}/start|heartbeat
+|finish|reopen`, `calendar`. Engine-free tests in
+`tests/puzzles/test_daily_checkin.py`.
+
+## Opening repertoire (`core/repertoire.py`, `server/repertoire.py`)
+
+Phase one of the check-in, and the only part of it that is new code. Lives in
+the daily app at `/daily/repertoire` (a Drill board and a "Your lines" view).
+
+**It is mined, not authored.** There is no opening book here and no plan to ship
+one: a book tells you what masters play, which is not what you need at 1400.
+Every line is a path the player has actually walked at least `min_node_games`
+times, built by replaying the PGNs of their own reviewed games into a move tree;
+every recommendation comes from either their own results or an engine move a
+stored review already found. No engine runs, and no network.
+
+**Three verdicts, and they are the product** (`classify_move`):
+
+- `fix` — the reviews measured this habit costing ≥ `fix_delta_w` win% a visit
+  and the engine's move differs. Play that instead.
+- `gap` — the player's most-played move here is under `consistent_share` of
+  their games from this position. They have not decided what they play; the
+  drill is to pick one. The recommendation is the best *shrunk* score among
+  moves that themselves clear `min_node_games` — telling someone to settle on a
+  move they played once is another experiment, not a decision.
+- `keep` — their move, nothing argues with it, drill it so it is fast.
+
+Order matters: **a measured `fix` beats a `gap`**, because being consistent
+about a move that costs you is worse, not better.
+
+**Evidence is optional and arrives as data.** `core/repertoire.py` is pure and
+takes a `fen -> PositionEvidence` mapping; `server/repertoire.py:load_evidence`
+assembles it from `review_moves` (`detail.fen_before`, `detail.move_uci`,
+`detail.top_lines[0]`, and `delta_w` averaged per move). With no reviews every
+node is `keep` or `gap` — the correct degradation, not a guess. Positions are
+keyed by `fen_key` (board/side/castling/ep, **no clocks**) so a transposition
+lands on one node instead of two.
+
+**The branch caps must never hide a measured leak.** `extract_lines` keeps the
+tree small (`max_branches`, `min_branch_share`), but `paths_to_fixes` marks
+every node on a route to a habit the reviews already priced and follows those
+too. Marking the *whole route* is the part that matters — following the costly
+move itself achieves nothing when the branch three plies above it was already
+pruned, which is what the first version did. Measured on a real 252-game
+account: 0 fixes surfaced while 8 repeated habits costing ≥4 win% a visit sat in
+the database; path-aware widening surfaces 6 of them as drill cards (e.g. "Bf4
+has cost you 12 win% a game across 6 reviewed games"). Widening uses a stricter
+bar than the verdict does — `min_node_games` *reviewed* visits, not merely games
+played — so one bad game cannot add a branch. That account also places
+`fix_delta_w`: across its 85 repeated opening habits the median cost is 0.55
+win% and p90 is 3.92, so 4.0 flags the top ~9%.
+
+**Lines are ordered by opening ROI, not frequency.** `load_roi` reads
+`pro.openings.roi.rows` from the newest completed `insight_runs` — the same
+ranking `insights_pro.compute_opening_roi` feeds the Insights "what to practise
+next" card — so the daily drill and the dashboard can never recommend different
+openings. With no insights run the lines fall back to frequency order.
+
+**The queue is what you get wrong, in the lines that cost most** (`order_cards`):
+verdict weight, then whether the card was last answered wrong / never seen /
+correct-and-fresh, then ROI, then frequency. Cards are deduplicated by position,
+so two lines sharing a prefix drill it once. Every attempt is written to
+`repertoire_attempts` (not just the latest) because that history is what a real
+spaced-repetition schedule would have to be fitted on.
+
+Every constant in `core/constants/repertoire.json` is a **PLACEHOLDER** chosen
+from chess reasoning, not measured, and each carries a `_comment` saying so —
+the same convention as `endgame.json`. Routes:
+`server/repertoire_api.py:build_repertoire_router` under `/api/repertoire`
+(`""`, `/drill`, `/attempt`), all `current_user`-gated. Engine-free tests in
+`tests/core/test_repertoire.py` + `tests/puzzles/test_daily_checkin.py`.
+
 ## Duels (Guess the Elo + Guess the Eval)
 
 **They are one top-level tab over two independent app roots.** `#elo-root` (app `"elo"`) and `#eval-root` (app `"eval"`) are still separate apps with separate routes; what they share is the single `Duels` shell tab (`data-top="duels"`) and the `#duels-subnav` that picks between them — the same pattern Training and Game Review already use. Routes are `/duels` (→ Elo), `/duels/elo` and `/duels/eval`; the pre-merge `/guess-the-elo` and `/guess-the-eval` are kept in `ROUTES` **as aliases carrying the same `top: "duels"`**, so old links and bookmarks resolve and still light the right sub-tab. Adding a path to `frontend/shell.js` is only half the job — `server/main.py:spa_routes` has to list it too or a hard load 404s.
@@ -130,7 +263,7 @@ A head-to-head guessing game (its own third app root `#elo-root`, alongside puzz
 
 ## Insights & game-review persistence
 
-Spec: [`Insights.md`](Insights.md). Six top-level shell tabs (Home / Puzzles / Training / Game Review / Insights / Duels) with History-API routes in `frontend/shell.js`; SPA fallback routes live in `server/main.py`.
+Spec: [`Insights.md`](Insights.md). Seven top-level shell tabs (Home / Daily / Puzzles / Training / Game Review / Insights / Duels) with History-API routes in `frontend/shell.js`; SPA fallback routes live in `server/main.py`.
 
 **Persistence (Phase B).** Normalized tables in `server/db.py`: `games`, `reviews`, `review_moves`, `position_cache` (shared Zobrist MultiPV + optional findability features — no `user_id`). Async review jobs: `POST/GET /api/review`, `GET /api/reviews` (`server/reviews.py` + `reviews_api.py`). Game Review opens always request **full** tier, using a completed shallow row as a placeholder while it upgrades (`frontend/vol/app.js`) — that holds for *opening a saved game* too (`openSavedGame` → `maybeUpgradeStoredReview`), not just the "Analyze PGN" path. This matters because **findability is only computed at full tier** and Insights ingests at shallow: without the upgrade every game reached from Insights showed a dead findability panel while games you reviewed yourself showed a live one. Anonymous `/analyze/*` SSE still works and is **not** persisted; durable reviews require an account. Changing findability constants recomputes scores from stored feature vectors via `server/findability_features.py` (no engine) — stamped with `constants_version` on each full review.
 
@@ -341,15 +474,15 @@ It pages through **`review_moves`** — every ply of every *completed* review th
 
 | Path | What |
 |------|------|
-| `server/` | Trainer backend: `main.py` (combined app), `db.py`, `engine.py`, `grading.py`, `selection.py`, `stats.py`, `modes.py` + `modes_api.py`, `playout.py`, `maia.py`, `replies.py`, `evalcheck.py`; accounts: `auth.py` + `auth_api.py`, `deps.py` (shared `get_connection` + `current_user`), `vol_games_api.py` (per-user saved games); "Your Mistakes": `mistakes.py` + `mistakes_run.py` + `mistakes_api.py`; Guess the Elo Duels: `guess_elo.py` + `guess_elo_api.py`; Dev calibration labelling: `devlabels.py` + `devlabels_api.py`; Insights/reviews: `reviews.py` + `reviews_api.py`, `insights_api.py` + `insights_run.py` + `insights_metrics.py` (Tier 1–3) + `insights_pro.py` (headline/leaks/game facts) + `insights_narrative.py` (story layer) + `study_plan.py` (the plan) + `game_shape.py` (centre/endgame type per game), `position_cache.py`, `findability_features.py`, `tactic_tags.py`, `game_identity.py` |
+| `server/` | Trainer backend: `main.py` (combined app), `db.py`, `engine.py`, `grading.py`, `selection.py`, `stats.py`, `modes.py` + `modes_api.py`, `playout.py`, `maia.py`, `replies.py`, `evalcheck.py`; accounts: `auth.py` + `auth_api.py`, `deps.py` (shared `get_connection` + `current_user`), `vol_games_api.py` (per-user saved games); "Your Mistakes": `mistakes.py` + `mistakes_run.py` + `mistakes_api.py`; Guess the Elo Duels: `guess_elo.py` + `guess_elo_api.py`; Daily check-in: `daily.py` + `daily_api.py` and `repertoire.py` + `repertoire_api.py`; Dev calibration labelling: `devlabels.py` + `devlabels_api.py`; Insights/reviews: `reviews.py` + `reviews_api.py`, `insights_api.py` + `insights_run.py` + `insights_metrics.py` (Tier 1–3) + `insights_pro.py` (headline/leaks/game facts) + `insights_narrative.py` (story layer) + `study_plan.py` (the plan) + `game_shape.py` (centre/endgame type per game), `position_cache.py`, `findability_features.py`, `tactic_tags.py`, `game_identity.py` |
 | `pipeline/` | Offline puzzle data: `import_puzzles.py` (Lichess CSV → DB, also owns the `positions` schema), `mine_quiet.py` (PGN → quiet positions via Stockfish), `seed_demo.py`, `download_data.py`, `chesscom.py` / `lichess.py` (Insights ingest) |
 | `chess_vol/` | Vol package: `volatility.py` (re-export shim → `core.volatility`), `engine.py`, `analyze.py`, `config.py`, `cli.py`, `server.py`, `calibrate.py`, `classify.py`, `explain.py`, `game_review.py` (expected-points review + opening/key-moments), `findability_review.py` (attaches findability), `calibrate_findability.py` (Phase 3 driver: DB puzzles → full/line calibration), `calibrate_piece_values.py` (eval-scale fit + piece-value validation) |
-| `core/` | Shared, FastAPI-free primitives (Game Review 2.0): `volatility.py`, `evaluation.py`, `acceptable.py`, `features.py`, `findability.py`, `human.py`, `engine.py`, `cache.py`, `calibration.py`, `piece_features.py` + `piece_values.py` (contextual piece values), `constants/findability.json` + `constants/piece_values.json` |
-| `frontend/` | Single page: `index.html` + `shell.js`/`shell.css` (tab shell), `auth.js` (login/signup overlay gate), `app.js` (puzzles), `home/` (landing page — see below), `vol/` (vol UI; `vol/library.js` merges `/api/reviews` + `/api/vol/games`), `insights/` (launcher + Deep Dive dashboard; `postmortem.js`/`postmortem.css` are the narrative overlay; `cinema.js`/`cinema.css` are the generation Forge + the auto-playing film; `studyplan.js`/`studyplan.css` are the study plan), `elo/`, `eval/`, `dev/` (internal calibration labelling), `vendor/` (vol's vendored chessground bundle) |
+| `core/` | Shared, FastAPI-free primitives (Game Review 2.0): `volatility.py`, `evaluation.py`, `acceptable.py`, `features.py`, `findability.py`, `human.py`, `engine.py`, `cache.py`, `calibration.py`, `piece_features.py` + `piece_values.py` (contextual piece values), `repertoire.py` (opening repertoire mined from the player's own games), `constants/findability.json` + `constants/piece_values.json` + `constants/repertoire.json` |
+| `frontend/` | Single page: `index.html` + `shell.js`/`shell.css` (tab shell), `auth.js` (login/signup overlay gate), `app.js` (puzzles), `home/` (landing page — see below), `vol/` (vol UI; `vol/library.js` merges `/api/reviews` + `/api/vol/games`), `insights/` (launcher + Deep Dive dashboard; `postmortem.js`/`postmortem.css` are the narrative overlay; `cinema.js`/`cinema.css` are the generation Forge + the auto-playing film; `studyplan.js`/`studyplan.css` are the study plan), `daily/` (the check-in: calendar, phase list, floating clock HUD, repertoire drill), `elo/`, `eval/`, `dev/` (internal calibration labelling), `vendor/` (vol's vendored chessground bundle) |
 | `tests/puzzles/`, `tests/vol/`, `tests/core/` | The three suites; `tests/vol/conftest.py` holds `FakeEngine` and fixtures; `tests/core/` covers the shared primitives + findability (engine-free, plus `@integration` real-engine capture tests) |
 | `data/` | Runtime only (gitignored): `trainer.db`, Stockfish/lc0 binaries, Maia weights, raw downloads |
 
-`positions` table schema is created by `pipeline/import_puzzles.py:ensure_positions_schema` (imported by `db.py`), while the app-side tables (`users`, `sessions`, `attempts`, `playouts`, `playout_sessions`, `vol_games`, `dev_labels`, mode + mistakes + Insights tables) are in `server/db.py:APP_SCHEMA`. Columns added after a table's first creation go in `server/db.py:_migrate_add_columns` (idempotent `ALTER TABLE`), since the shipped `data/trainer.db` predates them — that's how `email`/`password_hash`/`password_salt`/`chesscom_username` / `insight_runs.source` reach the existing DB.
+`positions` table schema is created by `pipeline/import_puzzles.py:ensure_positions_schema` (imported by `db.py`), while the app-side tables (`users`, `sessions`, `attempts`, `playouts`, `playout_sessions`, `vol_games`, `dev_labels`, `daily_sessions` + `daily_phase_runs`, `repertoire_attempts`, mode + mistakes + Insights tables) are in `server/db.py:APP_SCHEMA`. Columns added after a table's first creation go in `server/db.py:_migrate_add_columns` (idempotent `ALTER TABLE`), since the shipped `data/trainer.db` predates them — that's how `email`/`password_hash`/`password_salt`/`chesscom_username` / `insight_runs.source` reach the existing DB.
 
 ## Environment variables
 

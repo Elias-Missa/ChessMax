@@ -20,6 +20,7 @@
     <link rel="stylesheet" href="/static/insights/postmortem.css?v=story-3" />
     <link rel="stylesheet" href="/static/insights/cinema.css?v=film-1" />
     <link rel="stylesheet" href="/static/insights/studyplan.css?v=plan-1" />
+    <link rel="stylesheet" href="/static/daily/styles.css?v=1" />
     <link rel="stylesheet" href="/static/dev/styles.css" />
   </head>
   <body>
@@ -52,6 +53,7 @@
       </h1>
       <nav class="shell-tabs" role="tablist" aria-label="ChessMax sections">
         <button class="shell-tab" type="button" role="tab" data-top="home" data-tab="home" data-route="/" aria-selected="false">Home</button>
+        <button class="shell-tab" type="button" role="tab" data-top="daily" data-tab="daily" data-route="/daily" aria-selected="false">Daily</button>
         <button class="shell-tab active" type="button" role="tab" data-top="puzzles" data-tab="train" data-route="/puzzles" aria-selected="true">Puzzles</button>
         <button class="shell-tab" type="button" role="tab" data-top="training" data-tab="evalhold" data-route="/training" aria-selected="false">Training</button>
         <button class="shell-tab" type="button" role="tab" data-top="game-review" data-tab="game" data-route="/game-review" aria-selected="false">Game Review</button>
@@ -2888,6 +2890,141 @@
            aria-label="Your study plan"></div>
     </div><!-- /#insights-root -->
 
+    <!-- ═════════════════════════ DAILY CHECK-IN ═══════════════════════════ -->
+    <!-- A conductor, not a sixth trainer: four of its five phases hand off to
+         modes that already exist, and the running clock follows the player into
+         those tabs via the floating HUD that `daily/app.js` appends to <body>.
+         Only the opening-repertoire phase lives here, because nothing else in
+         the app builds a repertoire from the player's own games. -->
+    <div id="daily-root" class="hidden">
+      <!-- ── Check-in home: today, the five phases, the month ───────────── -->
+      <section class="dy-view" id="daily-home">
+        <header class="dy-hero">
+          <div class="dy-hero-main">
+            <span class="dy-eyebrow" id="dyDate">—</span>
+            <h1 class="dy-title">Daily check-in</h1>
+            <p class="dy-sub" id="dySub">
+              Five phases, five minutes each. Stay as long as you like.
+            </p>
+            <div class="dy-hero-actions">
+              <button type="button" class="dy-primary" id="dyPrimary">Start check-in</button>
+              <span class="dy-hero-note" id="dyHeroNote"></span>
+            </div>
+          </div>
+
+          <div class="dy-hero-side">
+            <div class="dy-ring-wrap">
+              <svg class="dy-ring" viewBox="0 0 120 120" aria-hidden="true">
+                <circle class="dy-ring-track" cx="60" cy="60" r="52" />
+                <circle class="dy-ring-fill" id="dyRingFill" cx="60" cy="60" r="52" />
+              </svg>
+              <div class="dy-ring-label">
+                <strong id="dyRingDone">0</strong>
+                <span>of 5 done</span>
+              </div>
+            </div>
+            <dl class="dy-streaks">
+              <div><dt>Streak</dt><dd id="dyStreak">0</dd></div>
+              <div><dt>Best</dt><dd id="dyBest">0</dd></div>
+              <div><dt>Days</dt><dd id="dyTotalDays">0</dd></div>
+            </dl>
+          </div>
+        </header>
+
+        <ol class="dy-phases" id="dyPhases" aria-label="Today's phases"></ol>
+
+        <section class="dy-calendar-card">
+          <header class="dy-cal-head">
+            <button type="button" class="dy-ghost" id="dyPrevMonth" aria-label="Previous month">‹</button>
+            <h2 id="dyMonthLabel">—</h2>
+            <button type="button" class="dy-ghost" id="dyNextMonth" aria-label="Next month">›</button>
+          </header>
+          <div class="dy-weekdays" aria-hidden="true">
+            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span>
+            <span>Fri</span><span>Sat</span><span>Sun</span>
+          </div>
+          <div class="dy-grid" id="dyGrid"></div>
+          <footer class="dy-cal-foot">
+            <p class="dy-cal-detail" id="dyCalDetail">Pick a day to see what you did.</p>
+            <span class="dy-cal-legend">
+              <i class="dy-key dy-key--full"></i> all five
+              <i class="dy-key dy-key--part"></i> partial
+              <i class="dy-key dy-key--none"></i> nothing
+            </span>
+          </footer>
+        </section>
+      </section>
+
+      <!-- ── Phase 1: the opening repertoire, built and drilled ─────────── -->
+      <section class="dy-view hidden" id="daily-repertoire">
+        <div class="dy-bar">
+          <div class="dy-bar-left">
+            <button type="button" class="dy-ghost" id="dyRepBack">← Check-in</button>
+            <div class="dy-modes" role="tablist" aria-label="Repertoire view">
+              <button type="button" role="tab" data-rep="drill" class="active" aria-selected="true">Drill</button>
+              <button type="button" role="tab" data-rep="lines" aria-selected="false">Your lines</button>
+            </div>
+          </div>
+          <div class="dy-bar-right">
+            <span class="dy-chipset" id="dyRepCounts"></span>
+            <button type="button" class="dy-ghost" id="dyRepRefresh">Rebuild</button>
+          </div>
+        </div>
+
+        <!-- Drill -->
+        <div class="dy-drill" id="dyDrill">
+          <div class="dy-boardcol">
+            <div class="dy-boardframe">
+              <div class="dy-board cg-wrap" id="dyBoard"></div>
+            </div>
+            <div class="dy-boardmeta">
+              <span class="dy-turn" id="dyTurn">—</span>
+              <span class="dy-linesan" id="dyLineSan"></span>
+            </div>
+          </div>
+
+          <aside class="dy-panel">
+            <div class="dy-empty hidden" id="dyRepEmpty">
+              <h2>No repertoire yet</h2>
+              <p id="dyRepEmptyText">
+                Review a few of your games and your own openings will build
+                themselves from them.
+              </p>
+              <button type="button" class="dy-primary" id="dyRepEmptyCta">Go to Game Review</button>
+            </div>
+
+            <div id="dyRepContent">
+              <header class="dy-card-head">
+                <div class="dy-card-line">
+                  <span class="dy-verdict" id="dyVerdict">—</span>
+                  <span class="dy-opening" id="dyOpening">—</span>
+                </div>
+                <h2 class="dy-prompt" id="dyPrompt">Your move</h2>
+                <p class="dy-why" id="dyWhy"></p>
+              </header>
+
+              <div class="dy-feedback hidden" id="dyFeedback" role="status"></div>
+
+              <section class="dy-alts hidden" id="dyAltsWrap">
+                <h3>What you have played here</h3>
+                <ul class="dy-altlist" id="dyAlts"></ul>
+              </section>
+
+              <div class="dy-drill-actions">
+                <button type="button" class="dy-ghost" id="dyShow">Show me</button>
+                <button type="button" class="dy-primary" id="dyNextCard" disabled>Next →</button>
+              </div>
+
+              <p class="dy-progress" id="dyDrillProgress"></p>
+            </div>
+          </aside>
+        </div>
+
+        <!-- Your lines -->
+        <div class="dy-lines hidden" id="dyLines"></div>
+      </section>
+    </div>
+
     <!-- ═══════════════════ DEV: CALIBRATION LABELLING ═════════════════════ -->
     <!-- An internal harness, not a product surface. It walks every ply of every
          completed review the account owns, shows the volatility and findability
@@ -3129,6 +3266,7 @@
     <script src="/static/insights/cinema.js?v=film-1"></script>
     <script src="/static/insights/cinema-film.js?v=film-1"></script>
     <script src="/static/insights/studyplan.js?v=plan-1"></script>
+    <script src="/static/daily/app.js?v=1"></script>
     <script src="/static/dev/app.js"></script>
     <script src="/static/home/opera.js"></script>
     <script src="/static/home/app.js?v=7"></script>

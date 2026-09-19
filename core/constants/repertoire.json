@@ -1,0 +1,30 @@
+{
+  "_about": "Opening-repertoire builder. Every value here is a PLACEHOLDER chosen from chess reasoning, not fitted — the repertoire has no ground truth to fit against yet. Each carries a _comment saying what it is for and what would move it.",
+
+  "max_plies": 16,
+  "_comment_max_plies": "PLACEHOLDER. 8 moves a side. Past this a line stops being a repertoire and becomes a middlegame you happen to have reached; the user's own games also thin out fast, so deeper nodes fail min_node_games anyway.",
+
+  "min_node_games": 3,
+  "_comment_min_node_games": "PLACEHOLDER. A position reached twice is a coincidence; three times is a habit. Below this the node is not yours and is not drilled.",
+
+  "min_branch_share": 0.25,
+  "_comment_min_branch_share": "PLACEHOLDER. A reply you meet in under a quarter of the games from a node is an experiment, not part of the line. Keeps the extracted tree small enough to drill in five minutes.",
+
+  "max_branches": 2,
+  "_comment_max_branches": "PLACEHOLDER. At most two continuations followed per node. The tree is for practice, not for completeness — fanning out to every legal reply produces hundreds of cards nobody finishes.",
+
+  "consistent_share": 0.6,
+  "_comment_consistent_share": "PLACEHOLDER. Below this share for your own most-played move, you have not decided what you play here — that is the `gap` verdict, and picking one move is the drill.",
+
+  "fix_delta_w": 4.0,
+  "_comment_fix_delta_w": "PLACEHOLDER, in win% lost per visit, averaged over the plies a review scored. 4 win% every time you reach a position you reach every fifth game is a real hole; under it, the move is a preference and not a leak.",
+
+  "score_prior_games": 2.0,
+  "_comment_score_prior_games": "PLACEHOLDER. Shrinks a node's score toward 50% so 1-for-1 does not outrank 7-for-10 when choosing which move to recommend at a `gap`.",
+
+  "drill_recent_days": 3,
+  "_comment_drill_recent_days": "PLACEHOLDER. A card answered correctly within this many days is pushed to the back of the queue — enough to stop one session repeating itself, short enough that a weekly line still comes round.",
+
+  "verdict_weight": {"fix": 3.0, "gap": 2.0, "keep": 1.0},
+  "_comment_verdict_weight": "PLACEHOLDER ordering, not a measurement. Drill what you get wrong before what you merely play; the numbers only need to rank."
+}

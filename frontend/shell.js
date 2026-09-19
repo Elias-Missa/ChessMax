@@ -8,6 +8,10 @@
 
 const ROUTES = [
   { path: "/", app: "home", tab: "home", top: "home" },
+  // The daily check-in is one tab over two views: the board it drills lives on
+  // `/daily/repertoire`, the calendar and phase list on `/daily`.
+  { path: "/daily", app: "daily", tab: "daily", top: "daily" },
+  { path: "/daily/repertoire", app: "daily", tab: "daily", top: "daily" },
   { path: "/puzzles", app: "puzzles", tab: "train", top: "puzzles" },
   { path: "/training", app: "puzzles", tab: "evalhold", top: "training" },
   { path: "/training/eval-hold", app: "puzzles", tab: "evalhold", top: "training" },
@@ -36,6 +40,7 @@ const TAB_TO_PATH = Object.fromEntries(
   ROUTES.filter((r) => r.path !== "/training").map((r) => [r.tab, r.path]),
 );
 TAB_TO_PATH.home = "/";
+TAB_TO_PATH.daily = "/daily";
 TAB_TO_PATH.train = "/puzzles";
 TAB_TO_PATH.game = "/game-review";
 TAB_TO_PATH.editor = "/game-review/editor";
@@ -62,6 +67,7 @@ const volRoot = document.getElementById("vol-root");
 const eloRoot = document.getElementById("elo-root");
 const evalRoot = document.getElementById("eval-root");
 const insightsRoot = document.getElementById("insights-root");
+const dailyRoot = document.getElementById("daily-root");
 const devRoot = document.getElementById("dev-root");
 
 let navigating = false;
@@ -77,6 +83,9 @@ function matchRoute(pathname) {
   if (path.startsWith("/insights")) {
     const base = ROUTES.find((r) => r.path === "/insights");
     return { ...base, path };
+  }
+  if (path.startsWith("/daily")) {
+    return ROUTES.find((r) => r.path === "/daily");
   }
   // Prefix match for unknown training/game-review children → hub defaults
   if (path.startsWith("/training")) {
@@ -115,6 +124,7 @@ function showRoots(app, tab) {
   if (eloRoot) eloRoot.classList.toggle("hidden", app !== "elo");
   if (evalRoot) evalRoot.classList.toggle("hidden", app !== "eval");
   if (insightsRoot) insightsRoot.classList.toggle("hidden", app !== "insights");
+  if (dailyRoot) dailyRoot.classList.toggle("hidden", app !== "daily");
   if (devRoot) devRoot.classList.toggle("hidden", app !== "dev");
   if (trainingNav) {
     trainingNav.classList.toggle("hidden", app !== "puzzles" || !TRAINING_TABS.has(tab));
@@ -145,6 +155,7 @@ function applyRoute(route, { push = false } = {}) {
   if (window.__eloSetActive) window.__eloSetActive(app === "elo");
   if (window.__evalSetActive) window.__evalSetActive(app === "eval");
   if (window.__devSetActive) window.__devSetActive(app === "dev");
+  if (window.__dailySetActive) window.__dailySetActive(app === "daily", route.path);
   if (window.__insightsSetActive) {
     if (app === "insights") window.__insightsSetActive(true, route.path);
     else window.__insightsSetActive(false);

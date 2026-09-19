@@ -41,6 +41,8 @@ from server.reviews_api import build_reviews_router
 from server.devlabels_api import build_dev_labels_router
 from server.piecevalues_api import build_piece_values_router
 from server.endgame_api import build_endgame_router
+from server.daily_api import build_daily_router
+from server.repertoire_api import build_repertoire_router
 from server.deps import current_user, get_connection
 from server.replies import engine_reply
 from server.selection import select_next_position
@@ -129,6 +131,12 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
     # Endgame Arena: mined endgames played out against a laddered Maia.
     app.include_router(build_endgame_router(app))
 
+    # Opening repertoire mined from the user's own games (engine-free).
+    app.include_router(build_repertoire_router(app))
+
+    # Daily check-in: the five-phase conductor over the modes above.
+    app.include_router(build_daily_router(app))
+
     # Guess the Elo Duels (matchmaking + guessing game).
     app.include_router(build_guess_elo_router())
 
@@ -158,6 +166,8 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
     # that already have their own prefixes; these paths never collide with /api
     # or /analyze.
     @app.get("/puzzles")
+    @app.get("/daily")
+    @app.get("/daily/{rest:path}")
     @app.get("/training")
     @app.get("/training/{rest:path}")
     @app.get("/game-review")
