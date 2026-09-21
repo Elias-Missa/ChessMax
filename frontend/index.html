@@ -3060,11 +3060,38 @@
               <em id="dyBuildLegendNote"></em>
             </div>
 
+            <!-- What Insights says is costing you most, as somewhere to start.
+                 Empty (and hidden) until a run exists — see server/opening_prep.py. -->
+            <section class="dy-prep hidden" id="dyPrep">
+              <header class="dy-prep-head">
+                <h3>Worth prepping</h3>
+                <button type="button" class="dy-ghost dy-prep-toggle" id="dyPrepToggle">Hide</button>
+              </header>
+              <div class="dy-prep-list" id="dyPrepList"></div>
+            </section>
+
             <div class="dy-cands" id="dyBuildCands"></div>
 
             <button type="button" class="dy-ghost dy-build-more hidden" id="dyBuildMore">
               Show more
             </button>
+
+            <!-- Paste a repertoire in. Variations are branches, so a study
+                 chapter imports as a tree rather than one line. -->
+            <details class="dy-importbox" id="dyImportBox">
+              <summary>Paste a PGN</summary>
+              <p class="dy-import-help">
+                A line, a game, or a whole study chapter. Variations become
+                branches. Imports into the side selected above.
+              </p>
+              <textarea id="dyImportText" rows="5" spellcheck="false"
+                        placeholder="1. e4 c5 2. Nf3 (2. Nc3 Nc6) d6"></textarea>
+              <div class="dy-import-actions">
+                <button type="button" class="dy-primary" id="dyImportGo">Import</button>
+                <span class="dy-import-status" id="dyImportStatus"></span>
+              </div>
+            </details>
+
             <p class="dy-progress" id="dyBuildStatus"></p>
           </aside>
         </div>

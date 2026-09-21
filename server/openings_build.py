@@ -480,18 +480,39 @@ def build_lines(
 ) -> list[dict[str, Any]]:
     """Walk the tree into displayable lines, one per leaf.
 
-    Depth-first from the root, following every chosen edge. A cycle is
+    Depth-first from every root, following every chosen edge. A cycle is
     impossible in a legal game tree keyed by position *plus* side to move, but
-    repetition can revisit a ``fen_key``, so the walk carries a visited set —
+    repetition can revisit a position, so the walk carries a visited set —
     without it a repetition in a stored line hangs the request.
+
+    A root is a node nothing points *at*, not "the node at ply 0". A PGN
+    imported from a ``[FEN]``/``[SetUp]`` header — which is how most study
+    chapters are written — has no ply-0 node at all, and anchoring on one made
+    every such import vanish from this view while still sitting in the database.
     """
 
     by_fen: dict[str, list[Mapping[str, Any]]] = {}
     for edge in edges:
         by_fen.setdefault(position_key(str(edge["fen"])), []).append(edge)
+    if not by_fen:
+        return []
 
-    root = next((n for n in nodes if int(n["ply"]) == 0), None)
-    if root is None or not by_fen:
+    reached: set[str] = set()
+    for edge in edges:
+        try:
+            board = chess.Board(str(edge["fen"]))
+            board.push(chess.Move.from_uci(str(edge["uci"])))
+        except ValueError:
+            continue
+        reached.add(position_key(board.fen()))
+
+    roots = [
+        n
+        for n in nodes
+        if position_key(str(n["fen"])) in by_fen
+        and position_key(str(n["fen"])) not in reached
+    ]
+    if not roots:
         return []
 
     lines: list[dict[str, Any]] = []
@@ -523,8 +544,8 @@ def build_lines(
             board.push(chess.Move.from_uci(str(edge["uci"])))
             walk(board.fen(), [*moves, edge], seen | {key})
 
-    root_fen = str(root["fen"])
-    walk(root_fen, [], frozenset())
+    for root in roots:
+        walk(str(root["fen"]), [], frozenset())
     lines.sort(key=lambda line: (-line["plies"], line["key"]))
     return lines
 

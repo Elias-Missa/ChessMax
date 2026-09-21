@@ -594,7 +594,7 @@
       btn.classList.toggle("active", on);
       btn.setAttribute("aria-selected", on ? "true" : "false");
     });
-    if (view === "build" && !build.data) void loadBuild(true);
+    if (view === "build" && !build.data) { void loadBuild(true); void loadPrep(); }
     // The book is rebuilt on every entry, not cached: it is edited in the
     // Build tab next door, so anything rendered once at load is stale by the
     // time the user comes back to look at it.
@@ -965,6 +965,7 @@
     cg: null,
     expanded: false,
     busy: false,
+    prep: null,
   };
 
   async function loadBuild(force) {
@@ -1221,6 +1222,119 @@
     void loadBuild(true);
   }
 
+  // ── Build: prep suggestions from Insights ─────────────────────────────── //
+  //
+  // The ROI leak board already knows which openings cost the most; this is the
+  // hand-off from that answer into somewhere to act on it. The ranking is NOT
+  // recomputed here — a second ranking that can disagree with the dashboard is
+  // worse than one that can be wrong.
+
+  async function loadPrep() {
+    const host = $("dyPrepList");
+    const wrap = $("dyPrep");
+    if (!host || !wrap) return;
+    try {
+      const data = await api("/api/opening-book/prep");
+      build.prep = data;
+      renderPrep(data);
+    } catch (_) {
+      wrap.classList.add("hidden");
+    }
+  }
+
+  function renderPrep(data) {
+    const host = $("dyPrepList");
+    const wrap = $("dyPrep");
+    if (!host || !wrap) return;
+    const rows = (data && data.suggestions) || [];
+    if (!rows.length) {
+      // A reason is shown only when there is something to say; "run Insights"
+      // is useful, "nothing is below par" is a quiet good outcome.
+      if (data && data.reason && data.available === false) {
+        wrap.classList.remove("hidden");
+        host.innerHTML = `<p class="dy-lines-empty">${escapeHtml(data.reason)}</p>`;
+      } else {
+        wrap.classList.add("hidden");
+      }
+      return;
+    }
+    wrap.classList.remove("hidden");
+    host.innerHTML = rows.map(prepRow).join("");
+  }
+
+  function prepRow(s) {
+    const line = s.line_san && s.line_san.length ? prettyLine(s.line_san) : "from move one";
+    const done = s.in_book && s.first_gap_ply == null;
+    return `<article class="dy-prepcard${done ? " is-done" : ""}">
+      <header>
+        <h4>${escapeHtml(s.opening || "Unnamed line")}
+          <small>as ${escapeHtml(s.color)}</small></h4>
+        <span class="dy-chip dy-chip--roi">${(s.points_per_100_games || 0).toFixed(1)} pts/100</span>
+      </header>
+      <p class="dy-prep-line">${escapeHtml(line)}</p>
+      <p class="dy-prep-why">${escapeHtml(s.why || "")}</p>
+      <button type="button" class="dy-mini dy-mini--go" data-prep="${escapeHtml(s.fen)}"
+              data-prep-color="${escapeHtml(s.color)}"
+              data-prep-line="${escapeHtml((s.line_uci || []).join(" "))}">
+        ${done ? "Review it" : "Prep this"}
+      </button>
+    </article>`;
+  }
+
+  async function openPrep(fen, color, lineUci) {
+    // Jump the builder straight to the position the games actually reach.
+    build.color = color === "black" ? "black" : "white";
+    const select = $("dyBuildColor");
+    if (select) select.value = build.color;
+    build.path = lineUci ? lineUci.split(" ").filter(Boolean) : [];
+    build.fen = fen;
+    build.sans = [];
+    try {
+      const chess = new Chess();
+      build.path.forEach((u) => {
+        const mv = chess.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] || "q" });
+        if (mv) build.sans.push(mv.san);
+      });
+    } catch (_) {
+      build.sans = [];
+    }
+    build.expanded = false;
+    await loadBuild(true);
+  }
+
+  // ── Build: PGN import ─────────────────────────────────────────────────── //
+
+  async function importPgn() {
+    const box = $("dyImportText");
+    const status = $("dyImportStatus");
+    const button = $("dyImportGo");
+    if (!box || !status) return;
+    const pgn = box.value.trim();
+    if (!pgn) { status.textContent = "Paste a PGN first."; return; }
+    if (button) button.disabled = true;
+    status.textContent = "Importing…";
+    try {
+      const report = await api("/api/opening-book/import", {
+        method: "POST",
+        body: JSON.stringify({ color: build.color, pgn }),
+      });
+      status.textContent = report.message || "Done.";
+      // A paste with none of your own moves in it is a wrong-colour import and
+      // is never drilled, so it gets the warning colour rather than success.
+      status.className = "dy-import-status"
+        + (report.added && !report.decisions ? " is-warn" : report.added ? " is-good" : "");
+      if (report.added) {
+        box.value = "";
+        await loadBuild(true);
+      }
+    } catch (err) {
+      status.textContent = err.message || String(err);
+      status.className = "dy-import-status is-warn";
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
   function wireBuild() {
     const host = $("dyBuildCands");
     if (host) {
@@ -1243,6 +1357,17 @@
       build.color = event.target.value === "black" ? "black" : "white";
       buildReset();
     });
+    $("dyPrepList")?.addEventListener("click", (event) => {
+      const btn = event.target.closest("button[data-prep]");
+      if (!btn) return;
+      void openPrep(btn.dataset.prep, btn.dataset.prepColor, btn.dataset.prepLine);
+    });
+    $("dyPrepToggle")?.addEventListener("click", () => {
+      const list = $("dyPrepList");
+      const hidden = list.classList.toggle("hidden");
+      $("dyPrepToggle").textContent = hidden ? "Show" : "Hide";
+    });
+    $("dyImportGo")?.addEventListener("click", () => void importPgn());
   }
 
   // ── Boot ──────────────────────────────────────────────────────────────── //

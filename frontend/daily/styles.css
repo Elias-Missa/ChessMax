@@ -1072,3 +1072,110 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
   margin-bottom: 1.5rem;
 }
+
+/* ── Prep suggestions (from the Insights ROI leak board) ─────────────────── */
+
+#daily-root .dy-prep {
+  border: 1px solid rgba(255, 176, 32, 0.28);
+  border-radius: 0.7rem;
+  margin-bottom: 0.8rem;
+  padding: 0.6rem 0.7rem;
+}
+
+#daily-root .dy-prep-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+
+#daily-root .dy-prep-head h3 {
+  color: var(--dy-fix);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+#daily-root .dy-prep-list { display: grid; gap: 0.45rem; }
+
+#daily-root .dy-prepcard {
+  background: var(--dy-panel);
+  border: 1px solid var(--dy-line);
+  border-radius: 0.55rem;
+  padding: 0.5rem 0.6rem;
+}
+
+#daily-root .dy-prepcard.is-done { opacity: 0.6; }
+
+#daily-root .dy-prepcard header {
+  align-items: baseline;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+#daily-root .dy-prepcard h4 { font-size: 0.9rem; font-weight: 700; margin: 0; }
+#daily-root .dy-prepcard h4 small { color: var(--dy-dim); font-weight: 500; }
+
+#daily-root .dy-prep-line {
+  color: #cdd5de;
+  font-size: 0.8rem;
+  margin: 0.25rem 0 0.15rem;
+}
+
+#daily-root .dy-prep-why {
+  color: var(--dy-dim);
+  font-size: 0.76rem;
+  margin: 0 0 0.45rem;
+}
+
+/* ── PGN import ──────────────────────────────────────────────────────────── */
+
+#daily-root .dy-importbox {
+  border: 1px solid var(--dy-line);
+  border-radius: 0.6rem;
+  margin-top: 0.7rem;
+  padding: 0.5rem 0.7rem;
+}
+
+#daily-root .dy-importbox summary {
+  color: var(--dy-dim);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+#daily-root .dy-import-help {
+  color: var(--dy-dim);
+  font-size: 0.74rem;
+  margin: 0.4rem 0;
+}
+
+#daily-root .dy-importbox textarea {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--dy-line);
+  border-radius: 0.45rem;
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  padding: 0.5rem;
+  resize: vertical;
+  width: 100%;
+}
+
+#daily-root .dy-import-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+#daily-root .dy-import-status {
+  color: var(--dy-dim);
+  font-size: 0.76rem;
+  flex: 1 1 auto;
+}
+#daily-root .dy-import-status.is-good { color: var(--dy-accent); }
+#daily-root .dy-import-status.is-warn { color: var(--dy-fix); }

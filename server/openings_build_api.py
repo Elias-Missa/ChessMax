@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from core.opening_book import OpeningBookConstants
-from server import openings_build
+from server import opening_import, opening_prep, openings_build
 from server.deps import current_user, get_connection
 from server.openings_build import COLORS, START_FEN
 
@@ -50,6 +50,14 @@ class EdgeDeleteRequest(BaseModel):
     color: str = Field(min_length=1, max_length=10)
     fen: str = Field(min_length=10, max_length=120)
     uci: str = Field(min_length=4, max_length=5)
+
+
+class ImportRequest(BaseModel):
+    color: str = Field(min_length=1, max_length=10)
+    # 400k is a generous study chapter and still far under any request limit;
+    # the real bound on the work is `max_moves` in server.opening_import.
+    pgn: str = Field(min_length=2, max_length=400_000)
+    max_plies: int = Field(default=opening_import.MAX_PLIES, ge=2, le=60)
 
 
 def build_openings_router(app: FastAPI) -> APIRouter:
@@ -135,6 +143,31 @@ def build_openings_router(app: FastAPI) -> APIRouter:
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @router.get("/prep")
+    def prep(
+        limit: int = Query(default=opening_prep.MAX_SUGGESTIONS, ge=1, le=20),
+        connection: sqlite3.Connection = Depends(get_connection),
+        user: sqlite3.Row = Depends(current_user),
+    ) -> dict[str, Any]:
+        """The openings Insights says are costing most, as places to build."""
+
+        return opening_prep.suggestions(connection, int(user["id"]), limit=limit)
+
+    @router.post("/import")
+    def import_pgn(
+        request: ImportRequest,
+        connection: sqlite3.Connection = Depends(get_connection),
+        user: sqlite3.Row = Depends(current_user),
+    ) -> dict[str, Any]:
+        report = opening_import.import_pgn(
+            connection,
+            int(user["id"]),
+            color=_color(request.color),
+            pgn_text=request.pgn,
+            max_plies=request.max_plies,
+        )
+        return report.as_dict()
 
     @router.post("/edges/delete")
     def delete_edge(
