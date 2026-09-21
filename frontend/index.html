@@ -2962,6 +2962,7 @@
             <button type="button" class="dy-ghost" id="dyRepBack">← Check-in</button>
             <div class="dy-modes" role="tablist" aria-label="Repertoire view">
               <button type="button" role="tab" data-rep="drill" class="active" aria-selected="true">Drill</button>
+              <button type="button" role="tab" data-rep="build" aria-selected="false">Build</button>
               <button type="button" role="tab" data-rep="lines" aria-selected="false">Your lines</button>
             </div>
           </div>
@@ -3020,8 +3021,61 @@
           </aside>
         </div>
 
-        <!-- Your lines -->
-        <div class="dy-lines hidden" id="dyLines"></div>
+        <!-- Build: the Chessbook-style candidate builder.
+             The three dots per row are the point of this screen: engine /
+             human / results, each independently tri-state. A grey dot means
+             "not asked", never "no" — see core/opening_signals.py. -->
+        <div class="dy-build hidden" id="dyBuild">
+          <div class="dy-boardcol">
+            <div class="dy-boardframe">
+              <div class="dy-board cg-wrap" id="dyBuildBoard"></div>
+            </div>
+            <div class="dy-build-nav">
+              <button type="button" class="dy-ghost" id="dyBuildStart" title="Back to the start">⏮</button>
+              <button type="button" class="dy-ghost" id="dyBuildBack" title="Back one move">←</button>
+              <span class="dy-build-san" id="dyBuildSan">Start position</span>
+              <label class="dy-build-side">
+                <select id="dyBuildColor">
+                  <option value="white">As White</option>
+                  <option value="black">As Black</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <aside class="dy-panel dy-buildpanel">
+            <header class="dy-card-head">
+              <div class="dy-card-line">
+                <span class="dy-opening" id="dyBuildOpening">—</span>
+                <span class="dy-build-cover" id="dyBuildCoverage"></span>
+              </div>
+              <h2 class="dy-prompt" id="dyBuildPrompt">What do you play here?</h2>
+              <p class="dy-why" id="dyBuildWhy"></p>
+            </header>
+
+            <div class="dy-legend" id="dyBuildLegend">
+              <span class="dy-dot dy-dot--engine is-on"></span> engine
+              <span class="dy-dot dy-dot--human is-on"></span> human
+              <span class="dy-dot dy-dot--results is-on"></span> results
+              <em id="dyBuildLegendNote"></em>
+            </div>
+
+            <div class="dy-cands" id="dyBuildCands"></div>
+
+            <button type="button" class="dy-ghost dy-build-more hidden" id="dyBuildMore">
+              Show more
+            </button>
+            <p class="dy-progress" id="dyBuildStatus"></p>
+          </aside>
+        </div>
+
+        <!-- Your lines: the book you CHOSE (builder) above what you actually
+             PLAY (mined from your games). Two different repertoires, so they
+             are two sections rather than one merged list. -->
+        <div class="hidden" id="dyLinesView">
+          <div id="dyBook"></div>
+          <div class="dy-lines" id="dyLines"></div>
+        </div>
       </section>
     </div>
 

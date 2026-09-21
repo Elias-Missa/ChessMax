@@ -556,6 +556,68 @@ CREATE TABLE IF NOT EXISTS repertoire_attempts (
 CREATE INDEX IF NOT EXISTS idx_repertoire_attempts_card
     ON repertoire_attempts(user_id, card_id, id DESC);
 
+-- ── Authored opening repertoire (the Chessbook-style builder) ──────────────
+-- Distinct from `repertoire_attempts` above, which drills the repertoire MINED
+-- from the player's own games. This one is CHOSEN: the player walks a board and
+-- picks a move at each position, so the tree holds decisions that have not
+-- happened in a real game yet. Both feed the same drill.
+--
+-- Identity is the position, not the path (`fen_key`: board/side/castling/ep, no
+-- clocks), so two move orders reaching the same position land on one node and
+-- transpositions merge for free. `path_uci` keeps ONE way of reaching it so the
+-- UI can show how — it is display context, never identity.
+CREATE TABLE IF NOT EXISTS opening_nodes (
+    id           INTEGER PRIMARY KEY,
+    user_id      INTEGER NOT NULL,
+    color        TEXT NOT NULL,
+    fen_key      TEXT NOT NULL,
+    fen          TEXT NOT NULL,
+    ply          INTEGER NOT NULL,
+    path_uci     TEXT NOT NULL DEFAULT '',
+    opening_name TEXT,
+    opening_eco  TEXT,
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE (user_id, color, fen_key)
+);
+CREATE INDEX IF NOT EXISTS idx_opening_nodes_user
+    ON opening_nodes(user_id, color, ply);
+
+-- One chosen continuation from a node. `role` separates the user's own decision
+-- ("mine") from an opponent reply we are covering ("theirs") — a repertoire is
+-- only drilled on the former, but must branch on the latter to reach it.
+CREATE TABLE IF NOT EXISTS opening_edges (
+    id          INTEGER PRIMARY KEY,
+    user_id     INTEGER NOT NULL,
+    node_id     INTEGER NOT NULL,
+    uci         TEXT NOT NULL,
+    san         TEXT NOT NULL,
+    role        TEXT NOT NULL DEFAULT 'mine',
+    note        TEXT,
+    signals     TEXT,
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (node_id) REFERENCES opening_nodes(id),
+    UNIQUE (node_id, uci)
+);
+CREATE INDEX IF NOT EXISTS idx_opening_edges_node
+    ON opening_edges(user_id, node_id);
+
+-- Lichess explorer answers, cached so a position costs the network once. Keyed
+-- by corpus + position + the query parameters that change the answer (rating
+-- band and speeds), because the same FEN in the masters corpus and in a
+-- 1400-1600 blitz corpus are different questions with different answers.
+-- No user_id: the explorer's answer is a property of the position, not of who
+-- asked, exactly like `position_cache`.
+CREATE TABLE IF NOT EXISTS explorer_cache (
+    database    TEXT NOT NULL,
+    fen_key     TEXT NOT NULL,
+    params      TEXT NOT NULL DEFAULT '',
+    payload     TEXT NOT NULL,
+    fetched_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (database, fen_key, params)
+);
+
 -- Shared Zobrist position cache (Insights.md B.3). ``nodes`` stores search
 -- depth when the live path is depth-limited rather than node-limited.
 CREATE TABLE IF NOT EXISTS position_cache (

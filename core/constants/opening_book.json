@@ -1,0 +1,42 @@
+{
+  "_about": "Chessbook-style candidate ranking (core/opening_book.py). The weights are the SPEC's recommended formula (§6.1 of the clone brief), carried over verbatim as a starting point — they are PLACEHOLDERS, not fitted, because there is no ground truth for 'the right repertoire move' to fit against. What would move them: the user's own results after drilling a line, which the repertoire already records.",
+
+  "w_masters": 0.45,
+  "_comment_w_masters": "PLACEHOLDER (spec §6.1). Applied to log(1 + master_count) normalized by the position's own busiest move, so it is a share of attention rather than an absolute count — otherwise move one of the game outranks everything downstream forever.",
+
+  "w_peer": 0.25,
+  "_comment_w_peer": "PLACEHOLDER (spec §6.1). Peer score is shrunk toward 0.5 by peer_prior_games first, so a 2-game 100% does not top the list.",
+
+  "w_engine": 0.20,
+  "_comment_w_engine": "PLACEHOLDER (spec §6.1). engine_quality is a bounded transform of centipawn loss vs the best move, NOT raw eval: at the top of an opening tree every sane move is within a few centipawns and raw eval would rank on noise.",
+
+  "w_recency": 0.10,
+  "_comment_w_recency": "PLACEHOLDER (spec §6.1). Recency is the mean rating of the games behind a move, normalized within the position — a stand-in for 'is this line current'. The explorer exposes averageRating per move but no date histogram on the free endpoint, so this measures who plays it rather than when. Labelled honestly rather than dropped, because the spec's fourth term exists to stop dead 19th-century lines outranking live ones and average rating does some of that work.",
+
+  "engine_loss_scale_cp": 60.0,
+  "_comment_engine_loss_scale_cp": "PLACEHOLDER, centipawns. engine_quality = exp(-loss / scale), so 60cp of loss costs about 63% of the term and 120cp costs 86%. Set from chess reasoning: a 60cp opening concession is a real one but not disqualifying, which is the shape this curve should have.",
+
+  "peer_prior_games": 12.0,
+  "_comment_peer_prior_games": "PLACEHOLDER. Shrinks a move's peer score toward 0.5 with a beta-style prior: score = (wins + 0.5*draws + prior*0.5) / (games + prior). Higher than the repertoire's own score_prior_games (2.0) because the explorer's samples are large and a 12-game prior is cheap there, while the user's own game counts are small.",
+
+  "obscure_min_share": 0.02,
+  "_comment_obscure_min_share": "PLACEHOLDER. A move played in under 2% of games at the position is 'obscure' and eligible for the penalty — the spec's 'avoid obscure moves' pillar. It is a share, not a count, so it scales with how busy the position is.",
+
+  "obscure_penalty": 0.25,
+  "_comment_obscure_penalty": "PLACEHOLDER. Subtracted from rank_score for an obscure move, and ONLY when the move is not materially better than the best-ranked alternative (see obscure_forgive_cp) — a genuine novelty that the engine says is winning should not be buried.",
+
+  "obscure_forgive_cp": 30.0,
+  "_comment_obscure_forgive_cp": "PLACEHOLDER, centipawns. An obscure move that is within this of the engine's best escapes the penalty only if it is also the engine's top move; a rare move that is clearly better is a find, a rare move that is merely playable is a trap.",
+
+  "min_candidate_games": 5,
+  "_comment_min_candidate_games": "PLACEHOLDER. Explorer rows under this many games are still RETURNED (the spec is explicit that no legal move may be blocked) but are flagged low_sample so the UI can say 'insufficient sample' rather than showing a 100% score from one game.",
+
+  "default_multipv": 6,
+  "_comment_default_multipv": "PLACEHOLDER. How many engine lines to request for a candidate panel. Six covers the realistic branching of an opening position without making the request feel slow.",
+
+  "default_depth": 18,
+  "_comment_default_depth": "PLACEHOLDER. Matches the review's normal tier. Opening positions are shallow and transposition-rich, so depth 18 is quick; the contextual piece-values work found depth to be load-bearing rather than a speed dial, so this is not lowered casually.",
+
+  "maia_rating": 1900,
+  "_comment_maia_rating": "The HIGHEST Maia net this repo ships weights for (core.human._MAIA_NETS tops out at 1900), which is what the human dot is specified to mean: 'the move the strongest human model plays'. Not a placeholder — it is the ceiling of the available nets. Maia-3 conditions on raw Elo to ~2600 and would raise this, but it is an optional dependency and the dot must degrade to unknown without it rather than silently dropping to a weaker net."
+}

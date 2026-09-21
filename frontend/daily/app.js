@@ -56,6 +56,11 @@
     return "";
   }
 
+  function setText(id, text) {
+    const el = $(id);
+    if (el) el.textContent = text;
+  }
+
   function escapeHtml(text) {
     return String(text == null ? "" : text).replace(
       /[&<>"']/g,
@@ -578,15 +583,24 @@
   // ── Repertoire: the drill ─────────────────────────────────────────────── //
 
   function setRepView(name) {
-    const drillOn = name !== "lines";
-    $("dyDrill").classList.toggle("hidden", !drillOn);
-    $("dyLines").classList.toggle("hidden", drillOn);
+    // Three views now, so this is a switch rather than the old boolean — a
+    // two-way toggle silently treated "build" as "drill".
+    const view = ["drill", "build", "lines"].includes(name) ? name : "drill";
+    $("dyDrill").classList.toggle("hidden", view !== "drill");
+    $("dyBuild").classList.toggle("hidden", view !== "build");
+    $("dyLinesView").classList.toggle("hidden", view !== "lines");
     document.querySelectorAll("#daily-repertoire [data-rep]").forEach((btn) => {
-      const on = btn.dataset.rep === (drillOn ? "drill" : "lines");
+      const on = btn.dataset.rep === view;
       btn.classList.toggle("active", on);
       btn.setAttribute("aria-selected", on ? "true" : "false");
     });
-    if (drillOn) window.dispatchEvent(new Event("resize"));
+    if (view === "build" && !build.data) void loadBuild(true);
+    // The book is rebuilt on every entry, not cached: it is edited in the
+    // Build tab next door, so anything rendered once at load is stale by the
+    // time the user comes back to look at it.
+    if (view === "lines") void loadBook().then(renderBook);
+    // Chessground measured a hidden container; both boards need a nudge.
+    if (view !== "lines") window.dispatchEvent(new Event("resize"));
   }
 
   async function loadDrill(force) {
@@ -600,7 +614,7 @@
     drill.repertoire = repertoire;
     drill.index = 0;
     renderRepCounts(queue, repertoire);
-    renderLines(repertoire);
+    void renderLines(repertoire);
     if (!drill.cards.length) {
       $("dyRepEmpty").classList.remove("hidden");
       $("dyRepContent").classList.add("hidden");
@@ -819,9 +833,65 @@
 
   // ── Repertoire: the lines view ────────────────────────────────────────── //
 
-  function renderLines(repertoire) {
+  async function renderLines(repertoire) {
     const host = $("dyLines");
     if (!host) return;
+    // Two repertoires share this view and they are not the same thing: the
+    // book is what you CHOSE in the builder, the lines below are what you
+    // actually played. Showing only the mined one made moves added in the
+    // builder look like they had gone nowhere.
+    renderBook(await loadBook());
+    renderMined(repertoire, host);
+  }
+
+  async function loadBook() {
+    try {
+      const [white, black] = await Promise.all([
+        api("/api/opening-book/tree?color=white"),
+        api("/api/opening-book/tree?color=black"),
+      ]);
+      return { white, black };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function renderBook(book) {
+    const host = $("dyBook");
+    if (!host) return;
+    if (!book || !(book.white.moves + book.black.moves)) {
+      host.innerHTML = "";
+      return;
+    }
+    const blocks = ["white", "black"].map((color) => {
+      const tree = book[color];
+      if (!tree.moves) return "";
+      const lines = (tree.lines || []).slice(0, 12).map(bookLine).join("");
+      return `<section class="dy-linecol">
+        <h2>Your book as ${color}
+          <small>${tree.decisions} decision${tree.decisions === 1 ? "" : "s"}
+          · ${tree.moves} moves · ${tree.max_ply} plies deep</small></h2>
+        ${lines || '<p class="dy-lines-empty">No complete line yet.</p>'}
+      </section>`;
+    });
+    host.innerHTML = `<div class="dy-booklines">${blocks.join("")}</div>`;
+  }
+
+  function bookLine(line) {
+    const moves = line.moves
+      .map((move, i) => {
+        const number = i % 2 === 0 ? `<span class="dy-ln-num">${i / 2 + 1}.</span>` : "";
+        const cls = move.role === "mine" ? "dy-ln-move is-keep" : "dy-ln-move";
+        return `${number}<span class="${cls}">${escapeHtml(move.san)}</span>`;
+      })
+      .join(" ");
+    return `<article class="dy-linecard">
+      <header><h3>${line.plies} plies</h3></header>
+      <p class="dy-ln">${moves}</p>
+    </article>`;
+  }
+
+  function renderMined(repertoire, host) {
     if (!repertoire || !repertoire.available) {
       host.innerHTML = `<p class="dy-lines-empty">${escapeHtml(
         (repertoire && repertoire.reason) || "No repertoire yet.",
@@ -868,6 +938,313 @@
     </article>`;
   }
 
+  // ── Repertoire: the builder ───────────────────────────────────────────── //
+  //
+  // A Chessbook-style position-by-position tree: walk the board, read the
+  // evidence, pick a move. The three dots per row are the distinctive part —
+  // engine / human / results — and each is TRI-state. `null` renders as a
+  // hollow ring ("we did not ask"), never as an unlit dot ("we asked and the
+  // answer is no"); collapsing those two is the one way this display can lie,
+  // and on a box with no Maia or no network it would lie on every row.
+
+  const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+  const SIGNAL_KEYS = ["engine", "human", "results"];
+  const SIGNAL_LABEL = {
+    engine: "Stockfish's top move",
+    human: "the move Maia plays",
+    results: "best score in the Lichess database",
+  };
+  const COLLAPSED_ROWS = 6;
+
+  const build = {
+    color: "white",
+    fen: START_FEN,
+    path: [],          // uci moves from the start, for the back button
+    sans: [],
+    data: null,
+    cg: null,
+    expanded: false,
+    busy: false,
+  };
+
+  async function loadBuild(force) {
+    if (build.busy && !force) return;
+    build.busy = true;
+    setText("dyBuildStatus", "Reading the position…");
+    try {
+      const qs = `fen=${encodeURIComponent(build.fen)}&color=${build.color}`;
+      const data = await api(`/api/opening-book/candidates?${qs}`);
+      build.data = data;
+      renderBuild(data);
+      void loadBuildCoverage();
+    } catch (err) {
+      setText("dyBuildStatus", `Could not read that position: ${err.message || err}`);
+    } finally {
+      build.busy = false;
+    }
+  }
+
+  async function loadBuildCoverage() {
+    const el = $("dyBuildCoverage");
+    if (!el) return;
+    try {
+      const qs = `fen=${encodeURIComponent(build.fen)}&color=${build.color}`;
+      const cov = await api(`/api/opening-book/coverage?${qs}`);
+      if (cov.coverage == null) {
+        // Null, not zero: "we do not know what you face" is not "you have
+        // covered nothing", and only one of those is the user's fault.
+        el.textContent = "";
+        el.title = "";
+        return;
+      }
+      const pct = Math.round(cov.coverage * 100);
+      el.textContent = `${pct}% covered`;
+      el.className = `dy-build-cover ${pct >= 80 ? "is-good" : pct >= 40 ? "is-mid" : "is-low"}`;
+      el.title = cov.uncovered.length
+        ? `Biggest gap: ${cov.uncovered[0].san || cov.uncovered[0].uci} `
+          + `(${Math.round(cov.uncovered[0].share * 100)}% of replies)`
+        : "Every reply you meet has an answer.";
+    } catch (_) {
+      el.textContent = "";
+    }
+  }
+
+  function signalDot(key, value) {
+    // Three states, three classes. `is-off` and `is-unknown` must look
+    // different or the whole display is untrustworthy.
+    const state = value === true ? "is-on" : value === false ? "is-off" : "is-unknown";
+    const word = value === true ? "yes" : value === false ? "no" : "not available";
+    return `<i class="dy-dot dy-dot--${key} ${state}" title="${escapeHtml(
+      `${SIGNAL_LABEL[key]}: ${word}`,
+    )}"></i>`;
+  }
+
+  function candidateRow(c) {
+    const dots = SIGNAL_KEYS.map((k) => signalDot(k, c.signals[k])).join("");
+    const lit = SIGNAL_KEYS.filter((k) => c.signals[k] === true).length;
+    const peer = c.peer_score == null
+      ? "—"
+      : `${Math.round(c.peer_score * 100)}%`;
+    const games = c.peer_games ? fmtCount(c.peer_games) : "—";
+    const mast = c.master_share ? `${(c.master_share * 100).toFixed(1)}%` : "—";
+    const evalCell = c.eval_cp == null
+      ? "—"
+      : `${c.eval_cp > 0 ? "+" : ""}${(c.eval_cp / 100).toFixed(2)}`;
+    const flags = [];
+    if (c.in_repertoire) flags.push('<span class="dy-flag is-mine">in your book</span>');
+    if (c.low_sample) flags.push('<span class="dy-flag">few games</span>');
+    if (c.obscure) flags.push('<span class="dy-flag is-warn">rare</span>');
+    return `<div class="dy-cand${c.in_repertoire ? " is-mine" : ""}${
+      lit === 3 ? " is-unanimous" : ""
+    }" data-uci="${escapeHtml(c.uci)}">
+      <button type="button" class="dy-cand-main" data-act="play" data-uci="${escapeHtml(c.uci)}">
+        <span class="dy-cand-san">${escapeHtml(c.san)}</span>
+        <span class="dy-cand-dots">${dots}</span>
+        <span class="dy-cand-stat" title="Share of master games">${mast}</span>
+        <span class="dy-cand-stat" title="Your rating band's score with this move">${peer}</span>
+        <span class="dy-cand-stat dy-cand-n" title="Games at your level">${games}</span>
+        <span class="dy-cand-stat dy-cand-eval" title="Engine evaluation">${evalCell}</span>
+      </button>
+      <div class="dy-cand-side">
+        ${flags.join("")}
+        <button type="button" class="dy-mini ${c.in_repertoire ? "" : "dy-mini--go"}"
+                data-act="${c.in_repertoire ? "remove" : "add"}"
+                data-uci="${escapeHtml(c.uci)}">${c.in_repertoire ? "Remove" : "Add"}</button>
+      </div>
+    </div>`;
+  }
+
+  function fmtCount(n) {
+    if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+    if (n >= 1000) return `${Math.round(n / 1000)}k`;
+    return String(n);
+  }
+
+  function renderBuild(data) {
+    drawBuildBoard(data);
+    setText("dyBuildSan", build.sans.length ? prettyLine(build.sans) : "Start position");
+    setText(
+      "dyBuildOpening",
+      data.opening_name || (data.opening_eco ? data.opening_eco : "—"),
+    );
+    setText(
+      "dyBuildPrompt",
+      data.user_to_move ? "What do you play here?" : "What do they play here?",
+    );
+    setText(
+      "dyBuildWhy",
+      data.user_to_move
+        ? "Pick your move. It becomes a card you get drilled on."
+        : "Cover the replies you actually meet — you are not drilled on these.",
+    );
+
+    // Say plainly which signals are live. A grey dot with no explanation is
+    // worse than no dot at all.
+    const src = data.sources || {};
+    const missing = [];
+    if (src.engine !== "engine") missing.push("engine");
+    if (src.maia !== "maia") missing.push("human");
+    if (src.peers !== "cache" && src.peers !== "network") missing.push("results");
+    setText(
+      "dyBuildLegendNote",
+      missing.length
+        ? `· ${missing.join(" and ")} unavailable here (hollow = not asked)`
+        : `· Maia ${src.maia_rating || 1900}`,
+    );
+
+    const cands = data.candidates || [];
+    const shown = build.expanded ? cands : cands.slice(0, COLLAPSED_ROWS);
+    const host = $("dyBuildCands");
+    if (host) {
+      host.innerHTML = shown.length
+        ? shown.map(candidateRow).join("")
+        : `<p class="dy-lines-empty">No candidate data for this position.
+             Any legal move on the board still works.</p>`;
+    }
+    const more = $("dyBuildMore");
+    if (more) {
+      more.classList.toggle("hidden", cands.length <= COLLAPSED_ROWS);
+      more.textContent = build.expanded
+        ? "Show fewer"
+        : `Show ${cands.length - COLLAPSED_ROWS} more`;
+    }
+    const chosen = (data.chosen || []).length;
+    setText(
+      "dyBuildStatus",
+      chosen
+        ? `${chosen} move${chosen === 1 ? "" : "s"} chosen here.`
+        : "Nothing chosen at this position yet.",
+    );
+  }
+
+  function prettyLine(sans) {
+    return sans
+      .map((san, i) => (i % 2 === 0 ? `${i / 2 + 1}. ${san}` : san))
+      .join(" ");
+  }
+
+  function drawBuildBoard(data) {
+    const el = $("dyBuildBoard");
+    if (!el || typeof Chessground === "undefined" || typeof Chess === "undefined") return;
+    const chess = new Chess();
+    if (!chess.load(build.fen)) return;
+    const config = {
+      fen: build.fen,
+      orientation: build.color === "black" ? "black" : "white",
+      turnColor: chess.turn() === "w" ? "white" : "black",
+      coordinates: true,
+      viewOnly: false,
+      animation: { enabled: true, duration: 150 },
+      drawable: { enabled: false, visible: true, autoShapes: [] },
+      movable: {
+        free: false,
+        color: chess.turn() === "w" ? "white" : "black",
+        dests: legalDests(chess),
+        // The spec is explicit that an unlisted legal move must work
+        // ("Something else…"), so the board is always live — the candidate
+        // table ranks, it does not gate.
+        events: { after: (from, to) => void playBuildMove(from + to) },
+      },
+    };
+    if (build.cg) build.cg.set(config);
+    else build.cg = Chessground(el, config);
+  }
+
+  async function playBuildMove(uci) {
+    const chess = new Chess();
+    if (!chess.load(build.fen)) return;
+    const from = uci.slice(0, 2);
+    const to = uci.slice(2, 4);
+    const move = chess.move({ from, to, promotion: uci[4] || "q" });
+    if (!move) return;
+    build.path.push(move.from + move.to + (move.promotion || ""));
+    build.sans.push(move.san);
+    build.fen = chess.fen();
+    build.expanded = false;
+    await loadBuild(true);
+  }
+
+  async function addBuildMove(uci) {
+    try {
+      const cand = (build.data?.candidates || []).find((c) => c.uci === uci);
+      await api("/api/opening-book/edges", {
+        method: "POST",
+        body: JSON.stringify({
+          color: build.color,
+          fen: build.fen,
+          uci,
+          path: build.path,
+          // Snapshot the dots as they were when the choice was made — the
+          // evidence moves underneath and "I picked this when all three agreed"
+          // is only interpretable against what it said then.
+          signals: cand ? cand.signals : null,
+          opening_name: build.data?.opening_name || null,
+          opening_eco: build.data?.opening_eco || null,
+        }),
+      });
+      await loadBuild(true);
+    } catch (err) {
+      setText("dyBuildStatus", `Could not add that move: ${err.message || err}`);
+    }
+  }
+
+  async function removeBuildMove(uci) {
+    try {
+      await api("/api/opening-book/edges/delete", {
+        method: "POST",
+        body: JSON.stringify({ color: build.color, fen: build.fen, uci }),
+      });
+      await loadBuild(true);
+    } catch (err) {
+      setText("dyBuildStatus", `Could not remove that move: ${err.message || err}`);
+    }
+  }
+
+  function buildBack() {
+    if (!build.path.length) return;
+    build.path.pop();
+    build.sans.pop();
+    const chess = new Chess();
+    build.path.forEach((u) =>
+      chess.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] || "q" }),
+    );
+    build.fen = chess.fen();
+    build.expanded = false;
+    void loadBuild(true);
+  }
+
+  function buildReset() {
+    build.path = [];
+    build.sans = [];
+    build.fen = START_FEN;
+    build.expanded = false;
+    void loadBuild(true);
+  }
+
+  function wireBuild() {
+    const host = $("dyBuildCands");
+    if (host) {
+      host.addEventListener("click", (event) => {
+        const btn = event.target.closest("button[data-act]");
+        if (!btn) return;
+        const uci = btn.dataset.uci;
+        if (btn.dataset.act === "add") void addBuildMove(uci);
+        else if (btn.dataset.act === "remove") void removeBuildMove(uci);
+        else void playBuildMove(uci);
+      });
+    }
+    $("dyBuildBack")?.addEventListener("click", buildBack);
+    $("dyBuildStart")?.addEventListener("click", buildReset);
+    $("dyBuildMore")?.addEventListener("click", () => {
+      build.expanded = !build.expanded;
+      if (build.data) renderBuild(build.data);
+    });
+    $("dyBuildColor")?.addEventListener("change", (event) => {
+      build.color = event.target.value === "black" ? "black" : "white";
+      buildReset();
+    });
+  }
+
   // ── Boot ──────────────────────────────────────────────────────────────── //
 
   function wire() {
@@ -896,6 +1273,7 @@
     document.querySelectorAll("#daily-repertoire [data-rep]").forEach((btn) => {
       btn.addEventListener("click", () => setRepView(btn.dataset.rep));
     });
+    wireBuild();
 
     setInterval(tick, 1000);
     document.addEventListener("visibilitychange", () => {

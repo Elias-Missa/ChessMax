@@ -42,6 +42,7 @@ from server.devlabels_api import build_dev_labels_router
 from server.piecevalues_api import build_piece_values_router
 from server.endgame_api import build_endgame_router
 from server.daily_api import build_daily_router
+from server.openings_build_api import build_openings_router
 from server.repertoire_api import build_repertoire_router
 from server.deps import current_user, get_connection
 from server.replies import engine_reply
@@ -133,6 +134,8 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
 
     # Opening repertoire mined from the user's own games (engine-free).
     app.include_router(build_repertoire_router(app))
+    # The authored (Chessbook-style) opening builder, alongside the mined one.
+    app.include_router(build_openings_router(app))
 
     # Daily check-in: the five-phase conductor over the modes above.
     app.include_router(build_daily_router(app))

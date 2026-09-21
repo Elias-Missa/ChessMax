@@ -131,6 +131,32 @@ def fen_key(fen: str) -> str:
     return " ".join(str(fen).split(" ")[:4])
 
 
+def canonical_fen(fen: str) -> str:
+    """Re-emit a FEN through python-chess so its en-passant square is canonical.
+
+    chess.js writes the ep square after *every* double pawn push; python-chess
+    writes it only when an en-passant capture is actually legal (its ``fen()``
+    defaults to ``en_passant="legal"``). So the browser calls the position after
+    1.e4 ``... b KQkq e3`` and the server calls it ``... b KQkq -`` — the same
+    position under two different keys.
+
+    That mismatch is invisible until it is not: it forks the explorer cache, it
+    makes a node created by the client a different row from the same node
+    created by the server pushing a move, and it silently defeats transposition
+    merging. Normalizing preserves a genuinely capturable ep square (those
+    positions really are different — the spec is explicit at §6.4), and drops
+    only the unusable one.
+    """
+
+    return chess.Board(str(fen)).fen()
+
+
+def position_key(fen: str) -> str:
+    """``fen_key`` over a canonicalized FEN — the identity the builder uses."""
+
+    return fen_key(canonical_fen(fen))
+
+
 # --------------------------------------------------------------------------- #
 # The tree                                                                     #
 # --------------------------------------------------------------------------- #

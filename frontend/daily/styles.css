@@ -888,3 +888,187 @@
   #daily-root .dy-phase { flex-wrap: wrap; }
   #daily-root .dy-phase-side { justify-items: start; text-align: left; width: 100%; }
 }
+
+/* ── The builder ─────────────────────────────────────────────────────────── *
+ *
+ * The three dots are the screen's whole idea, so they get the colour budget
+ * and everything else stays monochrome. Each dot has THREE states and they must
+ * be visually distinct at a glance:
+ *
+ *   is-on       filled, coloured   — this source picked this move
+ *   is-off      hollow, dim grey   — this source was asked and said no
+ *   is-unknown  dashed outline     — this source was never asked
+ *
+ * `is-off` and `is-unknown` differing is not cosmetic. On a box with no Maia
+ * or no network, collapsing them would silently assert that every move failed
+ * a test that was never run.
+ */
+
+#daily-root .dy-build {
+  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+#daily-root .dy-buildpanel {
+  flex: 1 1 30rem;
+  min-width: 0;
+}
+
+#daily-root .dy-build-nav {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+#daily-root .dy-build-san {
+  color: var(--dy-dim);
+  flex: 1 1 auto;
+  font-size: 0.85rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#daily-root .dy-build-side select {
+  background: var(--dy-panel);
+  border: 1px solid var(--dy-line);
+  border-radius: 0.5rem;
+  color: inherit;
+  font: inherit;
+  padding: 0.3rem 0.4rem;
+}
+
+#daily-root .dy-build-cover {
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0.15rem 0.5rem;
+}
+#daily-root .dy-build-cover.is-good { background: rgba(68, 214, 44, 0.16); color: var(--dy-accent); }
+#daily-root .dy-build-cover.is-mid  { background: rgba(255, 176, 32, 0.16); color: var(--dy-fix); }
+#daily-root .dy-build-cover.is-low  { background: rgba(255, 95, 86, 0.14); color: var(--dy-bad); }
+
+/* ── dots ────────────────────────────────────────────────────────────────── */
+
+#daily-root .dy-dot {
+  border-radius: 50%;
+  display: inline-block;
+  height: 0.62rem;
+  width: 0.62rem;
+}
+
+#daily-root .dy-dot.is-on.dy-dot--engine  { background: #44d62c; box-shadow: 0 0 6px rgba(68, 214, 44, 0.55); }
+#daily-root .dy-dot.is-on.dy-dot--human   { background: #ff6ec7; box-shadow: 0 0 6px rgba(255, 110, 199, 0.55); }
+#daily-root .dy-dot.is-on.dy-dot--results { background: #59a5ff; box-shadow: 0 0 6px rgba(89, 165, 255, 0.55); }
+
+#daily-root .dy-dot.is-off {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+/* Dashed, not merely dimmer: "never asked" has to read as a different KIND of
+   answer, not a weaker one. */
+#daily-root .dy-dot.is-unknown {
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+}
+
+#daily-root .dy-legend {
+  align-items: center;
+  color: var(--dy-dim);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  gap: 0.35rem;
+  margin: 0.4rem 0 0.7rem;
+}
+#daily-root .dy-legend .dy-dot { margin-left: 0.5rem; }
+#daily-root .dy-legend .dy-dot:first-child { margin-left: 0; }
+#daily-root .dy-legend em { font-style: normal; opacity: 0.8; }
+
+/* ── candidate rows ──────────────────────────────────────────────────────── */
+
+#daily-root .dy-cands {
+  display: grid;
+  gap: 0.35rem;
+}
+
+#daily-root .dy-cand {
+  align-items: center;
+  background: var(--dy-panel);
+  border: 1px solid var(--dy-line);
+  border-radius: 0.6rem;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.15rem 0.5rem 0.15rem 0.15rem;
+}
+
+#daily-root .dy-cand.is-mine { border-color: rgba(68, 214, 44, 0.45); }
+#daily-root .dy-cand.is-unanimous { background: rgba(68, 214, 44, 0.06); }
+
+/* `#daily-root button` would otherwise paint this the accent-green pill — the
+   same ID-specificity trap style.css documents for #puzzles-root. */
+#daily-root .dy-cand-main {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  flex: 1 1 auto;
+  font: inherit;
+  gap: 0.5rem;
+  grid-template-columns: 3.6rem 3.2rem 1fr 1fr 1fr 1fr;
+  min-width: 0;
+  padding: 0.45rem 0.4rem;
+  text-align: left;
+}
+#daily-root .dy-cand-main:hover { background: rgba(255, 255, 255, 0.04); border-radius: 0.5rem; }
+
+#daily-root .dy-cand-san { font-weight: 700; }
+#daily-root .dy-cand-dots { display: inline-flex; gap: 0.2rem; }
+#daily-root .dy-cand-stat {
+  color: var(--dy-dim);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+#daily-root .dy-cand-eval { color: #cdd5de; }
+
+#daily-root .dy-cand-side {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.35rem;
+}
+
+#daily-root .dy-flag {
+  border: 1px solid var(--dy-line);
+  border-radius: 999px;
+  color: var(--dy-dim);
+  font-size: 0.66rem;
+  padding: 0.1rem 0.4rem;
+  white-space: nowrap;
+}
+#daily-root .dy-flag.is-mine { border-color: rgba(68, 214, 44, 0.4); color: var(--dy-accent); }
+#daily-root .dy-flag.is-warn { border-color: rgba(255, 176, 32, 0.4); color: var(--dy-fix); }
+
+#daily-root .dy-build-more { margin-top: 0.5rem; width: 100%; }
+
+@media (max-width: 720px) {
+  /* The two middle stat columns are the first thing to go — the move, the dots
+     and the sample size are what the row is for. */
+  #daily-root .dy-cand-main { grid-template-columns: 3.2rem 3rem 1fr 1fr; }
+  #daily-root .dy-cand-main .dy-cand-stat:nth-of-type(2) { display: none; }
+}
+
+#daily-root .dy-booklines {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+  margin-bottom: 1.5rem;
+}
