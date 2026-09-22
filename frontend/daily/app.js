@@ -585,9 +585,10 @@
   function setRepView(name) {
     // Three views now, so this is a switch rather than the old boolean — a
     // two-way toggle silently treated "build" as "drill".
-    const view = ["drill", "build", "lines"].includes(name) ? name : "drill";
+    const view = ["drill", "build", "tree", "lines"].includes(name) ? name : "drill";
     $("dyDrill").classList.toggle("hidden", view !== "drill");
     $("dyBuild").classList.toggle("hidden", view !== "build");
+    $("dyTree").classList.toggle("hidden", view !== "tree");
     $("dyLinesView").classList.toggle("hidden", view !== "lines");
     document.querySelectorAll("#daily-repertoire [data-rep]").forEach((btn) => {
       const on = btn.dataset.rep === view;
@@ -599,6 +600,9 @@
     // Build tab next door, so anything rendered once at load is stale by the
     // time the user comes back to look at it.
     if (view === "lines") void loadBook().then(renderBook);
+    // Rebuilt on every entry for the same reason the book pane is: the tree is
+    // edited in the Build tab next door.
+    if (view === "tree") void loadTree(true);
     // Chessground measured a hidden container; both boards need a nudge.
     if (view !== "lines") window.dispatchEvent(new Event("resize"));
   }
@@ -1335,6 +1339,271 @@
     }
   }
 
+  // ── Repertoire: the tree picture ──────────────────────────────────────── //
+  //
+  // Circles are positions, edges are moves, colour is how the player actually
+  // does at that position. Three things about it are deliberate:
+  //
+  // * **Grey is not neutral.** `health === null` means "never been here" and
+  //   renders as an empty ring; 0.5 means "exactly as usual" and renders as a
+  //   filled slate dot. Collapsing them would invent data on a young book,
+  //   where most nodes have never been reached.
+  // * **The layout is depth-by-x, leaves-by-y.** A tidy-tree layout assigns
+  //   each leaf its own row and each parent the mean of its children, which
+  //   keeps siblings apart without a force simulation and is deterministic —
+  //   the same book always draws the same picture.
+  // * **Size is sample size.** A node reached forty times is a bigger circle
+  //   than one reached twice, so a confident red reads louder than a tentative
+  //   one even though shrinkage has already muted the tentative one's colour.
+
+  const TREE = {
+    xGap: 108,       // px between plies
+    // Rows have to clear a full-size circle AND the move label that sits above
+    // it: at 34 the labels of one row landed on the circles of the row above,
+    // which made a three-branch tree unreadable.
+    yGap: 58,
+    rMin: 7,
+    rMax: 15,
+    pad: 30,
+    labelGap: 7,
+  };
+
+  const tree = { data: null, color: "white", loaded: false, zoom: 1 };
+
+  async function loadTree(force) {
+    if (tree.loaded && !force) return;
+    tree.loaded = true;
+    const svg = $("dyTreeSvg");
+    try {
+      const data = await api(`/api/opening-book/graph?color=${tree.color}`);
+      tree.data = data;
+      renderTree(data);
+    } catch (err) {
+      if (svg) svg.innerHTML = "";
+      setText("dyTreeCounts", `Could not load the tree: ${err.message || err}`);
+    }
+  }
+
+  function layoutTree(data) {
+    const byKey = new Map((data.nodes || []).map((n) => [n.key, { ...n, kids: [] }]));
+    byKey.forEach((n) => {
+      if (n.parent && byKey.has(n.parent)) byKey.get(n.parent).kids.push(n);
+    });
+    // Stable ordering: the player's own moves first, then by SAN, so the same
+    // book never redraws with its branches shuffled.
+    byKey.forEach((n) =>
+      n.kids.sort((a, b) =>
+        a.role === b.role ? String(a.san).localeCompare(String(b.san))
+          : a.role === "mine" ? -1 : 1,
+      ),
+    );
+
+    const roots = (data.roots || []).map((k) => byKey.get(k)).filter(Boolean);
+    let row = 0;
+    const place = (node, depth) => {
+      node.depth = depth;
+      if (!node.kids.length) {
+        node.y = row++;
+        return node.y;
+      }
+      const ys = node.kids.map((kid) => place(kid, depth + 1));
+      node.y = (Math.min(...ys) + Math.max(...ys)) / 2;
+      return node.y;
+    };
+    roots.forEach((r) => { place(r, 0); row += 1; });
+
+    const nodes = [...byKey.values()].filter((n) => n.depth != null);
+    return { nodes, rows: Math.max(1, row) };
+  }
+
+  function healthColor(entry) {
+    if (!entry || entry.health == null) return null;       // never reached
+    if (!entry.notable) return "#6b7683";                  // nothing to say
+    const h = Math.max(0, Math.min(1, entry.health));
+    // Red → amber → green through HSL hue, which keeps the midpoint readable
+    // instead of passing through mud the way an RGB lerp does.
+    const hue = Math.round(h * 130);
+    return `hsl(${hue} 72% ${38 + h * 14}%)`;
+  }
+
+  function renderTree(data) {
+    const svg = $("dyTreeSvg");
+    if (!svg) return;
+    const { nodes, rows } = layoutTree(data);
+    const stats = (data.stats && data.stats.nodes) || {};
+
+    if (!nodes.length) {
+      svg.innerHTML = "";
+      svg.setAttribute("viewBox", "0 0 10 10");
+      setText(
+        "dyTreeCounts",
+        "Nothing in your book yet — build a line or paste a PGN.",
+      );
+      return;
+    }
+
+    const maxDepth = Math.max(...nodes.map((n) => n.depth));
+    const width = TREE.pad * 2 + maxDepth * TREE.xGap + TREE.rMax * 2;
+    const height = TREE.pad * 2 + rows * TREE.yGap;
+    const X = (n) => TREE.pad + TREE.rMax + n.depth * TREE.xGap;
+    const Y = (n) => TREE.pad + (n.y + 0.5) * TREE.yGap;
+
+    const maxGames = Math.max(
+      1,
+      ...nodes.map((n) => (stats[n.key] && stats[n.key].games) || 0),
+    );
+    const radius = (n) => {
+      const g = (stats[n.key] && stats[n.key].games) || 0;
+      if (!g) return TREE.rMin;
+      return TREE.rMin + (TREE.rMax - TREE.rMin) * Math.sqrt(g / maxGames);
+    };
+
+    const byKey = new Map(nodes.map((n) => [n.key, n]));
+    const edges = nodes
+      .filter((n) => n.parent && byKey.has(n.parent))
+      .map((n) => {
+        const p = byKey.get(n.parent);
+        const x1 = X(p) + radius(p);
+        const x2 = X(n) - radius(n);
+        const y1 = Y(p);
+        const y2 = Y(n);
+        const mid = (x1 + x2) / 2;
+        // A cubic with horizontal control points reads as a branch; a straight
+        // line through a fanned-out layer reads as a spiderweb.
+        return `<path class="dy-tw-edge${n.role === "mine" ? " is-mine" : ""}"
+          d="M${x1.toFixed(1)},${y1.toFixed(1)} C${mid.toFixed(1)},${y1.toFixed(1)}
+             ${mid.toFixed(1)},${y2.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)}" />`;
+      })
+      .join("");
+
+    const circles = nodes
+      .map((n) => {
+        const entry = stats[n.key];
+        const colour = healthColor(entry);
+        const r = radius(n);
+        const cls = ["dy-tw-node"];
+        if (!colour) cls.push("is-empty");
+        if (entry && entry.health != null && entry.notable) cls.push("is-lit");
+        const fill = colour ? ` fill="${colour}"` : "";
+        const glow = colour && entry.notable
+          ? ` style="filter: drop-shadow(0 0 ${(r * 0.55).toFixed(1)}px ${colour})"`
+          : "";
+        const label = n.san
+          ? `<text class="dy-tw-san" x="${X(n)}" y="${(Y(n) - r - TREE.labelGap).toFixed(1)}">${escapeHtml(n.san)}</text>`
+          : `<text class="dy-tw-san" x="${X(n)}" y="${(Y(n) - r - TREE.labelGap).toFixed(1)}">start</text>`;
+        // A transparent hit circle, wider than the drawn one. Without it the
+        // only interactive area is the visible disc — as small as 7px on a
+        // rarely-played node — and the gap between a circle and its label is
+        // dead space inside the group's own bounding box.
+        return `<g class="${cls.join(" ")}" data-key="${escapeHtml(n.key)}"
+                   data-fen="${escapeHtml(n.fen)}" tabindex="0">
+          <circle class="dy-tw-hit" cx="${X(n)}" cy="${Y(n).toFixed(1)}"
+                  r="${(r + 10).toFixed(1)}" />
+          <circle cx="${X(n)}" cy="${Y(n).toFixed(1)}" r="${r.toFixed(1)}"${fill}${glow} />
+          ${label}
+        </g>`;
+      })
+      .join("");
+
+    svg.setAttribute("viewBox", `0 0 ${Math.ceil(width)} ${Math.ceil(height)}`);
+    svg.style.width = `${Math.ceil(width * tree.zoom)}px`;
+    svg.style.height = `${Math.ceil(height * tree.zoom)}px`;
+    svg.innerHTML = edges + circles;
+
+    const s = data.stats || {};
+    const base = s.baseline || {};
+    setText(
+      "dyTreeCounts",
+      `${data.moves} moves · ${data.decisions} yours` +
+        (base.games
+          ? ` · ${s.covered}/${nodes.length} positions played, from ${base.games} games`
+          : " · no reviewed games yet, so nothing is coloured"),
+    );
+  }
+
+  function treeTipText(key) {
+    const s = (tree.data && tree.data.stats && tree.data.stats.nodes) || {};
+    const entry = s[key];
+    const node = (tree.data.nodes || []).find((n) => n.key === key);
+    const head = node && node.san ? node.san : "Start position";
+    if (!entry || !entry.games) return `${head} — you have never reached this.`;
+    const bits = [`${entry.games} game${entry.games === 1 ? "" : "s"}`];
+    if (entry.score_pct != null) {
+      bits.push(`${Math.round(entry.score_pct * 100)}% scored`);
+      if (entry.par_pct != null) bits.push(`${Math.round(entry.par_pct * 100)}% par`);
+    }
+    if (entry.accuracy != null) {
+      bits.push(`${entry.accuracy.toFixed(0)} accuracy`);
+      if (entry.accuracy_delta != null) {
+        const d = entry.accuracy_delta;
+        bits.push(`${d >= 0 ? "+" : ""}${d.toFixed(1)} vs your usual`);
+      }
+    }
+    return `${head} — ${bits.join(" · ")}`;
+  }
+
+  function treePathTo(key) {
+    const byKey = new Map(((tree.data && tree.data.nodes) || []).map((n) => [n.key, n]));
+    const uci = [];
+    const san = [];
+    let node = byKey.get(key);
+    // Bounded by the node count: a malformed parent chain must not spin here.
+    for (let guard = 0; node && node.parent && guard < 200; guard += 1) {
+      if (node.uci) { uci.unshift(node.uci); san.unshift(node.san); }
+      node = byKey.get(node.parent);
+    }
+    return { uci, san };
+  }
+
+  function wireTree() {
+    const svg = $("dyTreeSvg");
+    const tip = $("dyTreeTip");
+    if (svg) {
+      const show = (event) => {
+        const g = event.target.closest("g[data-key]");
+        if (!g || !tip) return;
+        tip.textContent = treeTipText(g.dataset.key);
+        tip.classList.remove("hidden");
+      };
+      svg.addEventListener("mouseover", show);
+      svg.addEventListener("focusin", show);
+      svg.addEventListener("mouseleave", () => tip && tip.classList.add("hidden"));
+      // Clicking a circle opens that position in the builder — the picture is
+      // a way in, not just a readout.
+      svg.addEventListener("click", (event) => {
+        const g = event.target.closest("g[data-key]");
+        if (!g) return;
+        build.color = tree.color;
+        const select = $("dyBuildColor");
+        if (select) select.value = build.color;
+        build.fen = g.dataset.fen;
+        // Walk the parent chain so the builder shows how this position was
+        // reached. Without it a node six plies deep opens correctly but is
+        // labelled "Start position", which reads as a bug.
+        const { uci, san } = treePathTo(g.dataset.key);
+        build.path = uci;
+        build.sans = san;
+        build.expanded = false;
+        setRepView("build");
+        void loadBuild(true);
+      });
+    }
+    $("dyTreeColor")?.addEventListener("change", (event) => {
+      tree.color = event.target.value === "black" ? "black" : "white";
+      void loadTree(true);
+    });
+    $("dyTreeFit")?.addEventListener("click", () => {
+      const canvas = $("dyTreeCanvas");
+      const el = $("dyTreeSvg");
+      if (!canvas || !el || !tree.data) return;
+      const box = el.getAttribute("viewBox");
+      if (!box) return;
+      const [, , w] = box.split(" ").map(Number);
+      tree.zoom = Math.max(0.35, Math.min(1, (canvas.clientWidth - 24) / w));
+      renderTree(tree.data);
+    });
+  }
+
   function wireBuild() {
     const host = $("dyBuildCands");
     if (host) {
@@ -1399,6 +1668,7 @@
       btn.addEventListener("click", () => setRepView(btn.dataset.rep));
     });
     wireBuild();
+    wireTree();
 
     setInterval(tick, 1000);
     document.addEventListener("visibilitychange", () => {

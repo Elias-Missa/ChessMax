@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from core.opening_book import OpeningBookConstants
-from server import opening_import, opening_prep, openings_build
+from server import opening_import, opening_prep, opening_tree_stats, openings_build
 from server.deps import current_user, get_connection
 from server.openings_build import COLORS, START_FEN
 
@@ -105,6 +105,30 @@ def build_openings_router(app: FastAPI) -> APIRouter:
         return openings_build.load_tree(
             connection, int(user["id"]), color=_color(color)
         )
+
+    @router.get("/graph")
+    def graph(
+        color: str = Query(default="white"),
+        stats: bool = Query(default=True),
+        connection: sqlite3.Connection = Depends(get_connection),
+        user: sqlite3.Row = Depends(current_user),
+    ) -> dict[str, Any]:
+        """The book as a drawable tree, each node coloured by how you do there."""
+
+        resolved = _color(color)
+        tree = openings_build.load_tree(connection, int(user["id"]), color=resolved)
+        graph = openings_build.build_graph(tree["nodes"], tree["edges"])
+        if stats:
+            graph["stats"] = opening_tree_stats.stats_for_nodes(
+                connection,
+                int(user["id"]),
+                color=resolved,
+                position_keys=[n["key"] for n in graph["nodes"]],
+            )
+        graph["color"] = resolved
+        graph["decisions"] = tree["decisions"]
+        graph["moves"] = tree["moves"]
+        return graph
 
     @router.get("/coverage")
     def coverage(

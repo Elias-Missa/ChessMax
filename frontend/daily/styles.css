@@ -1179,3 +1179,118 @@
 }
 #daily-root .dy-import-status.is-good { color: var(--dy-accent); }
 #daily-root .dy-import-status.is-warn { color: var(--dy-fix); }
+
+/* ── The opening tree picture ────────────────────────────────────────────── *
+ *
+ * Colour carries the verdict, so everything structural is monochrome. The one
+ * distinction that must survive is empty vs neutral: a node never reached is a
+ * hollow ring, a node reached and unremarkable is a filled slate dot. On a
+ * young book most nodes are the former, and painting them neutral grey would
+ * claim results that do not exist.
+ */
+
+#daily-root .dy-tree { display: grid; gap: 0.6rem; }
+
+#daily-root .dy-tree-bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+}
+
+#daily-root .dy-tree-counts {
+  color: var(--dy-dim);
+  flex: 1 1 14rem;
+  font-size: 0.8rem;
+}
+
+#daily-root .dy-tree-legend {
+  align-items: center;
+  color: var(--dy-dim);
+  display: flex;
+  font-size: 0.72rem;
+  gap: 0.3rem;
+}
+
+#daily-root .dy-swatch {
+  border-radius: 50%;
+  display: inline-block;
+  height: 0.6rem;
+  margin-left: 0.5rem;
+  width: 0.6rem;
+}
+#daily-root .dy-swatch:first-child { margin-left: 0; }
+#daily-root .dy-swatch.is-bad  { background: hsl(8 72% 42%); }
+#daily-root .dy-swatch.is-mid  { background: #6b7683; }
+#daily-root .dy-swatch.is-good { background: hsl(130 72% 48%); }
+#daily-root .dy-swatch.is-none {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+}
+
+#daily-root .dy-tree-canvas {
+  background:
+    radial-gradient(900px 340px at 10% -10%, rgba(68, 214, 44, 0.05), transparent 70%),
+    rgba(255, 255, 255, 0.015);
+  border: 1px solid var(--dy-line);
+  border-radius: 12px;
+  max-height: calc(100vh - var(--shell-header-h, 3.7rem) - 14rem);
+  min-height: 18rem;
+  overflow: auto;
+  padding: 0.5rem;
+}
+
+#daily-root .dy-tree-canvas svg { display: block; }
+
+#daily-root .dy-tw-edge {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.16);
+  stroke-width: 1.5;
+}
+/* Your own decisions are the spine of the repertoire; the opponent replies
+   between them are scaffolding. */
+#daily-root .dy-tw-edge.is-mine { stroke: rgba(255, 255, 255, 0.34); stroke-width: 2; }
+
+#daily-root .dy-tw-node { cursor: pointer; outline: none; }
+
+/* `fill: transparent` still receives pointer events; `fill: none` does not. */
+#daily-root .dy-tw-hit {
+  fill: transparent;
+  stroke: none;
+  pointer-events: all;
+}
+#daily-root .dy-tw-node circle {
+  stroke: rgba(0, 0, 0, 0.45);
+  stroke-width: 1;
+  transition: r 0.15s ease;
+}
+
+/* Never reached: hollow, so it cannot be mistaken for a neutral result. */
+#daily-root .dy-tw-node.is-empty circle {
+  fill: transparent;
+  stroke: rgba(255, 255, 255, 0.3);
+  stroke-dasharray: 2 2;
+}
+
+#daily-root .dy-tw-node:hover circle,
+#daily-root .dy-tw-node:focus-visible circle {
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+#daily-root .dy-tw-san {
+  fill: #aeb7c2;
+  font-size: 10px;
+  font-weight: 600;
+  text-anchor: middle;
+}
+#daily-root .dy-tw-node.is-lit .dy-tw-san { fill: #e9edf1; }
+
+#daily-root .dy-tree-tip {
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--dy-line);
+  border-radius: 0.5rem;
+  color: #dfe5ec;
+  font-size: 0.8rem;
+  padding: 0.4rem 0.6rem;
+}

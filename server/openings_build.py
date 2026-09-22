@@ -551,6 +551,96 @@ def build_lines(
 
 
 # --------------------------------------------------------------------------- #
+# The graph                                                                    #
+# --------------------------------------------------------------------------- #
+
+
+def build_graph(
+    nodes: Sequence[Mapping[str, Any]], edges: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """The tree as a drawable graph: nodes with parents, edges between them.
+
+    Distinct from :func:`build_lines`, which flattens the tree into readable
+    lines and duplicates shared prefixes across them — fine for a text list,
+    wrong for a picture, where 1.e4 must be *one* circle with several children
+    rather than one per line through it.
+
+    Transpositions are the reason this returns a DAG's spanning tree rather than
+    the DAG: a position reachable two ways has two parents, and a node with two
+    parents has no place on a tidy layered layout. The first parent found (by
+    ply, then insertion order) keeps the child; the other link is reported in
+    ``transpositions`` so the UI can draw it as a hint rather than a branch.
+    """
+
+    by_key: dict[str, dict[str, Any]] = {}
+    for node in nodes:
+        key = position_key(str(node["fen"]))
+        by_key.setdefault(
+            key,
+            {
+                "key": key,
+                "fen": str(node["fen"]),
+                "ply": int(node["ply"]),
+                "opening_name": node.get("opening_name"),
+                "parent": None,
+                "san": None,
+                "uci": None,
+                "role": None,
+                "children": 0,
+            },
+        )
+
+    links: list[dict[str, Any]] = []
+    transpositions: list[dict[str, Any]] = []
+    for edge in sorted(edges, key=lambda e: (int(e["ply"]), int(e["id"]))):
+        parent_key = position_key(str(edge["fen"]))
+        try:
+            board = chess.Board(str(edge["fen"]))
+            board.push(chess.Move.from_uci(str(edge["uci"])))
+        except ValueError:
+            continue
+        child_key = position_key(board.fen())
+        child = by_key.get(child_key)
+        if child is None:
+            # An edge whose child node row is missing (a half-written import).
+            # Draw the edge but do not invent a node for it.
+            continue
+        link = {
+            "from": parent_key,
+            "to": child_key,
+            "san": str(edge["san"]),
+            "uci": str(edge["uci"]),
+            "role": str(edge["role"]),
+        }
+        if child["parent"] is None and child_key != parent_key:
+            child["parent"] = parent_key
+            child["san"] = str(edge["san"])
+            child["uci"] = str(edge["uci"])
+            child["role"] = str(edge["role"])
+            links.append(link)
+            if parent_key in by_key:
+                by_key[parent_key]["children"] += 1
+        else:
+            transpositions.append(link)
+
+    # Only nodes that are on the tree — a position with no parent and no
+    # children is a stray row (a child node created for an edge later removed)
+    # and drawing it as a floating circle is noise.
+    roots = [n for n in by_key.values() if n["parent"] is None and n["children"]]
+    keep = {n["key"] for n in by_key.values() if n["parent"] is not None}
+    keep |= {n["key"] for n in roots}
+
+    return {
+        "nodes": [n for n in by_key.values() if n["key"] in keep],
+        "links": [l for l in links if l["from"] in keep and l["to"] in keep],
+        "transpositions": [
+            t for t in transpositions if t["from"] in keep and t["to"] in keep
+        ],
+        "roots": [n["key"] for n in roots],
+    }
+
+
+# --------------------------------------------------------------------------- #
 # Coverage                                                                     #
 # --------------------------------------------------------------------------- #
 
@@ -618,6 +708,7 @@ __all__ = [
     "START_FEN",
     "THEIRS",
     "add_edge",
+    "build_graph",
     "build_lines",
     "candidates_for",
     "coverage_for",

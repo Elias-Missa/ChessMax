@@ -2963,6 +2963,7 @@
             <div class="dy-modes" role="tablist" aria-label="Repertoire view">
               <button type="button" role="tab" data-rep="drill" class="active" aria-selected="true">Drill</button>
               <button type="button" role="tab" data-rep="build" aria-selected="false">Build</button>
+              <button type="button" role="tab" data-rep="tree" aria-selected="false">Tree</button>
               <button type="button" role="tab" data-rep="lines" aria-selected="false">Your lines</button>
             </div>
           </div>
@@ -3094,6 +3095,33 @@
 
             <p class="dy-progress" id="dyBuildStatus"></p>
           </aside>
+        </div>
+
+        <!-- Tree: the book as a picture. Circles are positions, colour is how
+             you actually do there (results vs expectancy + accuracy vs your own
+             norm, both leave-one-out and shrunk). Grey is "never been here",
+             which is NOT the same as neutral. -->
+        <div class="dy-tree hidden" id="dyTree">
+          <div class="dy-tree-bar">
+            <label class="dy-build-side">
+              <select id="dyTreeColor">
+                <option value="white">As White</option>
+                <option value="black">As Black</option>
+              </select>
+            </label>
+            <span class="dy-tree-counts" id="dyTreeCounts"></span>
+            <span class="dy-tree-legend" aria-hidden="true">
+              <i class="dy-swatch is-bad"></i> worse here
+              <i class="dy-swatch is-mid"></i> as usual
+              <i class="dy-swatch is-good"></i> better here
+              <i class="dy-swatch is-none"></i> not played
+            </span>
+            <button type="button" class="dy-ghost" id="dyTreeFit">Fit</button>
+          </div>
+          <div class="dy-tree-canvas" id="dyTreeCanvas">
+            <svg id="dyTreeSvg" role="img" aria-label="Your opening tree"></svg>
+          </div>
+          <div class="dy-tree-tip hidden" id="dyTreeTip" role="status"></div>
         </div>
 
         <!-- Your lines: the book you CHOSE (builder) above what you actually
